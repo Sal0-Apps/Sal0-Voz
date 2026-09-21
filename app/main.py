@@ -19,7 +19,9 @@ from pydantic import BaseModel, Field
 from . import __version__, storage as s
 from .catalog import installed, require
 from .media import probe
+from .model_manager import manager as model_manager
 from .script import compile_script, parse_srt, validate_cues, subtitles
+from .telegram import masked as masked_telegram, notify_job, save_config as save_telegram
 from .worker import Worker
 
 worker = Worker()
@@ -30,10 +32,12 @@ STATIC = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app):
     s.init()
+    model_manager.start()
     if os.getenv("SAL0_DISABLE_WORKER") != "1":
         worker.start()
     yield
     worker.stop()
+    model_manager.stop()
 
 app = FastAPI(title="Sal0 Voz", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -88,17 +92,36 @@ def auth_status(request: Request):
         logged = session["expires"] > time.time()
     except KeyError:
         pass
-    return {"configured": bool(s.setting("password")), "authenticated": logged}
+    user = {}
+    if logged:
+        try:
+            session = s.get("session", hashlib.sha256(request.cookies.get("sal0_session", "").encode()).hexdigest())
+            user = {"username": session.get("username", "admin"), "role": session.get("role", "admin")}
+        except KeyError:
+            pass
+    return {"configured": bool(s.setting("password")), "authenticated": logged, **user}
 
 class Password(BaseModel):
+    username: str = Field(default="admin", min_length=3, max_length=40, pattern=r"^[A-Za-z0-9_.@-]+$")
     password: str = Field(min_length=8, max_length=256)
+
+
+def current_user(request: Request):
+    token = request.cookies.get("sal0_session", "")
+    try:
+        session = s.get("session", hashlib.sha256(token.encode()).hexdigest())
+        if session["expires"] < time.time():
+            raise KeyError()
+        return {"username": session.get("username", "admin"), "role": session.get("role", "admin")}
+    except KeyError:
+        raise HTTPException(401, "Entre com sua senha local.")
 
 def password_hash(password, salt):
     return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
 
-def session_response():
+def session_response(username="admin", role="admin"):
     token = secrets.token_urlsafe(32)
-    s.put("session", {"id": hashlib.sha256(token.encode()).hexdigest(), "expires": time.time()+7*86400})
+    s.put("session", {"id": hashlib.sha256(token.encode()).hexdigest(), "username": username, "role": role, "expires": time.time()+7*86400})
     response = JSONResponse({"ok": True})
     response.set_cookie("sal0_session", token, httponly=True, samesite="strict", secure=os.getenv("SAL0_SECURE_COOKIE")=="1", max_age=7*86400)
     return response
@@ -109,8 +132,10 @@ def setup(body: Password):
         if s.setting("password"):
             raise HTTPException(409, "Proprietário já configurado.")
         salt = secrets.token_hex(16)
-        s.setting("password", json.dumps({"salt": salt, "hash": password_hash(body.password, salt)}))
-    return session_response()
+        digest = password_hash(body.password, salt)
+        s.setting("password", json.dumps({"salt": salt, "hash": digest}))
+        s.put("user", {"id": body.username, "username": body.username, "role": "admin", "salt": salt, "hash": digest})
+    return session_response(body.username, "admin")
 
 @app.post("/api/auth/login")
 def login(body: Password, request: Request):
@@ -120,11 +145,18 @@ def login(body: Password, request: Request):
         if len(recent) >= 10:
             raise HTTPException(429, "Muitas tentativas. Aguarde cinco minutos.")
         saved = json.loads(s.setting("password") or "{}")
-        if not saved or not hmac.compare_digest(saved["hash"], password_hash(body.password, saved["salt"])):
+        try:
+            user = s.get("user", body.username)
+            valid = hmac.compare_digest(user["hash"], password_hash(body.password, user["salt"]))
+            role = user.get("role", "user")
+        except KeyError:
+            valid = body.username == "admin" and bool(saved) and hmac.compare_digest(saved["hash"], password_hash(body.password, saved["salt"]))
+            role = "admin"
+        if not valid:
             attempts[ip] = recent + [time.time()]
             raise HTTPException(401, "Senha incorreta.")
         attempts.pop(ip, None)
-    return session_response()
+    return session_response(body.username, role)
 
 @app.post("/api/auth/logout")
 def logout(request: Request):
@@ -135,7 +167,77 @@ def logout(request: Request):
 
 @app.get("/api/models")
 def models():
-    return installed()
+    return model_manager.snapshot()
+
+
+class ModelDownload(BaseModel):
+    accept_license: bool = True
+
+
+@app.post("/api/models/{ident}/download")
+def download_model(ident: str, body: ModelDownload):
+    return model_manager.request(ident, accept_license=body.accept_license)
+
+
+@app.post("/api/models/{ident}/cancel")
+def cancel_model(ident: str):
+    return model_manager.cancel(ident)
+
+
+class TelegramConfig(BaseModel):
+    telegram_token: str = Field(default="", max_length=256)
+    telegram_chat_id: str = Field(default="", max_length=128)
+
+
+@app.get("/api/telegram")
+def get_telegram(request: Request):
+    return masked_telegram(current_user(request))
+
+
+@app.put("/api/telegram")
+def put_telegram(body: TelegramConfig, request: Request):
+    save_telegram(current_user(request), body.telegram_token, body.telegram_chat_id)
+    return masked_telegram(current_user(request))
+
+
+@app.get("/api/users")
+def list_users(request: Request):
+    user = current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Apenas administradores podem gerenciar usuários.")
+    return [{k: value for k, value in item.items() if k not in {"hash", "salt"}} for item in s.listing("user", limit=-1)]
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=40, pattern=r"^[A-Za-z0-9_.@-]+$")
+    password: str = Field(min_length=8, max_length=256)
+    role: str = Field(default="user", pattern=r"^(user|admin)$")
+
+
+@app.post("/api/users")
+def create_user(body: UserCreate, request: Request):
+    if current_user(request).get("role") != "admin":
+        raise HTTPException(403, "Apenas administradores podem criar usuários.")
+    try:
+        s.get("user", body.username)
+        raise HTTPException(409, "Este usuário já existe.")
+    except KeyError:
+        pass
+    salt = secrets.token_hex(16)
+    s.put("user", {"id": body.username, "username": body.username, "role": body.role, "salt": salt, "hash": password_hash(body.password, salt)})
+    return {"username": body.username, "role": body.role}
+
+
+@app.delete("/api/users/{username}")
+def delete_user(username: str, request: Request):
+    if current_user(request).get("role") != "admin":
+        raise HTTPException(403, "Apenas administradores podem excluir usuários.")
+    if username == current_user(request).get("username"):
+        raise HTTPException(400, "Você não pode excluir a si mesmo.")
+    s.get("user", username)
+    with s.db() as conn:
+        conn.execute("DELETE FROM records WHERE kind='user' AND id=?", (username,))
+    return {"ok": True}
 
 @app.get("/api/diagnostics")
 def diagnostics():
@@ -308,9 +410,19 @@ def snapshot(project):
     return value
 
 @app.post("/api/projects/{ident}/generate")
-def generate(ident: str):
-    project = snapshot(s.get("project", ident))
-    job = s.put("job", {"project_id": ident, "name": project["name"], "snapshot": project, "status": "queued", "stage": "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
+def generate(ident: str, request: Request):
+    owner = current_user(request)
+    project_record = s.get("project", ident)
+    try:
+        project = snapshot(project_record)
+    except ValueError as exc:
+        engine = project_record.get("asr_engine") if project_record.get("mode") == "asr" else project_record.get("engine")
+        if engine and "não instalado" in str(exc):
+            model_manager.request(engine, accept_license=True, automatic=True)
+            raise HTTPException(409, f"O modelo {engine} começou a baixar no servidor. Aguarde a conclusão e gere novamente.")
+        raise
+    job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["name"], "snapshot": project, "status": "queued", "stage": "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
+    notify_job(job)
     (s.DATA / "jobs" / job["id"]).mkdir(parents=True, exist_ok=True)
     worker.wake.set()
     return {"id": job["id"], "status": job["status"]}
