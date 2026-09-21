@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], configured:false};
+const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], configured:false, user:{}};
 let events, toastTimer, saveTimer, recorder;
 const escapeHTML = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const bytes = n => (n/1024**3).toFixed(1)+" GB";
@@ -20,7 +20,7 @@ function view(name){
   document.querySelectorAll(".view").forEach(x=>x.hidden=x.id!=="view-"+name);
   document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===name));
   $("breadcrumb").textContent="Estúdio / "+({create:"Criar voz",characters:"Personagens",projects:"Projetos",library:"Biblioteca",settings:"Ajustes"}[name]);
-  if(name==="settings") safe(loadDiagnostics)();
+  if(name==="settings") safe(async()=>{await loadDiagnostics();await loadTelegram();await loadUsers();})();
   if(name==="library") renderResults();
 }
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
@@ -45,9 +45,8 @@ function payload(){
   return {name:$("project-name").value.trim()||"Projeto sem título",mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
 }
 function saveDraft(){
-  localStorage.setItem("sal0-draft",JSON.stringify({...payload(),id:state.projectId}));
   $("char-count").textContent=$("script").value.length.toLocaleString("pt-BR")+" caracteres";
-  $("save-state").textContent="Rascunho salvo neste navegador";
+  $("save-state").textContent=state.projectId?"Alterações salvas no servidor após uma breve pausa":"Salve o projeto no servidor para manter o rascunho";
   clearTimeout(saveTimer);
   if(state.projectId) saveTimer=setTimeout(safe(async()=>{await saveProject(false);}),1500);
 }
@@ -57,7 +56,6 @@ async function saveProject(message=true){
   clearTimeout(saveTimer);
   const project=await api(state.projectId?"/projects/"+state.projectId:"/projects",{method:state.projectId?"PUT":"POST",body:JSON.stringify(payload())});
   state.projectId=project.id;$("save-state").textContent="Projeto salvo no servidor";
-  localStorage.setItem("sal0-draft",JSON.stringify({...payload(),id:project.id}));
   state.projects=await api("/projects");renderProjects();
   if(message)toast("Projeto salvo.");
   return project;
@@ -72,7 +70,8 @@ $("rate").addEventListener("input",()=>{$("rate-value").textContent=Number($("ra
 function modelNotice(){
   const ident=state.mode==="asr"?$("asr-engine").value:$("engine").value;
   const model=state.models.find(x=>x.id===ident);
-  $("model-notice").textContent=model?((model.available?"":"Não instalado. ")+model.notice):"";
+  const download=model?.download;
+  $("model-notice").textContent=model?((model.available?"":download?.status==="downloading"?"Baixando no servidor. ":download?.status==="queued"?"Aguardando download no servidor. ":"Não instalado. ")+model.notice):"";
 }
 $("engine").addEventListener("change",modelNotice);$("asr-engine").addEventListener("change",modelNotice);
 function fillOptions(element,items,placeholder,label){
@@ -85,7 +84,7 @@ function refreshSelectors(){
   for(const id of ["character-reference","background-media"])fillOptions($(id),state.media.filter(x=>x.audio&&!x.video),id==="background-media"?"Sem ambiente separado":"Selecione uma referência",x=>x.name);
 }
 async function loadModels(){
-  const selectedEngine=$("engine").value||"qwen-1.7b";
+  const selectedEngine=$("engine").value||"qwen-0.6b";
   state.models=await api("/models");
   fillOptions($("engine"),state.models.filter(x=>x.kind==="tts"),null,x=>x.name+(x.available?"":" · não instalado"));
   fillOptions($("asr-engine"),state.models.filter(x=>x.kind==="asr"),null,x=>x.name+(x.available?"":" · não instalado"));
@@ -167,12 +166,28 @@ function renderResults(){
     return '<article class="card item-card"><h3>'+escapeHTML(j.name)+'</h3><span class="badge">Concluído · revisão recomendada</span>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+j.id+'/output/'+playable+'"></'+type+'>':"")+'<div class="item-actions">'+outputHTML(j)+'</div></article>';
   }).join(""):'<div class="empty">Os resultados concluídos aparecem aqui.</div>';
 }
+function renderModelList(){
+  const active=state.models.filter(m=>m.download&&["queued","downloading"].includes(m.download.status)).length;
+  $("model-auto-status").textContent=active?active+" download(s) em andamento no servidor.":"Os arquivos permanecem no volume /data do servidor.";
+  $("model-list").innerHTML=state.models.map(m=>{
+    const d=m.download||{}, busy=["queued","downloading"].includes(d.status);
+    const action=m.available?"":busy?'<button class="quiet" data-model-cancel="'+m.id+'">Cancelar</button>':'<button class="secondary" data-model-download="'+m.id+'">Baixar no servidor</button>';
+    const label=m.available?"Instalado":d.status==="failed"?"Falhou":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Não instalado";
+    return '<div class="model-row"><span class="badge">'+label+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Revisão ainda não baixada")+'</p><div class="item-actions">'+action+'</div></div>';
+  }).join("");
+  document.querySelectorAll("[data-model-download]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelDownload+"/download",{accept_license:true});toast("Download iniciado no servidor.");await loadModels();await loadDiagnostics();}));
+  document.querySelectorAll("[data-model-cancel]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelCancel+"/cancel");await loadModels();await loadDiagnostics();}));
+}
 async function loadDiagnostics(){
   const d=await api("/diagnostics");$("version").textContent=d.version;
   $("diagnostics").innerHTML='<div class="card stat"><strong>'+bytes(d.memory_available)+'</strong><small>RAM disponível no sistema</small></div><div class="card stat"><strong>'+bytes(d.disk_free)+'</strong><small>Disco disponível</small></div><div class="card stat"><strong>'+d.threads+' threads</strong><small>Processamento em CPU</small></div>';
-  $("model-list").innerHTML=state.models.map(m=>'<div class="model-row"><span class="badge">'+(m.available?"Instalado":"Não instalado")+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Revisão ainda não baixada")+'</p></div>').join("");
+  renderModelList();
 }
 $("refresh-models").onclick=safe(async()=>{await loadModels();await loadDiagnostics();toast("Modelos atualizados.");});
+async function loadTelegram(){const cfg=await api("/telegram");$("telegram-token").value=cfg.telegram_token||"";$("telegram-chat").value=cfg.telegram_chat_id||"";}
+async function loadUsers(){if(state.user.role!=="admin")return;$("users-card").hidden=false;const users=await api("/users");$("users-list").innerHTML=users.map(u=>'<div class="item-actions"><span>'+escapeHTML(u.username)+' · '+escapeHTML(u.role)+'</span>'+(u.username===state.user.username?"":'<button class="quiet" data-delete-user="'+escapeHTML(u.username)+'">Excluir</button>')+'</div>').join("");document.querySelectorAll("[data-delete-user]").forEach(b=>b.onclick=safe(async()=>{await api("/users/"+encodeURIComponent(b.dataset.deleteUser),{method:"DELETE"});await loadUsers();}));}
+$("telegram-form").addEventListener("submit",safe(async e=>{e.preventDefault();const cfg=await api("/telegram",{method:"PUT",body:JSON.stringify({telegram_token:$("telegram-token").value,telegram_chat_id:$("telegram-chat").value})});$("telegram-token").value=cfg.telegram_token||"";$("telegram-status").textContent="Configuração salva no servidor.";toast("Telegram configurado.");}));
+$("user-form").addEventListener("submit",safe(async e=>{e.preventDefault();await api("/users",{method:"POST",body:JSON.stringify({username:$("new-username").value,password:$("new-password").value,role:$("new-role").value})});e.target.reset();await loadUsers();toast("Usuário criado.");}));
 $("queue-toggle").onclick=()=>$("queue-panel").hidden=!$("queue-panel").hidden;
 $("queue-close").onclick=()=>$("queue-panel").hidden=true;
 $("close-log").onclick=()=>$("log-dialog").close();
@@ -192,23 +207,23 @@ $("record").onclick=safe(async()=>{
 });
 $("auth-form").addEventListener("submit",async e=>{
   e.preventDefault();$("auth-submit").disabled=true;$("auth-error").textContent="";
-  try{await post(state.configured?"/auth/login":"/auth/setup",{password:$("password").value});$("password").value="";await start();}
+  try{await post(state.configured?"/auth/login":"/auth/setup",{username:$("username").value.trim()||"admin",password:$("password").value});$("password").value="";await start();}
   catch(e){$("auth-error").textContent=e.message;}finally{$("auth-submit").disabled=false;}
 });
 async function start(){
   events?.close();
   const auth=await api("/auth/status");state.configured=auth.configured;
   $("auth").hidden=auth.authenticated;$("app").hidden=!auth.authenticated;
-  $("auth-description").textContent=auth.configured?"Bem-vindo de volta ao seu estúdio.":"Crie a senha do proprietário para abrir seu estúdio local.";
+  state.user={username:auth.username||"admin",role:auth.role||"admin"};
+  $("auth-description").textContent=auth.configured?"Bem-vindo de volta ao seu estúdio.":"Crie o primeiro usuário administrador para abrir seu estúdio local.";
   $("auth-submit").textContent=auth.configured?"Entrar no estúdio":"Criar meu estúdio";
   if(!auth.authenticated)return;
   [state.characters,state.media,state.projects]=await Promise.all([api("/characters?limit=100"),api("/media?limit=100"),api("/projects")]);
   await loadModels();refreshSelectors();renderCharacters();renderProjects();renderMedia();await loadJobs();
-  const draft=localStorage.getItem("sal0-draft");if(draft){try{loadProject(JSON.parse(draft));}catch{localStorage.removeItem("sal0-draft");}}
   events=new EventSource("/api/events/stream");events.onmessage=e=>{state.jobs=JSON.parse(e.data);renderJobs();};
 }
 safe(start)();
 
 
 $("export-srt").onclick=safe(async()=>{const p=await saveProject(false);const link=document.createElement("a");link.href="/api/projects/"+p.id+"/subtitles/srt";link.download="legendas.srt";link.click();});
-$("new-project").onclick=()=>{clearTimeout(saveTimer);state.projectId=null;state.cues=[];$("project-form").reset();$("engine").value="qwen-1.7b";setMode("tts");renderCues();view("create");saveDraft();};
+$("new-project").onclick=()=>{clearTimeout(saveTimer);state.projectId=null;state.cues=[];$("project-form").reset();$("engine").value="qwen-0.6b";setMode("tts");renderCues();view("create");saveDraft();};
