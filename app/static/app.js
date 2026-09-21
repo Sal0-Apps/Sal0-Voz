@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], configured:false, user:{}};
-let events, toastTimer, saveTimer, recorder;
+let events, toastTimer, saveTimer, recorder, modelTimer;
 const escapeHTML = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const bytes = n => (n/1024**3).toFixed(1)+" GB";
 function toast(text){ $("toast").textContent=text; $("toast").hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$("toast").hidden=true,7000); }
@@ -212,6 +212,7 @@ $("auth-form").addEventListener("submit",async e=>{
 });
 async function start(){
   events?.close();
+  clearInterval(modelTimer);
   const auth=await api("/auth/status");state.configured=auth.configured;
   $("auth").hidden=auth.authenticated;$("app").hidden=!auth.authenticated;
   state.user={username:auth.username||"admin",role:auth.role||"admin"};
@@ -220,6 +221,7 @@ async function start(){
   if(!auth.authenticated)return;
   [state.characters,state.media,state.projects]=await Promise.all([api("/characters?limit=100"),api("/media?limit=100"),api("/projects")]);
   await loadModels();refreshSelectors();renderCharacters();renderProjects();renderMedia();await loadJobs();
+  modelTimer=setInterval(()=>{loadModels().then(()=>{if(!$("view-settings").hidden)loadDiagnostics();}).catch(()=>{});},5000);
   events=new EventSource("/api/events/stream");events.onmessage=e=>{state.jobs=JSON.parse(e.data);renderJobs();};
 }
 safe(start)();
