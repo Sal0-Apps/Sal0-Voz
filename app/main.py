@@ -438,7 +438,7 @@ def generate(ident: str, request: Request):
         engine = project_record.get("asr_engine") if project_record.get("mode") == "asr" else project_record.get("engine")
         if engine and "não instalado" in str(exc):
             model_manager.request(engine, accept_license=True, automatic=True)
-            raise HTTPException(400, f"O modelo {engine} começou a baixar no servidor. Aguarde a conclusão e gere novamente.")
+            raise HTTPException(400, f"Modelo {engine} não instalado; o download começou no servidor. Aguarde a conclusão e gere novamente.")
         raise
     job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["name"], "snapshot": project, "status": "queued", "stage": "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
     notify_job(job)
