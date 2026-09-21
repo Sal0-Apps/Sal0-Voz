@@ -24,8 +24,8 @@ docker compose -f compose.yaml --profile setup run --rm model-setup verify qwen-
 Se o ZimaOS foi instalado pelo Compose simplificado, sem clonar o código:
 
 ```sh
-docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:0.1.0 python -m scripts.models plan qwen-1.7b
-docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:0.1.0 python -m scripts.models install qwen-1.7b --accept-license
+docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models plan qwen-1.7b
+docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models install qwen-1.7b --accept-license
 ```
 
 Troque o identificador por `qwen-0.6b`, `whisper-medium` ou `whisper-large-v3`. O comando plan consulta a fonte oficial, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
@@ -93,7 +93,7 @@ Pare o app antes de criar/restaurar para obter um conjunto consistente de banco 
 
 ```sh
 docker stop sal0-voz
-docker run --rm -v /DATA/AppData/sal0-voz:/data -v /CAMINHO/DOS/BACKUPS:/backup ghcr.io/sal0-apps/sal0-voz:0.1.0 python -m scripts.backup create /backup/sal0-voz.zip
+docker run --rm -v /DATA/AppData/sal0-voz:/data -v /CAMINHO/DOS/BACKUPS:/backup ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.backup create /backup/sal0-voz.zip
 docker start sal0-voz
 ```
 
@@ -102,7 +102,7 @@ O diretório de backup precisa permitir escrita ao UID 1000. O ZIP inclui banco,
 Restaure em pasta nova/vazia:
 
 ```sh
-docker run --rm -v /CAMINHO/DOS/BACKUPS:/backup:ro -v /DATA/AppData/sal0-voz-restaurado:/restore ghcr.io/sal0-apps/sal0-voz:0.1.0 python -m scripts.backup restore /backup/sal0-voz.zip --destination /restore
+docker run --rm -v /CAMINHO/DOS/BACKUPS:/backup:ro -v /DATA/AppData/sal0-voz-restaurado:/restore ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.backup restore /backup/sal0-voz.zip --destination /restore
 ```
 
 Prepare a pasta /restore com permissão de escrita do UID 1000. Confira os arquivos, recoloque os modelos nas revisões registradas e só então mude o volume do Compose. Sessões antigas são invalidadas na restauração; a senha do proprietário é preservada. O importador valida nomes e hashes e rejeita caminhos que escapam da pasta.
@@ -112,11 +112,11 @@ Prepare a pasta /restore com permissão de escrita do UID 1000. Confira os arqui
 Em uma máquina conectada, prepare a imagem e os modelos, verifique hashes e exporte:
 
 ```sh
-docker pull ghcr.io/sal0-apps/sal0-voz:0.1.0
-docker save ghcr.io/sal0-apps/sal0-voz:0.1.0 -o sal0-voz-0.1.0.tar
+docker pull ghcr.io/sal0-apps/sal0-voz:latest
+docker save ghcr.io/sal0-apps/sal0-voz:latest -o sal0-voz-latest.tar
 ```
 
-Leve a imagem, os modelos e o Compose ao servidor. Use `docker load -i sal0-voz-0.1.0.tar`, copie os modelos ao volume e inicie. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
+Leve a imagem, os modelos e o Compose ao servidor. Use `docker load -i sal0-voz-latest.tar`, copie os modelos ao volume e inicie. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
 
 As flags offline impedem downloads pelas bibliotecas compatíveis; **não são um firewall**. A homologação exige repetir os fluxos com saída para internet bloqueada, mantendo LAN.
 
@@ -130,7 +130,7 @@ O relatório fica em `/data/benchmark-hardware.json`. Registre também versão d
 
 ## Atualização e rollback
 
-Faça backup, pare o app, altere a tag fixa e recrie. Preserve /data. Nunca use somente latest como forma de recuperar instalação. Esquema atual: SQLite user_version=1, criado idempotentemente na inicialização. Uma versão futura com migração deve documentar compatibilidade e recuperação.
+Faça backup, pare o app, atualize a tag `latest` e recrie; para rollback, use uma tag fixa publicada. Preserve /data. Nunca use somente latest como forma de recuperar instalação. Esquema atual: SQLite user_version=1, criado idempotentemente na inicialização. Uma versão futura com migração deve documentar compatibilidade e recuperação.
 
 ## Limites desta entrega
 

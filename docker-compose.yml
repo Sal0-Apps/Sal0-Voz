@@ -1,7 +1,7 @@
 name: sal0-voz
 services:
   sal0-voz:
-    image: ghcr.io/sal0-apps/sal0-voz:0.1.0
+    image: ghcr.io/sal0-apps/sal0-voz:latest
     container_name: sal0-voz
     platform: linux/amd64
     init: true

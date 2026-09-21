@@ -15,7 +15,7 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 5. Para conferir a cadeia de áudio, escolha explicitamente **Voz de diagnóstico** em Criar voz.
 6. Prepare um modelo de clonagem ou transcrição seguindo o [manual](MANUAL.md).
 
-A imagem é `ghcr.io/sal0-apps/sal0-voz:0.1.0`. O workflow **CI e imagem Docker** testa, constrói e publica a imagem. Se o pacote GHCR ainda estiver privado, o administrador deve torná-lo público na página do pacote para permitir download anônimo pelo ZimaOS.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** testa, constrói e publica `latest`, além da versão fixa `0.1.0` e do SHA do commit para rollback. Se o pacote GHCR ainda estiver privado, o administrador deve torná-lo público na página do pacote para permitir download anônimo pelo ZimaOS.
 
 ## O que está implementado
 

@@ -35,12 +35,14 @@ jobs:
           context: .
           platforms: linux/amd64
           load: true
-          tags: ghcr.io/sal0-apps/sal0-voz:0.1.0
+          tags: |
+            ghcr.io/sal0-apps/sal0-voz:0.1.0
+            ghcr.io/sal0-apps/sal0-voz:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Testar imagem
         run: |
-          docker run -d --name sal0-smoke --network none ghcr.io/sal0-apps/sal0-voz:0.1.0
+          docker run -d --name sal0-smoke --network none ghcr.io/sal0-apps/sal0-voz:latest
           for i in $(seq 1 30); do
             if docker exec sal0-smoke python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
             sleep 2
@@ -53,6 +55,7 @@ jobs:
       - name: Publicar imagem versionada
         run: |
           docker push ghcr.io/sal0-apps/sal0-voz:0.1.0
+          docker push ghcr.io/sal0-apps/sal0-voz:latest
           docker tag ghcr.io/sal0-apps/sal0-voz:0.1.0 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
           docker push ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
 
