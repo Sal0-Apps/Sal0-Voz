@@ -24,3 +24,5 @@ Nenhum benchmark de qualidade ou de hardware é inferido a partir de testes unit
 ## Execução local registrada
 
 Windows/Python 3.12: 28 testes passaram; um teste de áudio Linux fica para o CI. Navegação Chromium em 1440 px e 390 px: sem erros JavaScript e sem overflow horizontal em todas as telas. Backup/restauração passou após correção de fechamento das conexões SQLite.
+
+GitHub Actions/Linux: **29 testes passaram**, incluindo geração real com eSpeak NG em pt-BR/en-US, FFmpeg, retomada e recuperação de checkpoint corrompido. Ambos os Compose passaram em docker compose config -q. Execução: https://github.com/Sal0-Apps/Sal0-Voz/actions/runs/35642639770

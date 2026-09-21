@@ -209,3 +209,6 @@ async function start(){
 }
 safe(start)();
 
+
+$("export-srt").onclick=safe(async()=>{const p=await saveProject(false);const link=document.createElement("a");link.href="/api/projects/"+p.id+"/subtitles/srt";link.download="legendas.srt";link.click();});
+$("new-project").onclick=()=>{clearTimeout(saveTimer);state.projectId=null;state.cues=[];$("project-form").reset();$("engine").value="qwen-1.7b";setMode("tts");renderCues();view("create");saveDraft();};

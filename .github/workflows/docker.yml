@@ -40,15 +40,15 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Testar imagem
         run: |
-          docker run -d --name sal0-smoke -p 7886:7860 ghcr.io/sal0-apps/sal0-voz:0.1.0
+          docker run -d --name sal0-smoke --network none ghcr.io/sal0-apps/sal0-voz:0.1.0
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:7886/health; then break; fi
+            if docker exec sal0-smoke python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:7886/health
+          docker exec sal0-smoke python -m scripts.smoke
           docker exec sal0-smoke /opt/engines/qwen/bin/python -c "from qwen_tts import Qwen3TTSModel; import torch; assert not torch.cuda.is_available()"
           docker exec sal0-smoke /opt/engines/whisper/bin/python -c "from faster_whisper import WhisperModel"
-          docker exec sal0-smoke id
+          docker exec sal0-smoke python -c "from pathlib import Path; status=Path('/proc/1/status').read_text(); assert any(x.startswith('Uid:\t1000') for x in status.splitlines()), status"
           docker stop sal0-smoke
       - name: Publicar imagem versionada
         run: |

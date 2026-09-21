@@ -40,3 +40,20 @@ def test_real_speech_and_checkpoint_recovery(data):
     worker.execute(job)
     with wave.open(str(segment)) as wav: assert wav.getnframes()>0
 
+
+@pytest.mark.skipif(not (shutil.which("espeak-ng") and shutil.which("ffmpeg")), reason="Requires Linux media tools")
+def test_dubbing_preserves_video_duration(data):
+    import subprocess
+    from app.media import ffargs, probe
+    source = data / "media" / "source.mp4"
+    subprocess.run(ffargs("-f", "lavfi", "-i", "color=c=blue:s=160x90:r=25", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", "6", "-c:v", "libx264", "-c:a", "aac", source), check=True)
+    project = {"mode":"dub","name":"Cena","engine":"diagnostic","media":{"path":"media/source.mp4","duration":6},"segments":[{"text":"Oi.","language":"pt-BR","rate":1,"volume":0,"start_ms":2000,"end_ms":5000}]}
+    job = s.put("job", {"status":"running","name":"Cena","snapshot":project,"progress":0})
+    Worker().execute(job)
+    result = s.get("job",job["id"])
+    output = s.safe_path(result["outputs"][0]["path"])
+    info = probe(output)
+    assert info["video"] and info["audio"]
+    assert abs(info["duration"]-6) < 0.2
+    assert result["cues"][0]["start_ms"] == 2000
+

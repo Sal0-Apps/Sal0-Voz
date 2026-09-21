@@ -173,7 +173,7 @@ def upload(file: UploadFile):
                 metadata["cues"] = parse_srt(content)
         else:
             metadata = {**probe(path), "type": "media"}
-        return s.put("media", {"id": ident, "name": name, "path": str(path.relative_to(s.DATA)), "size": path.stat().st_size, "sha256": s.digest(path), **metadata})
+        return s.put("media", {"id": ident, "name": name, "path": path.relative_to(s.DATA).as_posix(), "size": path.stat().st_size, "sha256": s.digest(path), **metadata})
     except BaseException:
         path.unlink(missing_ok=True)
         raise

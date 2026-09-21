@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg espeak-n
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN python -m venv /opt/engines/whisper && /opt/engines/whisper/bin/pip install --no-cache-dir faster-whisper==1.1.1
+RUN python -m venv /opt/engines/whisper && /opt/engines/whisper/bin/pip install --no-cache-dir faster-whisper==1.1.1 requests==2.32.3
 RUN python -m venv /opt/engines/qwen && /opt/engines/qwen/bin/pip install --no-cache-dir torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu && /opt/engines/qwen/bin/pip install --no-cache-dir qwen-tts==0.1.1 soundfile==0.13.1
 RUN pip install --no-cache-dir huggingface-hub==0.36.0 && useradd --uid 1000 --create-home sal0
 COPY app ./app
@@ -16,4 +16,3 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health',timeout=5)"
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["python","-m","uvicorn","app.main:app","--host","0.0.0.0","--port","7860","--workers","1"]
-

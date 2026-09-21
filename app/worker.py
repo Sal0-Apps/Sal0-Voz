@@ -154,6 +154,7 @@ class Worker:
                         wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000)
                         frames = round(segment["pause_ms"]*24)
                         while frames:
+                            self.check(ident)
                             chunk = min(frames, 24000)
                             wav.writeframesraw(b"\0\0"*chunk); frames -= chunk
                 else:
@@ -219,7 +220,7 @@ class Worker:
             args = ffargs("-i", joined, "-c:a", codec, temporary)
         self.run(ident, args)
         os.replace(temporary, output)
-        self.finish_subtitles(ident, cues, [{"path": str(output.relative_to(s.DATA)), "name": f"{project['name']}.{extension}", "type": "video" if extension=="mp4" else "audio"}])
+        self.finish_subtitles(ident, cues, [{"path": output.relative_to(s.DATA).as_posix(), "name": f"{project['name']}.{extension}", "type": "video" if extension=="mp4" else "audio"}])
 
     def timeline(self, parts, output, frames, ident):
         # Disk-based timeline, constant memory. Overlap is rejected during submission.
@@ -230,11 +231,13 @@ class Worker:
                 self.check(ident)
                 gap = round(start*24)-cursor
                 while gap > 0:
+                    self.check(ident)
                     n = min(gap, 24000); out.writeframesraw(b"\0\0"*n); gap -= n; cursor += n
                 with wave.open(str(path), "rb") as inp:
                     while block := inp.readframes(24000):
                         out.writeframesraw(block); cursor += len(block)//2
             while cursor < frames:
+                self.check(ident)
                 n = min(frames-cursor, 24000); out.writeframesraw(b"\0\0"*n); cursor += n
 
     def finish_subtitles(self, ident, cues, outputs=None):
@@ -242,6 +245,6 @@ class Worker:
         for extension in ("srt", "vtt"):
             path = s.DATA / "exports" / f"{ident}.{extension}"
             path.write_text(subtitles(cues, vtt=extension=="vtt"), encoding="utf-8")
-            outputs.append({"path": str(path.relative_to(s.DATA)), "name": f"legendas.{extension}", "type": "subtitle"})
+            outputs.append({"path": path.relative_to(s.DATA).as_posix(), "name": f"legendas.{extension}", "type": "subtitle"})
         self.update(ident, outputs=outputs, cues=cues, subtitle_alignment="Tempos por trecho; revisão humana necessária.")
 
