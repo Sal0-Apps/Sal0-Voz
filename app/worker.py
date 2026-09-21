@@ -13,6 +13,7 @@ from . import storage as s
 from .catalog import runtime
 from .media import ffargs
 from .script import subtitles
+from .telegram import notify_job
 
 class Interrupted(Exception):
     pass
@@ -108,12 +109,14 @@ class Worker:
                 self.execute(job)
                 with self.lock:
                     self.check(ident)
-                    self.update(ident, status="completed", stage="Concluído — revise o resultado", progress=100, elapsed_seconds=round(time.monotonic()-started, 2))
+                    finished = self.update(ident, status="completed", stage="Concluído — revise o resultado", progress=100, elapsed_seconds=round(time.monotonic()-started, 2))
+                    notify_job(finished)
             except Interrupted:
                 if self.stop_event.is_set() and s.get("job", ident)["status"] == "running":
                     self.update(ident, status="queued", stage="Interrompido com segurança; aguardando reinício")
             except Exception as exc:
-                self.update(ident, status="failed", stage=str(exc), error=str(exc))
+                failed = self.update(ident, status="failed", stage=str(exc), error=str(exc))
+                notify_job(failed)
 
     def engine(self, ident, request, folder):
         path = folder / "request.json"
