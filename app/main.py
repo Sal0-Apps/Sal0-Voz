@@ -244,18 +244,22 @@ def diagnostics():
     disk = shutil.disk_usage(s.DATA); memory = psutil.virtual_memory()
     return {"version": __version__, "cpu": "CPU", "threads": int(os.getenv("SAL0_THREADS", "2")), "memory_total": memory.total, "memory_available": memory.available, "disk_free": disk.free, "ffmpeg": bool(shutil.which("ffmpeg") or os.getenv("SAL0_FFMPEG")), "ffprobe": bool(shutil.which("ffprobe") or os.getenv("SAL0_FFPROBE")), "platform": os.name, "validation": "Benchmark do A10 e comparação ElevenLabs pendentes", "features": {"voice_conversion": False, "automatic_emotion": False, "automatic_translation": False, "automatic_separation": False}}
 
+def visible(value, user):
+    return user.get("role") == "admin" or not value.get("owner_username") or value.get("owner_username") == user.get("username")
+
+
 @app.get("/api/{kind}")
-def list_records(kind: str, offset: int = 0, limit: int = 50):
+def list_records(kind: str, request: Request, offset: int = 0, limit: int = 50):
     if kind not in ("characters", "projects", "media", "jobs"):
         raise HTTPException(404)
     singular = {"characters": "character", "projects": "project", "media": "media", "jobs": "job"}[kind]
-    values = s.listing(singular, max(offset, 0), min(max(limit, 1), 100))
+    values = [x for x in s.listing(singular, limit=-1) if visible(x, current_user(request))][max(offset, 0):max(offset, 0)+min(max(limit, 1), 100)]
     if kind == "jobs":
         return [{k: v for k, v in x.items() if k != "snapshot"} for x in values]
     return values
 
 @app.post("/api/media")
-def upload(file: UploadFile):
+def upload(file: UploadFile, request: Request):
     name = Path((file.filename or "arquivo").replace("\\", "/")).name
     suffix = Path(name).suffix.lower()
     allowed = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".mp4", ".mkv", ".webm", ".mov", ".txt", ".srt"}
@@ -275,7 +279,7 @@ def upload(file: UploadFile):
                 metadata["cues"] = parse_srt(content)
         else:
             metadata = {**probe(path), "type": "media"}
-        return s.put("media", {"id": ident, "name": name, "path": path.relative_to(s.DATA).as_posix(), "size": path.stat().st_size, "sha256": s.digest(path), **metadata})
+        return s.put("media", {"id": ident, "owner_username": current_user(request)["username"], "name": name, "path": path.relative_to(s.DATA).as_posix(), "size": path.stat().st_size, "sha256": s.digest(path), **metadata})
     except BaseException:
         path.unlink(missing_ok=True)
         raise
@@ -295,7 +299,7 @@ class Character(BaseModel):
     reference_id: str | None = None
     reference_text: str = ""
 
-def save_character(body, previous=None):
+def save_character(body, previous=None, owner=None):
     value = body.model_dump()
     if value["language"] not in ("pt-BR", "en-US") or value["origin"] not in ("own", "authorized", "licensed"):
         raise ValueError("Idioma ou origem inválidos.")
@@ -304,15 +308,18 @@ def save_character(body, previous=None):
         raise ValueError("Selecione uma referência somente de áudio.")
     version = {"number": len(previous.get("versions", []))+1 if previous else 1, **value, "reference": reference}
     versions = previous["versions"] + [version] if previous else [version]
-    return s.put("character", {**value, "id": previous["id"] if previous else s.uid(), "versions": versions, "version": version["number"]})
+    return s.put("character", {**value, "owner_username": previous.get("owner_username") if previous else owner["username"], "id": previous["id"] if previous else s.uid(), "versions": versions, "version": version["number"]})
 
 @app.post("/api/characters")
-def create_character(body: Character):
-    return save_character(body)
+def create_character(body: Character, request: Request):
+    return save_character(body, owner=current_user(request))
 
 @app.put("/api/characters/{ident}")
-def update_character(ident: str, body: Character):
-    return save_character(body, s.get("character", ident))
+def update_character(ident: str, body: Character, request: Request):
+    previous = s.get("character", ident)
+    if not visible(previous, current_user(request)):
+        raise HTTPException(403, "Personagem pertence a outro usuário.")
+    return save_character(body, previous, current_user(request))
 
 class Project(BaseModel):
     name: str = Field(min_length=1, max_length=160)
@@ -328,34 +335,42 @@ class Project(BaseModel):
     format: str = "wav"
     cues: list[dict] = Field(default_factory=list)
 
-def project_data(body, ident=None):
+def project_data(body, ident=None, owner=None):
     if body.mode not in ("tts", "asr", "dub"):
         raise ValueError("Modo indisponível nesta versão.")
     if body.language not in ("pt-BR", "en-US") or body.format not in ("wav", "flac", "mp3", "opus"):
         raise ValueError("Idioma ou formato inválido.")
     old = s.get("project", ident) if ident else None
-    value = {**body.model_dump(), "id": ident or s.uid(), "revision": old["revision"]+1 if old else 1}
+    value = {**body.model_dump(), "owner_username": old.get("owner_username") if old else owner["username"], "id": ident or s.uid(), "revision": old["revision"]+1 if old else 1}
     if old:
         history = {**old, "id": old["id"] + "-" + str(old["revision"])}
         s.put("project_revision", history)
     return s.put("project", value)
 
 @app.post("/api/projects")
-def create_project(body: Project):
-    return project_data(body)
+def create_project(body: Project, request: Request):
+    return project_data(body, owner=current_user(request))
 
 @app.put("/api/projects/{ident}")
-def update_project(ident: str, body: Project):
-    return project_data(body, ident)
+def update_project(ident: str, body: Project, request: Request):
+    old = s.get("project", ident)
+    if not visible(old, current_user(request)):
+        raise HTTPException(403, "Projeto pertence a outro usuário.")
+    return project_data(body, ident, current_user(request))
 
 @app.get("/api/projects/{ident}")
-def get_project(ident: str):
-    return s.get("project", ident)
+def get_project(ident: str, request: Request):
+    value = s.get("project", ident)
+    if not visible(value, current_user(request)):
+        raise HTTPException(403, "Projeto pertence a outro usuário.")
+    return value
 
 @app.get("/api/projects/{ident}/revisions")
-def project_revisions(ident: str):
-    s.get("project", ident)
-    return [x for x in s.listing("project_revision", limit=-1) if x["id"].startswith(ident+"-")]
+def project_revisions(ident: str, request: Request):
+    value = s.get("project", ident)
+    if not visible(value, current_user(request)):
+        raise HTTPException(403, "Projeto pertence a outro usuário.")
+    return [x for x in s.listing("project_revision", limit=-1) if x["id"].startswith(ident+"-") and visible(x, current_user(request))]
 
 @app.post("/api/script/validate")
 def validate_script(body: Project):
@@ -413,6 +428,8 @@ def snapshot(project):
 def generate(ident: str, request: Request):
     owner = current_user(request)
     project_record = s.get("project", ident)
+    if not visible(project_record, owner):
+        raise HTTPException(403, "Projeto pertence a outro usuário.")
     try:
         project = snapshot(project_record)
     except ValueError as exc:
@@ -428,9 +445,11 @@ def generate(ident: str, request: Request):
     return {"id": job["id"], "status": job["status"]}
 
 @app.post("/api/jobs/{ident}/{action}")
-def job_action(ident: str, action: str):
+def job_action(ident: str, action: str, request: Request):
     with worker.lock:
         job = s.get("job", ident)
+        if not visible(job, current_user(request)):
+            raise HTTPException(403, "Trabalho pertence a outro usuário.")
         allowed = {"pause": ("queued", "running"), "resume": ("paused", "failed", "cancelled"), "cancel": ("queued", "running", "paused", "failed")}
         if action not in allowed or job["status"] not in allowed[action]:
             raise HTTPException(409, "Transição não permitida para este trabalho.")
@@ -440,16 +459,20 @@ def job_action(ident: str, action: str):
     return {"id": ident, "status": status}
 
 @app.get("/api/jobs/{ident}/output/{index}")
-def output(ident: str, index: int):
+def output(ident: str, index: int, request: Request):
     job = s.get("job", ident)
+    if not visible(job, current_user(request)):
+        raise HTTPException(403, "Trabalho pertence a outro usuário.")
     if index < 0 or index >= len(job.get("outputs", [])):
         raise HTTPException(404)
     out = job["outputs"][index]
     return FileResponse(s.safe_path(out["path"]), filename=out["name"], content_disposition_type="inline")
 
 @app.get("/api/jobs/{ident}/log")
-def job_log(ident: str):
-    s.get("job", ident)
+def job_log(ident: str, request: Request):
+    job = s.get("job", ident)
+    if not visible(job, current_user(request)):
+        raise HTTPException(403, "Trabalho pertence a outro usuário.")
     path = s.DATA / "jobs" / ident / "process.log"
     if not path.exists():
         return {"text": "Nenhum log de processo disponível."}
