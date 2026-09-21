@@ -20,6 +20,8 @@ services:
       TRANSFORMERS_OFFLINE: "1"
       HF_HUB_DISABLE_TELEMETRY: "1"
       PYANNOTE_METRICS_ENABLED: "0"
+      SAL0_AUTO_DOWNLOAD_MODELS: "1"
+      SAL0_AUTO_MODELS: "qwen-0.6b,whisper-medium"
     mem_limit: 10g
     cpus: 2
     stop_grace_period: 1m
