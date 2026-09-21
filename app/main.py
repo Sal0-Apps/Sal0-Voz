@@ -287,8 +287,10 @@ def upload(file: UploadFile, request: Request):
         file.file.close()
 
 @app.get("/api/media/{ident}/file")
-def media_file(ident: str):
+def media_file(ident: str, request: Request):
     media = s.get("media", ident)
+    if not visible(media, current_user(request)):
+        raise HTTPException(403, "Arquivo pertence a outro usuário.")
     return FileResponse(s.safe_path(media["path"]), filename=media["name"], content_disposition_type="inline")
 
 class Character(BaseModel):
@@ -484,16 +486,20 @@ class Cues(BaseModel):
     cues: list[dict]
 
 @app.put("/api/projects/{ident}/cues")
-def update_cues(ident: str, body: Cues):
+def update_cues(ident: str, body: Cues, request: Request):
     project = s.get("project", ident)
+    if not visible(project, current_user(request)):
+        raise HTTPException(403, "Projeto pertence a outro usuário.")
     project["cues"] = validate_cues(body.cues)
     return project_data(Project(**project), ident)
 
 @app.get("/api/projects/{ident}/subtitles/{extension}")
-def export_cues(ident: str, extension: str):
+def export_cues(ident: str, extension: str, request: Request):
     if extension not in ("srt", "vtt"):
         raise HTTPException(404)
     project = s.get("project", ident)
+    if not visible(project, current_user(request)):
+        raise HTTPException(403, "Projeto pertence a outro usuário.")
     from fastapi.responses import Response
     return Response(subtitles(project["cues"], extension=="vtt"), media_type="text/plain; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="legendas.{extension}"'})
 
