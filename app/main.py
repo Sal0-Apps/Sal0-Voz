@@ -319,7 +319,7 @@ class Project(BaseModel):
     mode: str = "tts"
     text: str = ""
     language: str = "pt-BR"
-    engine: str = "qwen-1.7b"
+    engine: str = "qwen-0.6b"
     asr_engine: str = "whisper-medium"
     character_id: str | None = None
     media_id: str | None = None
