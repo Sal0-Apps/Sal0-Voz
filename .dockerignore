@@ -1,0 +1,13 @@
+.git
+.venv
+data
+dist
+.tools
+test-results
+__pycache__
+.pytest_cache
+.env
+*.zip
+Guia_*
+tests
+

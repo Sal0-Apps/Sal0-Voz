@@ -1,0 +1,967 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Guia de implementação · Sal0 Voz</title><style>
+:root{--bg:#050b12;--panel:#08141f;--panel2:#0c2336;--text:#eef8ff;--muted:#91adc0;--accent:#49aeef;--border:#244156;--table:#0b1c2a;--code:#020a12;--shadow:0 18px 48px #0004;color-scheme:dark}
+html[data-theme=light]{--bg:#edf7fd;--panel:#fff;--panel2:#e2f0fa;--text:#152a3b;--muted:#526b7d;--accent:#096aab;--border:#c5dae8;--table:#f4f9fd;--code:#e7f0f7;--shadow:0 10px 25px #102c4410;color-scheme:light}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:30px}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.75 'Segoe UI',Arial,sans-serif}a{color:var(--accent);text-underline-offset:3px}button,input{font:inherit}button{cursor:pointer}.skip{position:absolute;left:-9999px}.skip:focus{left:20px;top:20px;background:var(--panel);z-index:5}aside{position:fixed;inset:0 auto 0 0;width:292px;padding:30px 22px 20px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;gap:18px}.brand{font-size:22px;letter-spacing:-.5px;font-weight:750}.brand i{color:var(--accent);font-style:normal}.caption{color:var(--muted);font-size:12px;letter-spacing:1.5px;text-transform:uppercase}.search{width:100%;padding:10px 12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:8px}.toc{overflow:auto;scrollbar-width:thin;flex:1}.toc a{display:flex;align-items:baseline;gap:10px;font-size:13px;padding:8px 8px;text-decoration:none;color:var(--muted);line-height:1.45;border-radius:7px}.toc a span{font:11px/1.4 Consolas,monospace;color:var(--accent);min-width:19px}.toc a:hover,.toc a.active{background:var(--panel2);color:var(--text)}.aside-bottom{font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:12px}main{margin-left:292px;max-width:1300px;padding:38px 56px 80px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:42px}.actions{display:flex;gap:8px}.actions button{font-size:12px;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 13px}.eyebrow{font-size:12px;letter-spacing:2.2px;color:var(--accent);text-transform:uppercase;font-weight:650}h1{font-size:56px;line-height:1.07;letter-spacing:-2px;margin:16px 0 20px;max-width:700px;font-weight:750}.lead{font-size:20px;line-height:1.6;color:var(--muted);max-width:770px;margin-bottom:30px}.pills{display:flex;flex-wrap:wrap;gap:8px}.pill{border:1px solid var(--border);border-radius:24px;color:var(--muted);font-size:12px;padding:5px 12px}.pill.primary{color:var(--accent);border-color:var(--accent)}.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:32px 0 40px}.quick a{display:block;padding:17px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);text-decoration:none;font-size:13px;line-height:1.45}.quick a small{display:block;color:var(--accent);font-size:11px;margin-bottom:7px}.quick a:hover{border-color:var(--accent)}article{max-width:980px}article>p:first-child{font-size:18px}h2{display:flex;gap:16px;align-items:baseline;line-height:1.25;font-size:29px;letter-spacing:-.5px;margin:65px 0 24px;padding-top:10px}h2>span{font-size:14px;font-weight:500;color:var(--accent);letter-spacing:0}h3{font-size:20px;margin:32px 0 13px;line-height:1.4}p{margin:0 0 19px}ul,ol{padding-left:25px;margin:16px 0 25px}li{padding-left:4px;margin:7px 0}strong{font-weight:650}code{font-family:Consolas,monospace;font-size:.86em;background:var(--code);padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}pre{padding:23px;background:var(--code);border:1px solid var(--border);border-radius:12px;overflow:auto;line-height:1.6;font-size:13px}pre code{padding:0;background:transparent;overflow-wrap:normal}.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;margin:24px 0 30px}table{border-collapse:collapse;width:100%;font-size:13px;line-height:1.6;min-width:580px}th{background:var(--panel2);font-size:12px;font-weight:650;text-align:left}td,th{padding:15px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top}tr:last-child td{border-bottom:0}td:last-child,th:last-child{border-right:0}tbody tr:nth-child(even){background:var(--table)}td:first-child{font-weight:600;min-width:125px}article a{overflow-wrap:anywhere}footer{margin-top:65px;padding-top:20px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}.progress{position:fixed;top:0;left:292px;height:3px;background:var(--accent);width:0;z-index:4}.mobile-index{display:none}
+@media(max-width:1150px){main{padding:30px 30px 60px}.quick{grid-template-columns:repeat(2,1fr)}h1{font-size:47px}aside{width:260px}main{margin-left:260px}.progress{left:260px}}
+@media(max-width:800px){aside{position:static;width:auto;padding:20px}.toc,.search,.aside-bottom{display:none}.brand{font-size:21px}main{margin:0;padding:22px 20px 55px}.toolbar{margin-bottom:26px}.toolbar .caption{font-size:10px;letter-spacing:1px}h1{font-size:41px;letter-spacing:-1.5px}.lead{font-size:18px}h2{font-size:25px;margin-top:50px;gap:10px}.progress{left:0}.mobile-index{display:block;margin-top:18px}.mobile-index summary{color:var(--accent);cursor:pointer}.mobile-index a{display:block;font-size:14px;padding:5px}.quick{gap:8px}.quick a{padding:13px}.actions button{font-size:11px;padding:7px 9px}body{font-size:15px}pre{font-size:11px;padding:15px}}
+@media print{html{color-scheme:light}body{background:white;color:#151515;font:10pt/1.45 Arial,sans-serif}aside,.toolbar,.quick,.progress,.mobile-index,.pills{display:none}main{margin:0;padding:0;max-width:none}h1{font-size:30pt;letter-spacing:-1px;margin:0 0 12pt}.lead{font-size:13pt;color:#444}.eyebrow{color:#333}h2{font-size:18pt;margin-top:26pt;break-after:avoid}h2 span{color:#333}h3{font-size:13pt;break-after:avoid}p,li{orphans:3;widows:3}a{color:#164d72}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:8pt;background:#f4f4f4;border:1px solid #ccc;break-inside:avoid}code{background:#f2f2f2}table{font-size:8pt;min-width:0}td,th{padding:7pt;border:1px solid #ccc}th{background:#e6edf2;color:#111}tr{break-inside:avoid}thead{display:table-header-group}.table-wrap{overflow:visible;border:0}tbody tr:nth-child(even){background:#f8f8f8}footer{color:#444}@page{size:A4;margin:18mm 16mm}}
+</style></head><body><a class="skip" href="#conteudo">Pular para o guia</a><div class="progress"></div><aside><div><div class="brand">Sal0 <i>Voz</i></div><div class="caption">Guia de implementação</div></div><input class="search" aria-label="Filtrar capítulos" placeholder="Encontrar capítulo…"><nav class="toc" aria-label="Capítulos"><a href="#cap-1" data-search="direção do projeto"><span>01</span>Direção do projeto</a><a href="#cap-2" data-search="equivalências com o sal0 karaoke"><span>02</span>Equivalências com o Sal0 Karaoke</a><a href="#cap-3" data-search="aparência e organização das telas"><span>03</span>Aparência e organização das telas</a><a href="#cap-4" data-search="escopo funcional e prioridades"><span>04</span>Escopo funcional e prioridades</a><a href="#cap-5" data-search="configuração realista para a máquina de casa"><span>05</span>Configuração realista para a máquina de casa</a><a href="#cap-6" data-search="modelos e componentes candidatos"><span>06</span>Modelos e componentes candidatos</a><a href="#cap-7" data-search="benchmark que decide o motor"><span>07</span>Benchmark que decide o motor</a><a href="#cap-8" data-search="personagens e aprendizado"><span>08</span>Personagens e aprendizado</a><a href="#cap-9" data-search="linguagem de direção de fala"><span>09</span>Linguagem de direção de fala</a><a href="#cap-10" data-search="emoção e prosódia a partir de áudio"><span>10</span>Emoção e prosódia a partir de áudio</a><a href="#cap-11" data-search="fluxo de texto para fala longa"><span>11</span>Fluxo de texto para fala longa</a><a href="#cap-12" data-search="dois caminhos de speech to speech"><span>12</span>Dois caminhos de speech to speech</a><a href="#cap-13" data-search="dublagem de vídeo e elenco"><span>13</span>Dublagem de vídeo e elenco</a><a href="#cap-14" data-search="legendas e arquivos srt"><span>14</span>Legendas e arquivos SRT</a><a href="#cap-15" data-search="arquitetura proposta"><span>15</span>Arquitetura proposta</a><a href="#cap-16" data-search="dados e persistência"><span>16</span>Dados e persistência</a><a href="#cap-17" data-search="fila sem cotas arbitrárias"><span>17</span>Fila sem cotas arbitrárias</a><a href="#cap-18" data-search="instalação e operação offline"><span>18</span>Instalação e operação offline</a><a href="#cap-19" data-search="plano de implementação"><span>19</span>Plano de implementação</a><a href="#cap-20" data-search="critérios de aceite do produto"><span>20</span>Critérios de aceite do produto</a><a href="#cap-21" data-search="evolução de hardware e decisões pendentes"><span>21</span>Evolução de hardware e decisões pendentes</a><a href="#cap-22" data-search="orientação para iniciar o desenvolvimento"><span>22</span>Orientação para iniciar o desenvolvimento</a><a href="#cap-23" data-search="fontes e rastreabilidade"><span>23</span>Fontes e rastreabilidade</a></nav><div class="aside-bottom">23 capítulos · versão 1.2<br>21 de setembro de 2026<br>Documento independente e offline</div></aside><main id="conteudo"><div class="toolbar"><span class="caption">Produto · modelos · implementação</span><div class="actions"><button id="theme" type="button">Tema claro</button><button id="print" type="button">Imprimir</button></div></div><header><div class="eyebrow">Especificação para a sua máquina de casa</div><h1>Seu estúdio local<br>de voz e personagens</h1><p class="lead">Clonagem, interpretação, texto para fala e dublagem. Um plano completo para construir o Sal0 Voz com a qualidade do ElevenLabs como referência e processamento totalmente local.</p><div class="pills"><span class="pill primary">Docker no ZimaOS</span><span class="pill">AMD A10-9700E · 16 GB</span><span class="pill">CPU · processamento por etapas</span><span class="pill">pt-BR + inglês</span></div></header><div class="quick"><a href="#cap-6"><small>01 / ESCOLHER</small>Modelos e qualidade</a><a href="#cap-9"><small>02 / DIRIGIR</small>Personagens e emoções</a><a href="#cap-13"><small>03 / DUBLAR</small>Vídeos e legendas</a><a href="#cap-18"><small>04 / INSTALAR</small>Docker e ZimaOS</a></div><details class="mobile-index"><summary>Navegar pelos 23 capítulos</summary><a href="#cap-1" data-search="direção do projeto"><span>01</span>Direção do projeto</a><a href="#cap-2" data-search="equivalências com o sal0 karaoke"><span>02</span>Equivalências com o Sal0 Karaoke</a><a href="#cap-3" data-search="aparência e organização das telas"><span>03</span>Aparência e organização das telas</a><a href="#cap-4" data-search="escopo funcional e prioridades"><span>04</span>Escopo funcional e prioridades</a><a href="#cap-5" data-search="configuração realista para a máquina de casa"><span>05</span>Configuração realista para a máquina de casa</a><a href="#cap-6" data-search="modelos e componentes candidatos"><span>06</span>Modelos e componentes candidatos</a><a href="#cap-7" data-search="benchmark que decide o motor"><span>07</span>Benchmark que decide o motor</a><a href="#cap-8" data-search="personagens e aprendizado"><span>08</span>Personagens e aprendizado</a><a href="#cap-9" data-search="linguagem de direção de fala"><span>09</span>Linguagem de direção de fala</a><a href="#cap-10" data-search="emoção e prosódia a partir de áudio"><span>10</span>Emoção e prosódia a partir de áudio</a><a href="#cap-11" data-search="fluxo de texto para fala longa"><span>11</span>Fluxo de texto para fala longa</a><a href="#cap-12" data-search="dois caminhos de speech to speech"><span>12</span>Dois caminhos de speech to speech</a><a href="#cap-13" data-search="dublagem de vídeo e elenco"><span>13</span>Dublagem de vídeo e elenco</a><a href="#cap-14" data-search="legendas e arquivos srt"><span>14</span>Legendas e arquivos SRT</a><a href="#cap-15" data-search="arquitetura proposta"><span>15</span>Arquitetura proposta</a><a href="#cap-16" data-search="dados e persistência"><span>16</span>Dados e persistência</a><a href="#cap-17" data-search="fila sem cotas arbitrárias"><span>17</span>Fila sem cotas arbitrárias</a><a href="#cap-18" data-search="instalação e operação offline"><span>18</span>Instalação e operação offline</a><a href="#cap-19" data-search="plano de implementação"><span>19</span>Plano de implementação</a><a href="#cap-20" data-search="critérios de aceite do produto"><span>20</span>Critérios de aceite do produto</a><a href="#cap-21" data-search="evolução de hardware e decisões pendentes"><span>21</span>Evolução de hardware e decisões pendentes</a><a href="#cap-22" data-search="orientação para iniciar o desenvolvimento"><span>22</span>Orientação para iniciar o desenvolvimento</a><a href="#cap-23" data-search="fontes e rastreabilidade"><span>23</span>Fontes e rastreabilidade</a></details><article>
+<p>Documento de produto e engenharia para um estúdio pessoal de voz, personagens, legendas e dublagem totalmente local.</p>
+<p><strong>Versão 1.2 · 21 de setembro de 2026</strong><br><strong>Máquina de destino:</strong> AMD PRO A10-9700E, 16 GB de RAM e GPU integrada.<br><strong>Plataforma obrigatória:</strong> Docker no ZimaOS, como o Sal0-Karaoke.<br><strong>Idiomas prioritários:</strong> português brasileiro e inglês. <strong>Uso:</strong> pessoal.<br><strong>Prioridade principal:</strong> maior qualidade possível; tempo de processamento não é prioridade.<br><strong>Referência de qualidade desejada:</strong> resultados no nível do ElevenLabs, mantendo geração e processamento totalmente locais.<br><strong>Nome oficial do aplicativo:</strong> Sal0 Voz.</p>
+<h2 id="cap-1"><span>01</span>Direção do projeto</h2>
+<p>Construir um aplicativo local independente, inspirado na experiência do Sal0-Karaoke, que organize personagens e permita gerar fala a partir de texto, transformar uma gravação na voz de um personagem, criar legendas e substituir diálogos de vídeos. A interface deve ser simples no uso cotidiano e oferecer edição detalhada quando necessário.</p>
+<p><strong>Meta de qualidade ElevenLabs:</strong> buscar resultados perceptualmente comparáveis à referência escolhida do ElevenLabs em naturalidade, semelhança da voz clonada, pronúncia, expressividade, reações e consistência dos personagens, em português brasileiro e inglês. Na dublagem, incluir preservação da atuação, sincronização e qualidade da mixagem. Essa meta orienta a seleção de modelos, a curadoria de referências e o refinamento das tomadas; velocidade não deve justificar reduzir a qualidade final.</p>
+<p>ElevenLabs é a referência de resultado, não uma dependência do aplicativo. O produto deve funcionar sem sua API, assinatura ou inferência remota. A equivalência precisa ser demonstrada por comparação auditiva; não é uma capacidade já comprovada dos modelos candidatos no A10. Se o melhor resultado local ainda ficar abaixo da referência, registrar a diferença e manter a meta de qualidade pendente.</p>
+<p><strong>A primeira decisão é desenvolver para CPU.</strong> Na máquina informada, o caminho é buscar os melhores resultados que caibam na memória, com processamento sequencial, lotes longos e revisão humana. Não há meta de tempo real nem descarte de um modelo apenas por ser lento. Mais tempo permite testar tomadas, alinhamento e modelos maiores, mas não resolve falta de RAM, instruções de CPU incompatíveis ou ausência de uma implementação CPU. Cada recurso terá uma classificação de viabilidade baseada em testes locais.</p>
+<p>O produto deve preservar o objetivo completo e separar três níveis: qualidade máxima validada na máquina atual, prévia econômica opcional e recursos que exigem mais memória ou hardware compatível. Não apresentar uma voz pronta como se fosse uma voz clonada. Uma versão só poderá ser chamada de completa quando texto para fala, clonagem, conversão de voz e dublagem tiverem passado pelos testes definidos neste guia.</p>
+<h3>O que significa totalmente local</h3>
+<p>Textos, amostras, personagens, reconhecimento, tradução, geração e exportação ficam na máquina de casa. Downloads de programas e modelos acontecem na preparação, de forma explícita; depois, o app deve funcionar com a conexão externa bloqueada. Também deve existir instalação por pacote offline levado em SSD ou pendrive.</p>
+<p>O computador desta conversa não substitui a medição na máquina de casa. A plataforma é ZimaOS com Docker. A versão do sistema, arquitetura de 64 bits, espaço disponível, tipo de disco e memória realmente utilizável devem ser registrados na etapa inicial. A GPU integrada compartilha recursos do sistema; ela não equivale a uma placa dedicada com 16 GB de VRAM. Não depender de CUDA, nem presumir suporte dessa APU ao ROCm atual. A documentação de compatibilidade da AMD será a referência na instalação. [F01]</p>
+<h3>Promessas que precisam ser convertidas em requisitos verificáveis</h3>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Desejo</th>
+<th>Compromisso implementável</th>
+<th>Limite real</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Sem limite de texto ou áudio</td>
+<td>Sem cota de caracteres, minutos ou quantidade de personagens; dividir e retomar projetos</td>
+<td>Disco, tempo, RAM, formatos e limites de contexto dos modelos continuam existindo</td>
+</tr>
+<tr>
+<td>Aprender uma voz com precisão</td>
+<td>Referências selecionadas, versões do personagem, avaliação e treinamento opcional</td>
+<td>Clonagem por referência não é treinamento; semelhança perfeita não é garantida</td>
+</tr>
+<tr>
+<td>Reconhecer emoção e tonalidade</td>
+<td>Sugerir interpretação por trecho, medir prosódia e permitir correção</td>
+<td>A emoção é uma inferência incerta, dependente de idioma, ruído e contexto</td>
+</tr>
+<tr>
+<td>Personagens em várias línguas</td>
+<td>Mesmo personagem associado a referências e motores compatíveis</td>
+<td>Português e inglês podem ter qualidade e sotaque diferentes</td>
+</tr>
+<tr>
+<td>Dublar mantendo a atuação</td>
+<td>Conversão direta ou recriação guiada pela atuação original</td>
+<td>Separação de vozes sobrepostas e preservação de fundo podem falhar</td>
+</tr>
+<tr>
+<td>Melhores modelos locais</td>
+<td>Comparação auditiva e de desempenho na máquina real</td>
+<td>Popularidade ou resultado em GPU de laboratório não define o melhor para o A10</td>
+</tr>
+</tbody></table></div>
+<h2 id="cap-2"><span>02</span>Equivalências com o Sal0 Karaoke</h2>
+<p>A referência foi examinada no commit <code>f87b4713e0f0f1227e0c1dddf8567137b7804305</code>. O README e o manual desse estado identificam a distribuição 9.8.0. A análise de aparência foi feita no HTML e CSS; não corresponde a um teste interativo da aplicação em execução. [R01–R04]</p>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Elemento da referência</th>
+<th>Equivalente proposto</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Criar com modos Rápido e Detalhado</td>
+<td>Criar voz com configurações essenciais ou direção de fala por trecho</td>
+</tr>
+<tr>
+<td>Gerar SRT</td>
+<td>Legendar áudio original, áudio gerado ou vídeo, com tradução opcional</td>
+</tr>
+<tr>
+<td>Biblioteca de originais, fundos e resultados</td>
+<td>Biblioteca de referências, personagens, projetos, áudios, vídeos e legendas</td>
+</tr>
+<tr>
+<td>Letra guia e revisão</td>
+<td>Roteiro guia, transcrição revisável, pronúncia e direção de interpretação</td>
+</tr>
+<tr>
+<td>Perfis de ajustes</td>
+<td>Presets de narrador, diálogo, audiobook, atuação e dublagem</td>
+</tr>
+<tr>
+<td>Progresso por etapa e fila persistente</td>
+<td>Fila com checkpoints por segmento, cancelamento e retomada</td>
+</tr>
+<tr>
+<td>Separação de voz e instrumental</td>
+<td>Separação de diálogo e ambiente quando necessária, com audição das trilhas</td>
+</tr>
+<tr>
+<td>Tema claro e escuro e interface responsiva</td>
+<td>Mesma linguagem visual e operação no navegador do computador ou celular na rede local</td>
+</tr>
+<tr>
+<td>Contas locais e biblioteca isolada</td>
+<td>Um proprietário no início; contas locais opcionais em uma etapa posterior</td>
+</tr>
+<tr>
+<td>Telegram e importação por URL</td>
+<td>Extensões opcionais futuras; fora do funcionamento offline essencial</td>
+</tr>
+</tbody></table></div>
+<p><strong>Reutilização recomendada:</strong> identidade visual, componentes de formulário, biblioteca, conceitos de fila e funções de mídia que passarem por revisão. Extrair funções pequenas e verificáveis. O novo fluxo de personagens, roteiro e linha do tempo justifica módulos próprios.</p>
+<p><strong>Mudanças deliberadas:</strong> não herdar o limite de 25 trabalhos ativos por perfil descrito no manual; usar paginação e controle de recursos. Um projeto aguardando revisão deve liberar o executor para outro trabalho. Não acrescentar automaticamente a abertura silenciosa de três segundos do karaokê a um vídeo dublado, pois isso mudaria sua linha do tempo. Revalidar dependências em vez de copiar o arquivo de requisitos antigo, que usa PyTorch para CPU e versões próprias daquele projeto. A tradução deve apontar para serviço na própria máquina, não apenas para qualquer endereço configurável. [R02–R04]</p>
+<h2 id="cap-3"><span>03</span>Aparência e organização das telas</h2>
+<p>Preservar os tokens encontrados no projeto: fundo escuro <code>#050B12</code>, destaque <code>#49AEEF</code>, texto <code>#EEF8FF</code>, texto secundário <code>#91ADC0</code>, cartões azul-escuros e bordas discretas. No tema claro: fundo <code>#EDF7FD</code>, cartões brancos e destaque <code>#168BD2</code>. Cantos de 18, 12 e 8 pixels. O CSS utiliza Inter no corpo e Outfit nos títulos; distribuir as fontes localmente com seus avisos ou utilizar alternativas do sistema. Não solicitar Google Fonts durante a operação offline. [R03]</p>
+<h3>Navegação principal</h3>
+<ul>
+<li><strong>Criar:</strong> Texto para voz, Trocar voz, Dublar vídeo e Gerar SRT. Cada modo oferece Rápido e Detalhado onde isso for útil.</li>
+<li><strong>Personagens:</strong> criar, ouvir, testar, comparar versões, escolher referências e organizar interpretações.</li>
+<li><strong>Projetos:</strong> roteiro, cenas, elenco, linha do tempo, revisão e versões dos resultados.</li>
+<li><strong>Biblioteca:</strong> originais, referências, resultados e importação de arquivos locais.</li>
+<li><strong>Ajustes:</strong> modelos, desempenho, armazenamento, instalação offline e diagnóstico.</li>
+</ul>
+<p>Fila acessível em todas as telas. No desktop, formulários em cartões; no editor detalhado, área central para o roteiro e painel lateral para personagem e interpretação. Em telas estreitas, os painéis viram seções empilhadas. Não exigir rolagem horizontal da página para operar.</p>
+<h3>Fluxo rápido de texto para voz</h3>
+<p>Selecionar personagem → colar texto → escolher português brasileiro ou inglês → ouvir prévia → gerar na melhor qualidade aprovada → revisar ou baixar. Exibir o motor e o modo de qualidade em linguagem simples. Para uma prévia feita com voz leve substituta, mostrar “Prévia de ritmo com outra voz”; nunca insinuar que representa a clonagem final.</p>
+<h3>Editor detalhado</h3>
+<p>Roteiro segmentado por falante, com seleção de personagem, idioma, intenção, pausa, ritmo e pronúncia por trecho. A linha do tempo mostra forma de onda, falas e espaço disponível. Oferecer “Gerar este trecho”, “Comparar versões”, “Manter esta versão” e “Restaurar anterior”. Manter salvamento automático e desfazer/refazer de texto, tempos e atribuições.</p>
+<h3>Estados que precisam ter desenho próprio</h3>
+<p>Primeiro uso; modelo não instalado; biblioteca vazia; amostra ruim; idioma incompatível; recurso sem suporte; falta de RAM; disco insuficiente; trabalho pausado; revisão pendente; exportação incompleta e resultado concluído. Nunca deixar apenas uma tela carregando sem informar a etapa. Toda ação deve ser operável pelo teclado; progresso e erros não podem depender só de cores.</p>
+<h2 id="cap-4"><span>04</span>Escopo funcional e prioridades</h2>
+<p><strong>P0</strong> significa necessário para um primeiro produto útil; <strong>P1</strong>, necessário para atender o objetivo completo; <strong>P2</strong>, expansão. A classificação não representa garantia de desempenho no A10.</p>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requisito</th>
+<th>Prioridade</th>
+<th>Evidência de conclusão</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>RF01</td>
+<td>Texto para fala em pt-BR e inglês</td>
+<td>P0</td>
+<td>Geração e exportação offline nos dois idiomas</td>
+</tr>
+<tr>
+<td>RF02</td>
+<td>Projetos longos por blocos sem truncamento silencioso</td>
+<td>P0</td>
+<td>Manifesto cobre todo o texto e retoma após reinício</td>
+</tr>
+<tr>
+<td>RF03</td>
+<td>Personagens persistentes e versionados</td>
+<td>P0</td>
+<td>Reabrir projeto preserva referências e versão escolhida</td>
+</tr>
+<tr>
+<td>RF04</td>
+<td>Clonagem por amostra</td>
+<td>P0 sujeito ao teste de viabilidade</td>
+<td>Voz sintetizada avaliada contra referência; sem substituição oculta</td>
+</tr>
+<tr>
+<td>RF05</td>
+<td>Editor de pausas, ritmo, emoção e reações</td>
+<td>P0 básico e P1 expressivo</td>
+<td>Suporte real identificado por motor e prévia por trecho</td>
+</tr>
+<tr>
+<td>RF06</td>
+<td>SRT de áudio ou vídeo e do áudio gerado</td>
+<td>P0</td>
+<td>Legendas correspondem ao arquivo final</td>
+</tr>
+<tr>
+<td>RF07</td>
+<td>Conversão direta de uma voz para outra</td>
+<td>P1</td>
+<td>Preserva conteúdo e atuação em amostras aprovadas</td>
+</tr>
+<tr>
+<td>RF08</td>
+<td>Dublagem com elenco e ambiente</td>
+<td>P1</td>
+<td>Exporta vídeo completo sem deriva acumulada</td>
+</tr>
+<tr>
+<td>RF09</td>
+<td>Tradução local inglês e português</td>
+<td>P1</td>
+<td>Texto revisável e dublagem alinhada à tradução aprovada</td>
+</tr>
+<tr>
+<td>RF10</td>
+<td>Sugestão automática de emoção e prosódia</td>
+<td>P1</td>
+<td>Sugestão corrigível e resultados de avaliação por idioma</td>
+</tr>
+<tr>
+<td>RF11</td>
+<td>Aperfeiçoamento do personagem com novos exemplos</td>
+<td>P1</td>
+<td>Curadoria e comparação entre versões sem regressão</td>
+</tr>
+<tr>
+<td>RF12</td>
+<td>Treinamento específico e criação por descrição</td>
+<td>P2</td>
+<td>Só habilitar com receita, licença e recursos validados</td>
+</tr>
+<tr>
+<td>RF13</td>
+<td>Backup e restauração portáveis</td>
+<td>P0</td>
+<td>Recupera projeto e personagem em instalação limpa</td>
+</tr>
+<tr>
+<td>RF14</td>
+<td>Gravação pelo microfone</td>
+<td>P1</td>
+<td>Seleção de entrada, medidor de nível e escuta da gravação</td>
+</tr>
+<tr>
+<td>RF15</td>
+<td>Conversão de voz ao vivo e sincronização labial visual</td>
+<td>P2</td>
+<td>Metas próprias; não fazem parte da promessa inicial</td>
+</tr>
+<tr>
+<td>RF16</td>
+<td>Qualidade final no nível do ElevenLabs</td>
+<td>Meta transversal</td>
+<td>Comparação auditiva documentada por idioma e recurso, conforme capítulo 7</td>
+</tr>
+</tbody></table></div>
+<p>Importar WAV, FLAC, MP3, M4A, OGG e formatos de vídeo aceitos pelo FFmpeg. Importar roteiros TXT e SRT no início; outros documentos podem ser acrescentados depois. Exportar WAV/FLAC para arquivos de qualidade, MP3/Opus para compartilhamento, SRT/VTT, vídeo MP4/MKV e pacote de projeto com metadados. Sempre validar codecs, não apenas extensões.</p>
+<h2 id="cap-5"><span>05</span>Configuração realista para a máquina de casa</h2>
+<h3>Perfil inicial A10</h3>
+<ul>
+<li>Processamento exclusivo pela CPU; uma tarefa pesada por vez, lote de tamanho 1.</li>
+<li>Instalação obrigatória por Docker Compose no ZimaOS, com imagem Linux <code>amd64</code> para CPU e ambientes isolados por motor dentro do container. Usar o Docker do servidor, sem instalar bibliotecas de IA diretamente no host.</li>
+<li>Interface no navegador e serviço gerenciado pelo ZimaOS; iniciar, parar e atualizar pela instalação Docker. O navegador pode estar em outro computador da rede doméstica.</li>
+<li>Síntese final com o motor de maior qualidade aprovado para o idioma e personagem. Kokoro ou Piper ficam como prévia ou alternativa opcional, sem substituir a clonagem final.</li>
+<li>Transcrição final comparando Faster-Whisper <code>medium</code> e <code>large-v3</code> em CPU INT8 quando suportado e dentro da memória. <code>small</code>, <code>base</code> e <code>tiny</code> ficam como rascunhos. Comparar qualidade real: tamanho maior não garante melhor resultado em toda mídia.</li>
+<li>Comparar primeiro VoxCPM2, Qwen3-TTS 1.7B Base e Chatterbox Multilingual V3, cada um isoladamente. Incluir Qwen 0.6B Base como alternativa de memória. Nenhum é considerado aprovado antes do ensaio em CPU.</li>
+<li>Desligar reconhecimento de emoção, separação e tradução quando não necessários. Carregar modelos por etapa e descarregá-los após uso.</li>
+</ul>
+<p><strong>Orçamento de memória proposto, não medição:</strong> reservar aproximadamente 4–6 GB para ZimaOS, serviços ativos e memória compartilhada da GPU. Iniciar com teto de aproximadamente 10 GB para o container completo e ajustar conforme RAM livre real. Não executar karaokê e geração de voz pesada simultaneamente; disponibilizar pausa de tarefas concorrentes. Pausar antes de esgotar a memória. Se o sistema consumir mais, reduzir esse teto; se houver margem comprovada, avaliar aumentá-lo. Swap em SSD pode ser um recurso opcional, se suportado e configurado no ZimaOS, mas não conta como RAM equivalente e pode tornar o processo impraticável. A soma dos modelos, buffers e processos não pode ser ignorada.</p>
+<p>Testar 1, 2 e 4 threads de processamento e limitar as bibliotecas para não criarem vários conjuntos concorrentes. Mais threads podem reduzir a responsividade sem melhorar a velocidade. Usar prioridade de segundo plano e mostrar consumo, espaço restante e previsão baseada em trechos já concluídos.</p>
+<p><strong>Armazenamento:</strong> reservar inicialmente 40–80 GB para imagens Docker, conjunto de modelos de qualidade e ambientes, mais espaço para os projetos. É uma estimativa de planejamento; o instalador deve calcular os downloads reais antes de executá-los. Áudio estéreo PCM 48 kHz/24 bits ocupa cerca de 1,04 GB por hora; originais, trilhas separadas e versões multiplicam isso. Oferecer FLAC e limpeza seletiva de cache. Não escolher todos os modelos na primeira instalação.</p>
+<h3>O que esperar de cada classe de recurso</h3>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Recurso</th>
+<th>Situação esperada no A10</th>
+<th>Decisão de produto</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Biblioteca, roteiro, fila e SRT manual</td>
+<td>Adequado</td>
+<td>Parte central desde o início</td>
+</tr>
+<tr>
+<td>TTS com vozes prontas leves</td>
+<td>Prévia opcional</td>
+<td>Não define o motor do áudio final</td>
+</tr>
+<tr>
+<td>ASR de arquivos</td>
+<td>Plausível, potencialmente demorado</td>
+<td>Melhor modelo que caiba na RAM e revisão</td>
+</tr>
+<tr>
+<td>Clonagem expressiva</td>
+<td>Dependente da memória e da execução em CPU</td>
+<td>Avaliar qualidade de modelos maiores sem limite curto de espera</td>
+</tr>
+<tr>
+<td>Conversão de voz e separação</td>
+<td>Podem ser muito demoradas</td>
+<td>Trechos, lotes noturnos e cancelamento</td>
+</tr>
+<tr>
+<td>Dublagem completa de vídeos longos</td>
+<td>Soma de várias etapas caras</td>
+<td>Só avançar após medir cada componente</td>
+</tr>
+<tr>
+<td>Ajuste fino de modelos grandes</td>
+<td>Não recomendado como requisito nessa máquina</td>
+<td>Curadoria de referências primeiro</td>
+</tr>
+<tr>
+<td>Conversão de voz em tempo real</td>
+<td>Não prometer</td>
+<td>Tratar como expansão futura</td>
+</tr>
+</tbody></table></div>
+<p>O tempo é informativo, sem peso na escolha de qualidade. Deve ser expresso por <strong>RTF</strong>, tempo de processamento dividido pela duração de áudio. RTF 10 significa que 1 minuto de áudio leva aproximadamente 10 minutos de processamento naquela etapa. Em um vídeo de uma hora, isso seria aproximadamente 10 horas apenas nessa etapa. Este é um exemplo matemático, não um desempenho medido do A10. Somar extração, ASR, separação, geração e exportação na previsão total.</p>
+<h2 id="cap-6"><span>06</span>Modelos e componentes candidatos</h2>
+<p>Esta seleção usa documentação oficial consultada na data do guia. “Candidato” significa que existe justificativa para testar, não que ele foi executado neste hardware. Instalar versões fixadas; reavaliar a seleção no início do desenvolvimento.</p>
+<h3>Voz cotidiana e clonagem</h3>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Modelo</th>
+<th>Papel</th>
+<th>Português e inglês</th>
+<th>Situação no projeto</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Kokoro 82M</td>
+<td>TTS leve com vozes prontas</td>
+<td>Inclui pt-BR e inglês</td>
+<td>Prévia ou narração opcional; não faz clonagem arbitrária por amostra [F02]</td>
+</tr>
+<tr>
+<td>Piper</td>
+<td>TTS local leve</td>
+<td>Depende das vozes instaladas</td>
+<td>Alternativa econômica; conferir licença de cada voz; não confundir com clonagem imediata [F03]</td>
+</tr>
+<tr>
+<td>Chatterbox Multilingual V3</td>
+<td>Clonagem multilíngue de 0,5B</td>
+<td>Multilíngue e pacote específico pt-BR</td>
+<td>Comparador principal de qualidade; testar pacote pt-BR e geral em CPU [F04–F05]</td>
+</tr>
+<tr>
+<td>Qwen3-TTS 0.6B Base</td>
+<td>Clonagem por referência</td>
+<td>Português e inglês entre os idiomas suportados</td>
+<td>Alternativa se a versão maior não couber ou se vencer na audição [F06–F07]</td>
+</tr>
+<tr>
+<td>VoxCPM2</td>
+<td>Clonagem controlável e criação de voz</td>
+<td>Português e inglês entre 30 idiomas</td>
+<td>Candidato prioritário por unir clone e direção; testar CPU e rota C++/GGUF documentadas [F08]</td>
+</tr>
+<tr>
+<td>Qwen3-TTS 1.7B</td>
+<td>Clonagem ou criação, conforme variante</td>
+<td>Português e inglês</td>
+<td>Candidato prioritário em CPU; Base, CustomVoice e VoiceDesign têm funções diferentes [F06]</td>
+</tr>
+<tr>
+<td>Fish Audio S2 Pro</td>
+<td>Expressão por tags e múltiplos falantes</td>
+<td>Inclui português e inglês</td>
+<td>Candidato futuro, especialmente para direção de fala; documentação recomenda 24 GB de GPU [F09–F10]</td>
+</tr>
+<tr>
+<td>OmniVoice</td>
+<td>Clonagem e ampla cobertura linguística</td>
+<td>Verificar a variante de idioma no adaptador</td>
+<td>Comparação posterior; diversidade de idiomas não é prioridade sobre qualidade pt-BR/inglês [F11]</td>
+</tr>
+</tbody></table></div>
+<p><strong>Seleção inicial proposta:</strong> comparar VoxCPM2, Qwen 1.7B Base e Chatterbox V3 para qualidade final; Faster-Whisper medium/large-v3 como candidatos de transcrição; FFmpeg para mídia. Escolher o melhor motor por personagem e idioma, mantendo somente um carregado de cada vez. Qwen 0.6B, Kokoro e Piper são alternativas, não o padrão automático por serem menores.</p>
+<p><strong>Memória antes de velocidade:</strong> VoxCPM2 documenta execução CPU e uma rota C++ com BaseLM F16 ou Q8_0 mais um componente acústico. Comparar a implementação de referência e a otimizada com os mesmos trechos; quantização pode alterar o resultado. CPU FP16/BF16 não deve ser presumida eficiente ou compatível nesse A10; testar o tipo de dado e o runtime. Qwen 1.7B em FP32 exige vários gigabytes só para pesos, além de tokenizer, codec, ativações e buffers. Reduzir lote e contexto ajuda, mas não elimina a memória fixa do modelo. [F06, F08]</p>
+<p><strong>Fish S2 Pro:</strong> manter como candidato avançado, sem excluí-lo por velocidade. Há imagem CPU documentada, mas isso não comprova que a carga completa cabe em 16 GB. A recomendação publicada de 24 GB refere-se à GPU e não é uma medida de RAM em CPU. Testar apenas após calcular memória e confirmar runtime ou quantização compatível; não torná-lo dependência obrigatória do A10. [F09–F10]</p>
+<p><strong>Controles diferentes exigem tratamento diferente.</strong> No Qwen, a variante Base oferece clonagem; o controle de instruções e a criação por descrição pertencem às variantes documentadas para isso. Não presumir que um parâmetro de emoção funciona na voz clonada só porque existe em outro modelo da família. Chatterbox Turbo privilegia inglês e reações específicas; não atribuir automaticamente suas tags ao Multilingual V3. O adaptador deve declarar as capacidades da versão instalada. [F04, F06]</p>
+<p><strong>Outros candidatos examinados:</strong> IndexTTS 2.5 oferece controle de emoção e velocidade, mas a lista atual de idiomas não inclui português; não será o padrão pt-BR. CosyVoice 3 também não lista português entre seus nove idiomas principais. Ambos podem servir a extensões futuras, sem substituir o caminho prioritário. [F12–F13]</p>
+<h3>Componentes de apoio</h3>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Função</th>
+<th>Candidato</th>
+<th>Regra de integração</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Transcrição</td>
+<td>Faster-Whisper</td>
+<td>CPU INT8 onde suportado; preservar idioma e tempos [F14]</td>
+</tr>
+<tr>
+<td>Alinhamento de palavras</td>
+<td>WhisperX ou alinhador equivalente local</td>
+<td>Carregar apenas quando necessário e com modelo do idioma [F15]</td>
+</tr>
+<tr>
+<td>Separar quem fala quando</td>
+<td>pyannote Community-1</td>
+<td>Opcional; baixar previamente pesos e aceitar termos aplicáveis; desativar telemetria [F16]</td>
+</tr>
+<tr>
+<td>Conversão direta de voz</td>
+<td>Seed-VC</td>
+<td>Comparar preservação de atuação e timbre; repositório arquivado, exigir dependências fixadas e manutenção local [F17]</td>
+</tr>
+<tr>
+<td>Conversão com personagem treinado</td>
+<td>RVC</td>
+<td>Alternativa posterior; precisa de dados e treinamento próprios [F18]</td>
+</tr>
+<tr>
+<td>Separação de voz e fundo</td>
+<td>Demucs como linha de base</td>
+<td>Foi concebido para fontes musicais; validar em diálogos, efeitos e vozes simultâneas [F19]</td>
+</tr>
+<tr>
+<td>Tradução</td>
+<td>Argos Translate ou LibreTranslate na própria máquina</td>
+<td>Instalar apenas pares necessários; revisar fidelidade e duração [F20]</td>
+</tr>
+<tr>
+<td>Emoção</td>
+<td>emotion2vec+ como ensaio opcional</td>
+<td>Calibrar em pt-BR e inglês; conferir licença do checkpoint [F21]</td>
+</tr>
+<tr>
+<td>Mixagem e exportação</td>
+<td>FFmpeg/ffprobe</td>
+<td>Manter linha do tempo e canais; filtros locais de loudness e ritmo [F22]</td>
+</tr>
+</tbody></table></div>
+<p><strong>Licenças:</strong> registrar separadamente código, pesos e vozes. Kokoro, Qwen e VoxCPM publicam componentes sob Apache-2.0; Chatterbox sob MIT; Piper usa GPL e as vozes têm condições próprias; Seed-VC usa GPL. Fish S2 permite pesquisa e uso não comercial conforme licença própria; IndexTTS e emotion2vec exigem leitura das condições específicas. Uso pessoal orienta a escolha, mas não transforma todas as licenças em equivalentes. Manter os textos das licenças junto aos modelos, sem introduzir um serviço de validação online. [F02–F12, F17, F21]</p>
+<h2 id="cap-7"><span>07</span>Benchmark que decide o motor</h2>
+<p>Executar na máquina de casa antes de investir na interface completa de clonagem. A sequência de decisão deve ser a mesma para qualquer modelo novo.</p>
+<ol>
+<li>Inventariar sistema operacional, CPU, instruções suportadas pelo binário, RAM livre, disco e dispositivos de áudio. Não tentar ativar aceleração apenas porque existe uma GPU.</li>
+<li>Verificar o funcionamento do container e da cadeia de áudio com uma frase curta; um motor leve pode servir apenas para diagnóstico.</li>
+<li>Ensaiar VoxCPM2, Qwen 1.7B Base e Chatterbox V3 isoladamente, com uma referência limpa. Começar com 5–10 segundos de fala gerada, depois 30 segundos e 2 minutos. Se um não couber, testar a rota otimizada ou versão menor. Uma execução lenta, mas progredindo, não deve falhar por um timeout curto.</li>
+<li>Repetir em pt-BR e inglês, separando inicialização fria de execução com modelo carregado. Medir RTF, pico de RAM da árvore de processos, disco temporário e erros.</li>
+<li>Comparar duas ou três gerações por frase para detectar instabilidade. Não escolher apenas a melhor amostra.</li>
+<li>Executar um projeto de dez minutos em blocos e testar pausa, encerramento forçado e retomada. Só depois tentar uma hora.</li>
+</ol>
+<p><strong>Conjunto de avaliação:</strong> vinte frases por idioma, incluindo números, datas, abreviações, nomes próprios, pergunta, exclamação, sussurro, tristeza, entusiasmo, mudança de idioma e frases compridas. Acrescentar três personagens com timbres distintos, quando existirem referências adequadas. Testar gravação limpa e uma versão com ruído moderado.</p>
+<p><strong>Critérios mínimos propostos:</strong> nenhuma troca ou omissão de frase no conjunto revisado; identidade reconhecível pelo proprietário; pronúncia compreensível; memória dentro do teto; resultado sem cortes ou silêncio inesperado; retomada sem duplicação. Usar notas de 1 a 5 para naturalidade, semelhança e interpretação, com alvo inicial de pelo menos 4 em cada dimensão relevante. Esses alvos são critérios do produto, não resultados já obtidos.</p>
+<p>Para escolher entre candidatos que passam, ponderar semelhança 35%, naturalidade 25%, fidelidade ao texto 25% e interpretação 15%. Velocidade não entra na nota; memória e estabilidade são condições de viabilidade. Idioma incompatível, estouro de memória ou licença inadequada eliminam o candidato antes da pontuação. Avaliar português e inglês separadamente, permitindo motores distintos dentro do mesmo personagem quando necessário.</p>
+<p><strong>Se nenhum clone for aceitável no A10:</strong> entregar o editor e o TTS leve como versão parcial, mantendo clonagem explicitamente pendente. Antes de abandonar o recurso, testar um caminho de inferência CPU otimizado com equivalência comprovada. Se continuar inviável, registrar o gargalo e dimensionar hardware; não mascarar a ausência com uma voz genérica.</p>
+<h3>Comparação com a referência ElevenLabs</h3>
+<p>Definir um conjunto de áudios de referência obtidos legitimamente e guardados localmente para avaliação. Registrar data, modelo, configurações, texto e voz utilizados quando essas informações estiverem disponíveis. Não usar apenas o nome da plataforma como padrão abstrato, pois o resultado depende da configuração e do material. Essa comparação não exige integrar o serviço ao app nem enviar referências de voz para fora da máquina.</p>
+<p>Comparar pares A/B com identificação oculta, ordem alternada, mesmo texto e volume percebido equivalente. Para avaliar clonagem, usar a mesma voz de origem autorizada e condições comparáveis; se isso não for possível, limitar a conclusão à naturalidade, pronúncia e interpretação, sem alegar equivalência de identidade. Avaliar pelo menos vinte trechos em cada idioma, além de uma narração longa e uma cena de dublagem. Incluir falas neutras, emocionais, pausas, reações e mudanças de ritmo.</p>
+<p><strong>Critério de aceite proposto para a meta:</strong> o proprietário classifica o resultado local como equivalente ou superior em pelo menos 80% dos pares de cada idioma, com média mínima de 4 em 5 para naturalidade, fidelidade ao texto, semelhança quando comparável e interpretação solicitada. Exigir ausência de omissões e repetições não previstas nos trechos finais aprovados. Para dublagem, aplicar também os testes de sincronização e mixagem. O limiar é uma regra de aceitação deste projeto, não uma afirmação científica de equivalência universal.</p>
+<p>Registrar separadamente os resultados por idioma, personagem e função; uma boa narração em inglês não comprova clonagem emocional em português. A aprovação pelo proprietário vale para seu uso pessoal; uma alegação pública de equivalência exigiria avaliação independente mais ampla. Se faltar referência comparável, marcar a meta como não avaliada. Se houver diferença perceptível, usar novas referências, ajustes de direção, outras tomadas ou outro motor antes de considerar mudança de hardware. Nenhum prazo curto ou objetivo de velocidade deve encerrar essa busca prematuramente.</p>
+<h2 id="cap-8"><span>08</span>Personagens e aprendizado</h2>
+<h3>Ficha de personagem</h3>
+<p>Identificador estável, nome, imagem opcional local, descrição de atuação, idioma principal, sotaque pretendido, motor preferido, versão, referências aprovadas, dicionário de pronúncia e presets de interpretação. A origem pode ser voz própria, voz autorizada, voz pronta licenciada ou voz criada por descrição. Não inferir idade real ou identidade a partir da voz.</p>
+<p>Um personagem é independente de um único motor. Cada associação personagem–motor guarda seus próprios artefatos: prompt de clonagem, embedding, referências ou pesos ajustados. Embeddings de um motor não são automaticamente compatíveis com outro. Projetos devem apontar para uma versão imutável do personagem para evitar mudanças retroativas.</p>
+<h3>Três formas de melhorar uma voz</h3>
+<p><strong>Clonagem por referência:</strong> extrair características de uma ou mais amostras e usá-las durante a geração. Normalmente não modifica os pesos do modelo. É o caminho inicial.</p>
+<p><strong>Curadoria progressiva:</strong> gravar exemplos melhores, corrigir transcrições, identificar ruído, organizar registros neutro, alegre, triste e sussurrado, e comparar a nova versão com a anterior. Esse é o sentido prático de “aprender” na primeira versão do app.</p>
+<p><strong>Treinamento específico:</strong> ajustar pesos ou adaptadores somente quando o motor tiver receita compatível e quando os recursos forem suficientes. Exige conjunto de validação separado, checkpoints e comparação contra a versão anterior. Não executar treinamento contínuo em segundo plano no A10.</p>
+<h3>Preparação das amostras</h3>
+<p>Manter o áudio original e produzir cópias de trabalho na taxa e no formato exigidos pelo motor. Gravar uma pessoa por vez, com microfone estável, sem música, eco forte, compressão agressiva ou cortes de fonemas. Exibir clipping, silêncio, ruído e trechos com mais de um falante para revisão.</p>
+<p>Como plano de captura, começar com várias frases limpas de 5–15 segundos e selecionar as melhores; cada adaptador respeita o tamanho de referência aceito pelo modelo. Para repertório expressivo, organizar 5–15 minutos de material variado. Para treinamento futuro, planejar inicialmente 30–120 minutos bem transcritos, ajustando à receita e ao resultado. Essas faixas são orientações de coleta, não mínimos oficiais universais.</p>
+<p>Guardar amostras em pt-BR e inglês quando disponíveis. Uma referência em português pode permitir geração em inglês, mas carregar o sotaque da referência. Preferir exemplos do idioma de destino quando isso melhorar a avaliação. Separar conjunto de teste por sessão de gravação para reduzir contaminação entre treino e validação.</p>
+<h3>Criação sem uma pessoa real</h3>
+<p>Permitir personagens definidos por uma voz pronta e ajustes de performance desde o início. Criação por descrição livre depende de modelos de Voice Design aprovados. Quando disponível, gerar candidatos, escolher um áudio base e congelá-lo como referência do personagem; gerar novamente a descrição a cada frase pode mudar a identidade.</p>
+<h2 id="cap-9"><span>09</span>Linguagem de direção de fala</h2>
+<p>Criar uma sintaxe própria do aplicativo, chamada provisoriamente <strong>Sal0 VoiceScript</strong>. Ela será compilada para controles de cada motor. Os códigos abaixo são uma especificação proposta; não são comandos nativos universais dos modelos.</p>
+<pre><code class="language-text">[personagem=luna][idioma=pt-BR]
+[emocao=alegria intensidade=0.6]
+[ritmo=1.05]Você conseguiu![/ritmo]
+[pausa=450ms]
+[tom=sussurro]Agora venha comigo.[/tom]
+[/emocao]
+[reacao=suspiro]
+
+[personagem=atlas][idioma=en-US]
+[emocao=seriedade intensidade=0.4]
+We have one more chance.
+[/emocao]
+</code></pre>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Controle</th>
+<th>Significado</th>
+<th>Implementação possível</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>personagem</code> e <code>idioma</code></td>
+<td>Identidade e língua do trecho</td>
+<td>Resolver versão do personagem e capacidade do motor</td>
+</tr>
+<tr>
+<td><code>emocao</code> e <code>intensidade</code></td>
+<td>Intenção interpretativa</td>
+<td>Instrução nativa, vetor suportado ou referência expressiva</td>
+</tr>
+<tr>
+<td><code>tom</code></td>
+<td>Sussurro, narração, grito ou outro estilo</td>
+<td>Motor compatível; não reduzir sussurro a volume baixo</td>
+</tr>
+<tr>
+<td><code>ritmo</code></td>
+<td>Multiplicador; 1,05 significa 5% mais rápido</td>
+<td>Controle nativo ou processamento moderado com preservação de altura</td>
+</tr>
+<tr>
+<td><code>altura</code></td>
+<td>Deslocamento relativo em semitons</td>
+<td>Nativo ou pós-processamento; mudanças grandes alteram identidade</td>
+</tr>
+<tr>
+<td><code>volume</code></td>
+<td>Ganho relativo em dB</td>
+<td>Mixagem determinística, respeitando limite de pico</td>
+</tr>
+<tr>
+<td><code>pausa</code></td>
+<td>Silêncio explícito em milissegundos</td>
+<td>Inserção na linha do tempo, independente do modelo</td>
+</tr>
+<tr>
+<td><code>enfase</code></td>
+<td>Destacar uma palavra ou expressão</td>
+<td>Instrução compatível; aproximação deve ser identificada</td>
+</tr>
+<tr>
+<td><code>reacao</code></td>
+<td>Suspiro, riso, hesitação, respiração</td>
+<td>Geração nativa ou amostra autorizada do próprio personagem</td>
+</tr>
+<tr>
+<td><code>pronuncia</code></td>
+<td>Substituição ou fonema para leitura</td>
+<td>Dicionário do app e sintaxe específica do motor</td>
+</tr>
+</tbody></table></div>
+<p>As emoções iniciais podem incluir neutralidade, alegria, tristeza, raiva, medo, surpresa, calma, seriedade e ironia. Nem todas terão suporte em todos os motores. Os nomes são categorias editoriais, não diagnósticos sobre uma pessoa.</p>
+<h3>Regras do compilador</h3>
+<p>Validar antes de gerar; apontar tag desconhecida e posição do erro. Separar conteúdo falado de metadados. Delimitar escopo e permitir retorno ao padrão. Normalizar valores e rejeitar combinações inválidas. Oferecer escape para colchetes literais. Não enviar tags incompatíveis como texto, pois elas poderiam ser pronunciadas.</p>
+<p>Cada controle mostra <strong>nativo</strong>, <strong>aproximado</strong> ou <strong>indisponível</strong>. Se a reação não existir, oferecer trocar de motor, inserir uma amostra do personagem ou removê-la explicitamente. Nunca prometer “riso fiel” a partir de um simples efeito sonoro genérico. Pausas exatas são diferentes de pedir a um modelo uma pausa aproximada.</p>
+<h3>Sugestão automática</h3>
+<p>Um botão “Sugerir interpretação” pode propor marcações a partir de pontuação, conteúdo e, quando houver, áudio original. Na versão leve, usar regras previsíveis. Um modelo de linguagem local opcional pode melhorar a sugestão no futuro, carregado fora da etapa de síntese. O texto original permanece preservado e as alterações são revisáveis. A interpretação manual sempre tem prioridade.</p>
+<h2 id="cap-10"><span>10</span>Emoção e prosódia a partir de áudio</h2>
+<p>Separar reconhecimento de palavras, identificação de falantes, características acústicas e inferência de emoção. Uma transcrição isolada não contém toda a atuação. “Tudo bem” pode soar calmo, irritado ou irônico com o mesmo texto.</p>
+<p>Extrair por trecho: pausas, duração, energia, velocidade aproximada, frequência fundamental quando houver voz periódica e variação de altura. Manter valores ausentes quando a estimativa não for confiável. Sussurro, ruído, canto e vozes sobrepostas exigem tratamento particular; altura mais alta não significa automaticamente alegria.</p>
+<p>O classificador emocional opcional produz categorias e escores. Não apresentar esses escores como probabilidades calibradas sem avaliação. Medir erros em amostras próprias de português e inglês; mostrar “incerto” quando o resultado não for robusto. Permitir correção humana e armazenar a sugestão original separada da decisão final. [F21]</p>
+<p>No speech-to-speech direto, o objetivo é preservar o máximo possível da interpretação do áudio de entrada. Na recriação por TTS, transferir instruções, pausas e duração como orientação; aceitar que microvariações e reações podem não ser reproduzidas. A qualidade deve ser decidida pela audição, não apenas pela classificação automática.</p>
+<h2 id="cap-11"><span>11</span>Fluxo de texto para fala longa</h2>
+<ol>
+<li>Importar roteiro e preservar uma cópia original. Detectar capítulos, falantes e idiomas; permitir ajuste manual.</li>
+<li>Validar VoiceScript e transformar em segmentos estruturados com texto falado, controles e personagem.</li>
+<li>Normalizar números, siglas e pronúncias sem alterar o sentido. Mostrar a leitura normalizada se houver mudança relevante.</li>
+<li>Dividir por frases, pontuação, troca de idioma ou personagem e limites do motor. O limite é de trabalho por bloco, não de projeto.</li>
+<li>Selecionar referência estável para cada personagem e registrar motor, versão, parâmetros e semente quando suportada.</li>
+<li>Gerar blocos sequencialmente, salvar resultado e atualizar manifesto de conclusão antes de iniciar o próximo.</li>
+<li>Verificar áudio vazio, cortes, repetição, duração anormal e divergência de conteúdo; encaminhar os casos suspeitos à revisão.</li>
+<li>Concatenar com pausas de roteiro. Usar pequenos crossfades somente em regiões seguras; nunca sobrepor palavras para esconder cortes.</li>
+<li>Normalizar loudness no nível apropriado, preservando contraste dramático; exportar capítulos e arquivo completo quando o formato permitir.</li>
+<li>Alinhar o texto com o áudio final para produzir SRT/VTT.</li>
+</ol>
+<p>Não carregar um livro inteiro como uma única requisição nem concatenar todo o áudio na RAM. Usar leitura e escrita em fluxo. Guardar contexto de fronteira quando o motor suportar, evitando duplicar o texto falado.</p>
+<p>Arquivos WAV convencionais têm limitações de tamanho; para saídas enormes, oferecer RF64 quando compatível, FLAC ou divisão em capítulos. Uploads devem ser retomáveis ou substituíveis pela seleção local de arquivo, sem que o navegador duplique dezenas de gigabytes em memória. Proxy, API, armazenamento e exportador precisam respeitar a mesma política de ausência de cotas arbitrárias.</p>
+<h2 id="cap-12"><span>12</span>Dois caminhos de speech to speech</h2>
+<h3>Trocar apenas a voz</h3>
+<p>Áudio original → isolamento opcional da fala → trechos → conversor de voz → recomposição nos tempos de origem → mixagem → saída.</p>
+<p>O texto e o idioma permanecem os mesmos. Esta rota deve ser a primeira escolha quando o objetivo for ouvir a atuação original com o timbre de um personagem. Preservar o tempo de origem e conferir se o conversor alterou duração. Para um personagem totalmente novo, usar uma referência aprovada. Seed-VC é um candidato a comparar; RVC depende de um modelo treinado do personagem. [F17–F18]</p>
+<h3>Recriar ou traduzir a fala</h3>
+<p>Áudio → transcrição → revisão → tradução opcional → direção de atuação → TTS do personagem → ajuste temporal → saída.</p>
+<p>Esta rota permite mudar palavras e idioma, mas pode modificar a interpretação. A tradução inglês–português deve considerar contexto, nomes e espaço disponível. Separar “tradução fiel” de “adaptação para caber no tempo”; qualquer condensação precisa ficar visível para revisão.</p>
+<p>O usuário deve escolher entre “Preservar a atuação” e “Recriar a fala”. Não trocar silenciosamente a conversão direta por ASR e TTS quando isso mudar o resultado. Falha de um motor deve conservar os insumos e permitir tentar outro.</p>
+<h2 id="cap-13"><span>13</span>Dublagem de vídeo e elenco</h2>
+<h3>Pipeline completo</h3>
+<ol>
+<li>Inspecionar contêiner, trilhas, canais, duração e timestamps com ffprobe. Permitir escolher a faixa original.</li>
+<li>Preservar o vídeo original. Extrair áudio de trabalho sem perda desnecessária.</li>
+<li>Preferir trilhas de diálogo e ambiente já separadas quando existirem. Se só houver mixagem final, experimentar separação local e ouvir vazamento de voz e perda de efeitos.</li>
+<li>Detectar fala e, opcionalmente, separar quem fala quando. Atribuir “Falante 1”, “Falante 2” etc.; permitir unir, dividir e corrigir.</li>
+<li>Mapear cada falante para um personagem. Não tratar diarização como isolamento de fontes: reconhecer duas pessoas falando juntas não produz automaticamente dois áudios limpos.</li>
+<li>Transcrever e revisar. Para outro idioma, traduzir com contexto e aprovar o texto antes da síntese.</li>
+<li>Converter diretamente ou recriar cada fala; salvar várias tomadas quando necessário.</li>
+<li>Encaixar falas nas janelas originais, com ajuste moderado de ritmo e preservação de altura. Priorizar regeneração ou edição de texto quando o ajuste prejudicar naturalidade.</li>
+<li>Ouvir voz isolada, fundo isolado e mixagem. Controlar volume por personagem, ambiente e reação.</li>
+<li>Remontar vídeo preservando timestamps. Usar cópia da trilha de vídeo quando compatível e sem legendas queimadas; renderizar imagem somente quando necessário.</li>
+<li>Exportar vídeo dublado, faixa de voz, ambiente quando disponível, SRT original, SRT traduzido e SRT correspondente à dublagem final.</li>
+</ol>
+<h3>Sincronização</h3>
+<p>Guardar tempos como unidades inteiras de alta precisão, evitando soma de durações arredondadas. A origem temporal vem do arquivo, inclusive em vídeo com taxa de quadros variável. A duração de cada fala gerada deve ser medida. Controlar excesso e falta de fala por trecho, nunca acumulando deslocamento nas falas seguintes.</p>
+<p>Definir inicialmente ajuste automático de ritmo de até aproximadamente 10% como política conservadora, configurável e sujeita à audição; não é um limite físico do filtro. Fora disso, sinalizar para revisão. Não cortar uma palavra para caber nem acelerar uma fala inteira sem mostrar o resultado.</p>
+<p><strong>Sincronizar áudio com o vídeo não altera movimentos da boca.</strong> Sincronização labial visual é outro módulo, com modelos, custo e critérios próprios, fora da primeira entrega. Música cantada também deve ser um modo separado de fala, pois exige tratamento de notas, duração e expressão musical.</p>
+<h3>Casos difíceis</h3>
+<p>Falas simultâneas devem usar trilhas separadas quando disponíveis ou seguir para revisão manual. Efeitos, reverberação, respiração e música podem ficar presos à voz removida. Nenhum separador deve ser apresentado como restauração perfeita do fundo. Conservar uma cópia do original e oferecer comparação rápida antes/depois.</p>
+<h2 id="cap-14"><span>14</span>Legendas e arquivos SRT</h2>
+<p>Oferecer três origens: transcrição de mídia, roteiro alinhado ao áudio gerado e importação de SRT existente. Preservar SRT original separado de SRT traduzido e SRT da nova dublagem. Se a fala for regenerada, a legenda final deve ser realinhada; copiar tempos antigos sem conferir não é suficiente.</p>
+<p>O editor mostra texto, início, fim, falante e reprodução do trecho. Permitir dividir, juntar, corrigir tempos e restaurar versão. Exportar UTF-8 e formato <code>HH:MM:SS,mmm</code>, com numeração válida e tempos crescentes por trilha. Tratar sobreposição deliberada de falantes sem apagar uma fala.</p>
+<p>Adotar como perfil editorial inicial até duas linhas e aproximadamente 42 caracteres por linha, com aviso de velocidade de leitura configurável. Esses valores são defaults de interface, não regras universais. Quebrar frases por sentido e respeitar silêncios. Não inventar fala em trechos sem voz.</p>
+<p>SRT não preserva toda a direção de interpretação nem um projeto multitrilha. Guardar emoção, personagem, palavras e parâmetros no arquivo JSON do projeto; opcionalmente exportar VTT ou ASS para recursos adicionais. Queimar legendas no vídeo é uma opção explícita e exige nova renderização.</p>
+<h2 id="cap-15"><span>15</span>Arquitetura proposta</h2>
+<p><strong>Interface local leve + API Python + executor sequencial + adaptadores de modelos + armazenamento persistente.</strong> O navegador não deve carregar os modelos de IA. O serviço deve continuar trabalhando se a aba for fechada, e a interface recupera seu estado ao reabrir.</p>
+<pre><code class="language-text">Interface local
+    |
+API de projetos, personagens, mídia e trabalhos
+    |
+Fila persistente e coordenador de recursos
+    |
+Executor isolado por família de modelo
+    |
+TTS | Conversão de voz | ASR | Tradução | Alinhamento
+    |
+FFmpeg e exportação
+
+SQLite + arquivos locais + manifesto de modelos
+</code></pre>
+<h3>Tecnologias e separação</h3>
+<p>Usar HTML/CSS/TypeScript com componentes leves, preservando o visual Sal0. Um framework é opcional; evitar dependência de um frontend pesado para o primeiro release. FastAPI serve a interface e a API na mesma origem local. SQLite guarda metadados e estado; áudio e vídeo ficam como arquivos. FFmpeg opera por subprocesso, com argumentos estruturados.</p>
+<p>Um coordenador dentro do container inicia processos de IA em ambientes independentes, incluídos na imagem e fixados por motor. Não forçar Chatterbox, Qwen, alinhador e conversor à mesma versão de PyTorch. Cada adaptador possui ambiente fixado, comando de inicialização, contrato de entrada/saída e teste offline. A comunicação pode usar arquivos de solicitação e resultado JSON para trabalhos longos, evitando transferir áudio grande serializado em base64.</p>
+<p>Não exigir Redis, banco remoto, Kubernetes, login na nuvem ou servidores de inferência orientados a GPUs potentes. O formato de distribuição é imagem Docker Linux amd64 e Compose importável no ZimaOS. Inicialmente, um único container com ambientes internos separados simplifica o controle de memória. Separar serviços depois somente quando houver necessidade de dependências ou manutenção. Não montar o socket Docker no app.</p>
+<h3>Contrato dos adaptadores</h3>
+<p>Cada motor informa nome e revisão, idiomas, dispositivo aceito, limite por chamada, formatos, taxa de amostragem, suporte a clonagem, referência transcrita, emoções, reações, controle de duração e treinamento. O coordenador consulta isso antes de aceitar um trabalho.</p>
+<p>Operações conceituais: <code>probe</code>, <code>prepare_voice</code>, <code>synthesize</code>, <code>convert_voice</code>, <code>transcribe</code>, <code>align</code>, <code>translate</code> e <code>unload</code>, apenas onde se aplicarem. Cada resposta deve incluir arquivos, duração, parâmetros efetivos, avisos e estado de erro estruturado. Capacidades não implementadas retornam erro explícito, nunca um resultado genérico com aparência de sucesso.</p>
+<h3>Serviços de aplicação</h3>
+<p>Projetos e personagens; catálogo de modelos; validação de roteiro; segmentação; fila; monitor de memória e disco; revisão; exportação; backup; diagnóstico. Progresso enviado por eventos locais, como SSE, sem polling agressivo. Rotas de início de processamento retornam imediatamente um identificador; o trabalho não fica preso a uma requisição HTTP de horas.</p>
+<h2 id="cap-16"><span>16</span>Dados e persistência</h2>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Entidade</th>
+<th>Campos essenciais</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Personagem</td>
+<td>ID, nome, origem, idioma, descrição, versão ativa</td>
+</tr>
+<tr>
+<td>Versão de voz</td>
+<td>Personagem, motor/revisão, referências, artefatos, presets, avaliação</td>
+</tr>
+<tr>
+<td>Mídia</td>
+<td>ID, hash, nome, formato, duração, canais, caminho e origem</td>
+</tr>
+<tr>
+<td>Projeto</td>
+<td>ID, modo, elenco, mídia base, roteiro, idiomas, revisão</td>
+</tr>
+<tr>
+<td>Segmento</td>
+<td>ID, tempos de origem, texto original e aprovado, personagem, controles, estado</td>
+</tr>
+<tr>
+<td>Tomada</td>
+<td>Segmento, arquivo, duração, modelo, parâmetros, semente e avaliação</td>
+</tr>
+<tr>
+<td>Trabalho</td>
+<td>Projeto, etapa, progresso, checkpoint, tentativas, erro e timestamps</td>
+</tr>
+<tr>
+<td>Modelo instalado</td>
+<td>Fonte, revisão, hash, licença, arquivos, ambiente e benchmark</td>
+</tr>
+</tbody></table></div>
+<pre><code class="language-text">data/
+  app.sqlite
+  models/
+  characters/&lt;id&gt;/versions/&lt;versao&gt;/
+  media/originals/
+  projects/&lt;id&gt;/project.json
+  projects/&lt;id&gt;/segments/
+  jobs/&lt;id&gt;/checkpoints/
+  cache/
+  exports/
+  backups/
+</code></pre>
+<p>Usar caminhos relativos ao diretório de dados no projeto exportado. Nomes visíveis podem se repetir; IDs e hashes não. Registrar taxa de amostragem, versão do normalizador de texto e dependências relevantes. Alterar roteiro, referência, motor ou parâmetro deve invalidar somente os resultados dependentes.</p>
+<h3>Exemplo de segmento persistido</h3>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;id&quot;: &quot;seg_00042&quot;,
+  &quot;character_id&quot;: &quot;luna&quot;,
+  &quot;voice_version&quot;: 3,
+  &quot;language&quot;: &quot;pt-BR&quot;,
+  &quot;source_start_ms&quot;: 12800,
+  &quot;source_end_ms&quot;: 15600,
+  &quot;spoken_text&quot;: &quot;Agora venha comigo.&quot;,
+  &quot;direction&quot;: {&quot;style&quot;: &quot;whisper&quot;, &quot;rate&quot;: 1.0},
+  &quot;review_status&quot;: &quot;approved&quot;,
+  &quot;selected_take_id&quot;: null
+}
+</code></pre>
+<p>O JSON é um exemplo de contrato de projeto. Não representa uma API existente. Na implementação, usar tempos com precisão superior a milissegundos quando exigido pelo alinhamento e registrar também a base temporal da mídia.</p>
+<h2 id="cap-17"><span>17</span>Fila sem cotas arbitrárias</h2>
+<p>Estados: aguardando, preparando, processando, aguardando revisão, pausado, concluído, cancelado e falhou. A máquina trabalha em uma etapa pesada por vez; outras tarefas podem ser editadas ou aguardarem revisão. Concluídos saem da fila ativa e ficam no histórico do projeto e na Biblioteca.</p>
+<p>Salvar checkpoint após cada bloco concluído, com arquivo escrito de forma atômica. Na retomada, verificar hash e integridade antes de reutilizar. Se ocorrer falta de energia, repetir somente o bloco incompleto. Cancelar deve encerrar toda a árvore de processos do trabalho e preservar resultados já confirmados.</p>
+<p>O cache usa conteúdo, motor, revisão, personagem, referência, idioma e parâmetros como chave. Dois trabalhos com o mesmo nome não compartilham resultado por esse motivo. Um texto corrigido não pode receber áudio antigo. O editor permite limpar temporários sem apagar referências ou tomadas escolhidas.</p>
+<p>Antes de começar, estimar espaço para original, intermediários e exportação. Durante o trabalho, observar RAM e disco; ao atingir reserva mínima, pausar com explicação e opção de continuar após liberar recursos. O número de trabalhos é administrado pelo armazenamento e paginação, não por um teto artificial de minutos ou caracteres.</p>
+<h2 id="cap-18"><span>18</span>Instalação e operação offline</h2>
+<h3>Assistente inicial</h3>
+<ol>
+<li>Identificar versão do ZimaOS e Docker e verificar os binários CPU da imagem Linux amd64, incluindo instruções exigidas pelas bibliotecas. Um binário incompatível pode falhar mesmo com RAM suficiente.</li>
+<li>Selecionar diretório de dados e apresentar orçamento de disco.</li>
+<li>Importar o Compose no ZimaOS, conferir volumes e porta, iniciar o núcleo e instalar os candidatos de qualidade individualmente, com fonte, tamanho, licença e revisão visíveis.</li>
+<li>Testar reprodução, gravação, exportação e uma frase em cada idioma.</li>
+<li>Executar o benchmark de clonagem e salvar o perfil aprovado.</li>
+<li>Ativar modo offline e repetir o fluxo com a rede externa bloqueada.</li>
+</ol>
+<p>O instalador deve incluir tokenizadores, vocoders, dicionários, fonemizadores e modelos auxiliares, além dos pesos principais. Pacotes de tradução e diarização podem requerer download ou aceitação de termos antes do uso offline. Não deixar uma dependência descobrir na primeira dublagem que precisa acessar a internet.</p>
+<p>Servir fontes, ícones, ajuda e scripts localmente. Desativar telemetria e atualização automática; no pyannote, definir explicitamente <code>PYANNOTE_METRICS_ENABLED=0</code>. Usar carregamento por caminho local e flags offline onde existirem. O teste de rede bloqueada é a validação final, não apenas uma opção marcada na interface. [F16]</p>
+<h3>Pacote Docker para ZimaOS</h3>
+<p>Entregar <code>Dockerfile</code>, <code>compose.yaml</code>, exemplo de configuração, manual de importação, healthcheck, script de migração e imagem versionada para <code>linux/amd64</code>. Não publicar uma tag <code>latest</code> como única forma de recuperar uma instalação. Modelos e projetos ficam fora da camada gravável da imagem, sob <code>/data</code>.</p>
+<p>A instalação deve permitir escolher o disco de dados. O caminho <code>/DATA/AppData/sal0-voz</code> abaixo é um exemplo a validar no gerenciador de armazenamento; não presumir que ele aponta para o maior disco. Para uma pasta de entrada do servidor, oferecer montagem somente leitura em <code>/imports</code>. Não montar <code>/app</code>, pois isso esconderia os arquivos da imagem.</p>
+<p>O exemplo seguinte é um <strong>contrato de implantação a implementar e testar</strong>, não uma imagem já publicada. As variáveis <code>SAL0_*</code> e a rota de saúde fazem parte da especificação proposta. A imagem precisa ser construída ou carregada antes da importação definitiva.</p>
+<pre><code class="language-yaml">name: sal0-voz
+services:
+  sal0-voz:
+    image: sal0-voz:0.1.0-cpu
+    platform: linux/amd64
+    init: true
+    restart: unless-stopped
+    ports:
+      - &quot;7886:7860&quot;
+    volumes:
+      - /DATA/AppData/sal0-voz:/data
+    environment:
+      SAL0_DEVICE: cpu
+      SAL0_QUALITY: best
+      SAL0_MAX_ACTIVE_WORKERS: &quot;1&quot;
+      SAL0_OFFLINE: &quot;1&quot;
+      HF_HUB_OFFLINE: &quot;1&quot;
+      HF_HUB_DISABLE_TELEMETRY: &quot;1&quot;
+      PYANNOTE_METRICS_ENABLED: &quot;0&quot;
+      TZ: America/Sao_Paulo
+    mem_limit: 10g
+    stop_grace_period: 5m
+    healthcheck:
+      test: [&quot;CMD&quot;, &quot;python&quot;, &quot;-c&quot;, &quot;import urllib.request; urllib.request.urlopen(&#39;http://127.0.0.1:7860/health&#39;, timeout=5)&quot;]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+</code></pre>
+<p>A porta 7886 é proposta para não usar a mesma porta padrão da referência, 7885; confirmar disponibilidade. O limite de 10 GB é inicial e inclui todos os processos do container. O gerenciador deve pausar antes do teto para evitar encerramento por falta de memória. A rota de saúde verifica o serviço, não exige que um trabalho de horas já tenha terminado. Ao receber sinal de parada, terminar ou interromper com segurança o bloco em andamento; retomar depois pelo checkpoint.</p>
+<p>O perfil offline pressupõe que os modelos já estejam presentes. Criar um procedimento de preparação separado, com download explícito para <code>/data/models</code>, e depois voltar ao perfil offline. Para instalação sem rede, entregar arquivo da imagem exportada, modelos permitidos para distribuição e hashes, usando <code>docker load</code> ou o mecanismo compatível da instalação. Flags offline não bloqueiam toda rede por si só; testar saída para a internet bloqueada mantendo a rede local funcional.</p>
+<p>Na interface do ZimaOS, oferecer nome, ícone, descrição e endereço de abertura. Se o app for empacotado para catálogo, usar os metadados <code>x-casaos</code> conforme a referência oficial e validar a compatibilidade do importador com o Compose escolhido. Testar volumes, limites de memória, healthcheck e reinício após boot. [F23]</p>
+<p>Executar como usuário não privilegiado, preparar permissões do volume e rotacionar logs. O cache de modelos não deve ser apagado ao recriar o container. Backups consistentes devem pausar escrita ou usar o mecanismo de backup do SQLite, sem copiar apenas um banco ativo incompleto. Atualizações devem conservar <code>/data</code> e oferecer rollback da imagem e do esquema compatível.</p>
+<p><strong>Microfone no navegador:</strong> ao acessar pelo IP do ZimaOS via HTTP, navegadores podem bloquear captura por falta de contexto seguro. Prever HTTPS local confiável para gravação ou oferecer upload de áudio gravado no cliente. O microfone deve ser o do dispositivo do usuário, sem depender de placa de som no servidor. [F24]</p>
+<h3>Operação segura e simples</h3>
+<p>No container, escutar em <code>0.0.0.0</code> na porta interna para permitir o acesso pela porta publicada do Docker. Na instalação ZimaOS, usar autenticação local e acesso pela rede doméstica; não configurar encaminhamento de porta no roteador. Validar origem e proteger rotas que alteram estado. Workers internos não publicam portas adicionais. Nunca expor caminhos arbitrários do disco em uma rota de download. Validar arquivos importados e não executar comandos contidos em roteiros, legendas ou metadados.</p>
+<p>As referências de voz permanecem locais; registrar sua origem e autorização na ficha. Não enviar logs com áudio ou texto completo por padrão. Importar modelos apenas de fontes conhecidas, verificar hashes e dar preferência a formatos seguros quando disponíveis. A exclusão de um personagem deve avisar sobre projetos dependentes; backup deve incluir banco, referências, roteiro e tomadas aprovadas.</p>
+<p>Atualizações são manuais, com backup e possibilidade de voltar à versão anterior. Não alterar pesos ou voz de um projeto antigo silenciosamente. Modelos ausentes após restaurar um backup devem ser identificados por revisão exata, com opção de restaurar a partir do pacote offline.</p>
+<h2 id="cap-19"><span>19</span>Plano de implementação</h2>
+<p>As fases são organizadas por dependência e evidência de conclusão. Não fixar prazo em semanas antes do ensaio no A10, porque instalação e velocidade dos modelos podem mudar o esforço significativamente.</p>
+<h3>Fase 0 Viabilidade na máquina real</h3>
+<p>Inventário do ZimaOS, disco, outros containers, teste dos binários e comparação VoxCPM2/Qwen 1.7B/Chatterbox em CPU, mais ASR de qualidade. Produzir relatório com RAM, RTF e amostras. <strong>Saída:</strong> motor de qualidade escolhido por idioma e personagem, decisão explícita sobre clonagem e gargalos documentados. Se a clonagem falhar, decidir a alternativa antes de desenvolver seus controles avançados.</p>
+<h3>Fase 1 Núcleo local e identidade Sal0</h3>
+<p>Imagem Docker CPU e Compose para ZimaOS, estrutura modular, tema claro/escuro, Criar, Personagens, Biblioteca, SQLite, trabalhos persistentes e volume de dados. <strong>Saída:</strong> importar arquivo, criar personagem e retomar um trabalho simulado ou leve sem perder estado.</p>
+<h3>Fase 2 Texto para voz e personagens</h3>
+<p>Motor de maior qualidade aprovado, ficha de personagem, roteiro por blocos, prévia, tomadas e exportação de áudio; motor leve apenas como opção. <strong>Saída:</strong> gerar português e inglês, reabrir projeto e conservar identidade da voz. O checkpoint do produto deve informar se clonagem ainda está pendente.</p>
+<h3>Fase 3 Direção e legendas</h3>
+<p>VoiceScript, pausa, ritmo, pronúncia, indicação de suporte por motor, ASR, revisão e SRT do áudio final. <strong>Saída:</strong> comandos não são pronunciados, nenhuma frase se perde e legendas seguem a versão aprovada.</p>
+<h3>Fase 4 Conversão direta de voz</h3>
+<p>Adaptador de conversão, referências, tratamento de trechos, comparação antes/depois e recomposição temporal. <strong>Saída:</strong> trocar timbre mantendo texto em português e inglês, com avaliação de atuação e duração.</p>
+<h3>Fase 5 Dublagem</h3>
+<p>Extração, elenco, identificação de falantes opcional, ambiente, tradução local, edição temporal, mixagem e vídeo exportado. <strong>Saída:</strong> vídeo curto com dois falantes aprovado, depois um vídeo de trinta minutos sem deriva e um projeto longo com retomada.</p>
+<h3>Fase 6 Expressividade e aprendizado assistido</h3>
+<p>Reconhecimento de emoção avaliado, sugestões revisáveis, biblioteca de reações, criação por descrição e treinamento quando viável. <strong>Saída:</strong> melhora verificável sobre a base e possibilidade de voltar à versão anterior.</p>
+<h3>Fase 7 Empacotamento e robustez</h3>
+<p>Importação do Compose em instalação limpa do ZimaOS, pacote offline da imagem e modelos, backup/restauração, diagnóstico, migrações, manual integrado e atualização reversível. <strong>Saída:</strong> todos os fluxos essenciais passam com rede externa bloqueada e na configuração de hardware documentada.</p>
+<h2 id="cap-20"><span>20</span>Critérios de aceite do produto</h2>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Área</th>
+<th>Teste obrigatório</th>
+<th>Resultado esperado</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Offline</td>
+<td>Reiniciar sem rede após preparar modelos e dependências</td>
+<td>Criar, transcrever, converter e exportar sem chamadas externas obrigatórias</td>
+</tr>
+<tr>
+<td>Texto longo</td>
+<td>Roteiro com pelo menos 100 mil caracteres e mudança de capítulos</td>
+<td>Sem truncamento; todos os segmentos têm saída ou erro explícito</td>
+</tr>
+<tr>
+<td>Áudio longo</td>
+<td>Projeto de duas horas em blocos</td>
+<td>Memória limitada pelo bloco, não pela duração total; sem perda de final</td>
+</tr>
+<tr>
+<td>Retomada</td>
+<td>Interromper durante geração e durante exportação</td>
+<td>Não duplicar falas e preservar blocos válidos</td>
+</tr>
+<tr>
+<td>Personagem</td>
+<td>Frases inéditas em pt-BR e inglês</td>
+<td>Semelhança reconhecida e avaliação separada por idioma</td>
+</tr>
+<tr>
+<td>VoiceScript</td>
+<td>Tags válidas, inválidas e literais</td>
+<td>Texto falado limpo e suporte explicado</td>
+</tr>
+<tr>
+<td>Emoção</td>
+<td>Amostras revisadas por idioma</td>
+<td>Relatório de erros; correção manual sempre possível</td>
+</tr>
+<tr>
+<td>SRT</td>
+<td>Início, meio, fim, silêncio e nova tomada</td>
+<td>Tempos coerentes com a mídia final e formato válido</td>
+</tr>
+<tr>
+<td>Conversão de voz</td>
+<td>Mesma fala em voz de personagem</td>
+<td>Conteúdo preservado e artefatos revisados</td>
+</tr>
+<tr>
+<td>Dublagem</td>
+<td>Dois falantes, música e trecho sobreposto</td>
+<td>Elenco correto; sobreposição não resolvida fica sinalizada</td>
+</tr>
+<tr>
+<td>Sincronização</td>
+<td>Vídeo longo com janelas marcadas</td>
+<td>Sem deriva acumulada; meta de bordas em até 200 ms em falas simples revisadas</td>
+</tr>
+<tr>
+<td>Recursos</td>
+<td>Memória baixa e disco quase cheio</td>
+<td>Pausa recuperável, sem corromper projeto</td>
+</tr>
+<tr>
+<td>Backup</td>
+<td>Restaurar em instalação limpa</td>
+<td>Roteiro, personagem, mídia e tomadas acessíveis</td>
+</tr>
+<tr>
+<td>Referência ElevenLabs</td>
+<td>Comparação A/B do capítulo 7 em pt-BR e inglês</td>
+<td>Meta aprovada por idioma e recurso ou diferença explicitamente registrada</td>
+</tr>
+</tbody></table></div>
+<p>O teste de duas horas demonstra robustez daquela carga, não duração infinita. A ausência de cota deve resultar da arquitetura e da capacidade de processar sucessivos blocos. Testes caros podem usar geração leve para validar persistência, mas a qualidade da clonagem deve ser testada com o motor real.</p>
+<p>Adicionar testes automatizados para parser, segmentação, invalidação de cache, estados da fila, retomada e validação de SRT. Usar pequenos arquivos conhecidos para integração de FFmpeg. A qualidade de voz exige avaliação auditiva; transcrever novamente o áudio ajuda a identificar omissões, mas não substitui a escuta nem prova semelhança.</p>
+<h2 id="cap-21"><span>21</span>Evolução de hardware e decisões pendentes</h2>
+<p><strong>Não comprar hardware antes da fase 0.</strong> O relatório deve mostrar se o problema é memória, compatibilidade, disco ou qualidade do modelo. Tempo alto sozinho não justifica exigir upgrade, pois o proprietário aceita processamento demorado. Aumentar RAM não transforma a GPU integrada em acelerador moderno. SSD melhora carregamento e arquivos temporários; não elimina o custo da síntese neural.</p>
+<p>Se houver upgrade, considerar uma plataforma mais moderna e uma GPU dedicada compatível com os motores escolhidos. Como faixas de planejamento, 12–16 GB de VRAM ampliam opções intermediárias; 24 GB ou mais dão mais margem para motores pesados. São classes de capacidade, não requisitos universais nem uma recomendação de compra específica. Fish S2 documenta 24 GB de GPU para inferência; outros motores precisam de medidas próprias. Conferir fonte, gabinete, refrigeração, conexões e sistema operacional antes de escolher uma placa. [F10]</p>
+<div class="table-wrap" tabindex="0"><table>
+<thead>
+<tr>
+<th>Decisão</th>
+<th>Estado ou encaminhamento</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hardware base</td>
+<td>Confirmado: A10-9700E, 16 GB, vídeo integrado</td>
+</tr>
+<tr>
+<td>Idiomas</td>
+<td>Confirmados: pt-BR e inglês</td>
+</tr>
+<tr>
+<td>Finalidade</td>
+<td>Confirmada: uso pessoal</td>
+</tr>
+<tr>
+<td>Sistema operacional da máquina de casa</td>
+<td>Confirmado: ZimaOS; registrar versão e Docker na fase 0</td>
+</tr>
+<tr>
+<td>Disco e espaço livre</td>
+<td>Medir antes dos downloads</td>
+</tr>
+<tr>
+<td>Prioridade de qualidade</td>
+<td>Confirmada: máxima qualidade viável; tempo é apenas informativo</td>
+</tr>
+<tr>
+<td>Referência desejada</td>
+<td>Confirmada: resultados no nível do ElevenLabs, sujeitos à comparação auditiva</td>
+</tr>
+<tr>
+<td>Motor principal de clonagem</td>
+<td>VoxCPM2, Qwen 1.7B Base e Chatterbox V3, sujeitos ao benchmark</td>
+</tr>
+<tr>
+<td>Distribuição e interface</td>
+<td>Docker Compose no ZimaOS; interface web acessada pela rede doméstica</td>
+</tr>
+<tr>
+<td>Conta única ou multiusuário</td>
+<td>Conta única inicial; expansão opcional</td>
+</tr>
+<tr>
+<td>Conversão ao vivo e lip sync visual</td>
+<td>Fora do escopo inicial</td>
+</tr>
+</tbody></table></div>
+<h2 id="cap-22"><span>22</span>Orientação para iniciar o desenvolvimento</h2>
+<p>Criar um repositório independente para Sal0 Voz. Preservar os créditos e avisos dos componentes reutilizados. Começar pela fase 0 e implementar somente os motores que passarem nos testes. O desenho de dados e os adaptadores devem permitir substituição futura sem alterar os projetos existentes.</p>
+<p><strong>Instrução de execução:</strong> construir um app local distribuído obrigatoriamente em Docker Compose para ZimaOS, no AMD PRO A10-9700E com 16 GB de RAM, usando CPU, português brasileiro e inglês. A prioridade é a maior qualidade possível dentro da memória disponível, mesmo com processamento de muitas horas; velocidade não deve reduzir automaticamente a qualidade. Buscar resultados no nível do ElevenLabs e validar essa meta por comparação auditiva em pt-BR e inglês, sem depender de sua API ou de processamento remoto. Preservar a identidade visual do Sal0-Karaoke e oferecer modos simples e detalhados. Implementar processamento por blocos, personagens versionados, fila persistente, texto para fala, clonagem avaliada, VoiceScript, SRT, conversão de voz e dublagem por etapas. Não usar serviços externos para inferência. Não apresentar vozes prontas como clonagem, inferência como treinamento nem sugestões de emoção como certeza. Entregar cada fase com teste funcional e evidência de consumo na máquina alvo.</p>
+<p><strong>Primeira sessão na máquina de casa:</strong> levantar ZimaOS, Docker, armazenamento e containers concorrentes; importar o Compose de teste e configurar volumes; medir um candidato de qualidade em pt-BR e inglês; registrar memória, qualidade e tempo e então fechar a escolha dos motores.</p>
+<h2 id="cap-23"><span>23</span>Fontes e rastreabilidade</h2>
+<p>Fontes oficiais consultadas em 21/09/2026. Especificações publicadas são fatos de referência; arquitetura, prioridades, orçamentos e critérios de aceite deste guia são propostas. Não foram executados benchmarks na máquina de casa.</p>
+<ul>
+<li><p><strong>R01</strong> <a href="https://github.com/Sal0-Apps/Sal0-Karaoke/blob/f87b4713e0f0f1227e0c1dddf8567137b7804305/README.md">Sal0-Karaoke README no commit analisado</a>.</p>
+</li>
+<li><p><strong>R02</strong> <a href="https://github.com/Sal0-Apps/Sal0-Karaoke/blob/f87b4713e0f0f1227e0c1dddf8567137b7804305/MANUAL.md">Manual de operação do Sal0-Karaoke</a>.</p>
+</li>
+<li><p><strong>R03</strong> <a href="https://github.com/Sal0-Apps/Sal0-Karaoke/blob/f87b4713e0f0f1227e0c1dddf8567137b7804305/app/templates/index.html">Interface e estilos do Sal0-Karaoke</a>.</p>
+</li>
+<li><p><strong>R04</strong> <a href="https://github.com/Sal0-Apps/Sal0-Karaoke/blob/f87b4713e0f0f1227e0c1dddf8567137b7804305/app/requirements.txt">Dependências do Sal0-Karaoke</a>.</p>
+</li>
+<li><p><strong>F01</strong> <a href="https://www.amd.com/en/support/downloads/drivers.html/processors/pro-a-series/pro-a-series-a10-apu-for-desktops/7th-gen-amd-pro-a10-9700e-apu.html">AMD PRO A10-9700E</a> e <a href="https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/docs/compatibility/compatibility.html">matrizes de compatibilidade ROCm</a>.</p>
+</li>
+<li><p><strong>F02</strong> <a href="https://github.com/hexgrad/kokoro">Kokoro e idiomas</a>, <a href="https://huggingface.co/hexgrad/Kokoro-82M">pesos Kokoro 82M</a> e <a href="https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md">vozes disponíveis</a>.</p>
+</li>
+<li><p><strong>F03</strong> <a href="https://github.com/OHF-Voice/piper1-gpl/blob/main/README.md">Piper mantido pela Open Home Foundation</a>.</p>
+</li>
+<li><p><strong>F04</strong> <a href="https://github.com/resemble-ai/chatterbox">Chatterbox e variantes</a>.</p>
+</li>
+<li><p><strong>F05</strong> <a href="https://huggingface.co/ResembleAI/Chatterbox-Multilingual-pt-br">Chatterbox Multilingual pt-BR</a>.</p>
+</li>
+<li><p><strong>F06</strong> <a href="https://github.com/QwenLM/Qwen3-TTS">Qwen3-TTS e diferenças entre variantes</a>.</p>
+</li>
+<li><p><strong>F07</strong> <a href="https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base">Qwen3-TTS 0.6B Base</a>.</p>
+</li>
+<li><p><strong>F08</strong> <a href="https://github.com/OpenBMB/VoxCPM">VoxCPM2 e opções de inferência local</a>.</p>
+</li>
+<li><p><strong>F09</strong> <a href="https://github.com/fishaudio/fish-speech">Fish Speech</a> e <a href="https://huggingface.co/fishaudio/s2-pro">model card S2 Pro</a>.</p>
+</li>
+<li><p><strong>F10</strong> <a href="https://speech.fish.audio/install/">Instalação e requisitos Fish Audio</a> e <a href="https://speech.fish.audio/inference/">inferência</a>.</p>
+</li>
+<li><p><strong>F11</strong> <a href="https://github.com/k2-fsa/OmniVoice">OmniVoice</a>.</p>
+</li>
+<li><p><strong>F12</strong> <a href="https://github.com/index-tts/index-tts">IndexTTS e idiomas da versão 2.5</a> e <a href="https://github.com/index-tts/index-tts/blob/main/LICENSE">licença</a>.</p>
+</li>
+<li><p><strong>F13</strong> <a href="https://github.com/QwenAudio/CosyVoice">CosyVoice</a>.</p>
+</li>
+<li><p><strong>F14</strong> <a href="https://github.com/SYSTRAN/faster-whisper">Faster-Whisper e inferência CPU</a>.</p>
+</li>
+<li><p><strong>F15</strong> <a href="https://github.com/m-bain/whisperX">WhisperX e alinhamento</a>.</p>
+</li>
+<li><p><strong>F16</strong> <a href="https://github.com/pyannote/pyannote-audio">pyannote e telemetria</a> e <a href="https://huggingface.co/pyannote/speaker-diarization-community-1">Community-1 offline</a>.</p>
+</li>
+<li><p><strong>F17</strong> <a href="https://github.com/Plachtaa/seed-vc">Seed-VC e situação do repositório</a>.</p>
+</li>
+<li><p><strong>F18</strong> <a href="https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI">RVC</a>.</p>
+</li>
+<li><p><strong>F19</strong> <a href="https://github.com/adefossez/demucs">Demucs</a>.</p>
+</li>
+<li><p><strong>F20</strong> <a href="https://github.com/argosopentech/argos-translate">Argos Translate</a>; integração LibreTranslate da referência em R02.</p>
+</li>
+<li><p><strong>F21</strong> <a href="https://huggingface.co/emotion2vec/emotion2vec_plus_large">emotion2vec+ e licença do checkpoint</a> e <a href="https://github.com/ddlBoJack/emotion2vec">repositório oficial</a>.</p>
+</li>
+<li><p><strong>F22</strong> <a href="https://ffmpeg.org/ffmpeg-filters.html">Filtros FFmpeg</a>.</p>
+</li>
+<li><p><strong>F23</strong> <a href="https://www.zimaspace.com/docs/zimaos/features">ZimaOS e importação de Compose</a> e <a href="https://www.zimaspace.com/docs/developer/app-store-compose-x-casaos">referência Docker Compose e x-casaos</a>.</p>
+</li>
+<li><p><strong>F24</strong> <a href="https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia">MDN getUserMedia e contexto seguro</a>.</p>
+</li>
+</ul>
+</article><footer>Sal0 Voz · Guia de implementação v1.2 · Planejamento para uso pessoal<br>Fontes e limitações estão registradas no capítulo 23. O guia não instala nem executa os modelos.</footer></main><script>
+const theme=document.getElementById('theme');theme.addEventListener('click',()=>{const light=document.documentElement.dataset.theme!=='light';document.documentElement.dataset.theme=light?'light':'dark';theme.textContent=light?'Tema escuro':'Tema claro'});document.getElementById('print').addEventListener('click',()=>window.print());document.querySelector('.search').addEventListener('input',e=>{const q=e.target.value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();document.querySelectorAll('.toc a').forEach(a=>a.style.display=a.textContent.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)?'flex':'none')});window.addEventListener('scroll',()=>{let range=document.documentElement.scrollHeight-innerHeight;const width=innerWidth-(innerWidth>1150?292:innerWidth>800?260:0);document.querySelector('.progress').style.width=(range?scrollY/range*width:0)+'px'},{passive:true});const observer=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){document.querySelectorAll('.toc a').forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}}),{rootMargin:'0px 0px -70% 0px'});document.querySelectorAll('h2[id]').forEach(h=>observer.observe(h));
+</script></body></html>

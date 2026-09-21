@@ -1,0 +1,59 @@
+name: sal0-voz
+services:
+  sal0-voz:
+    image: ghcr.io/sal0-apps/sal0-voz:0.1.0
+    container_name: sal0-voz
+    platform: linux/amd64
+    init: true
+    restart: unless-stopped
+    ports:
+      - "7886:7860"
+    volumes:
+      - /DATA/AppData/sal0-voz:/data
+    environment:
+      TZ: America/Sao_Paulo
+      SAL0_DATA: /data
+      SAL0_THREADS: "2"
+      SAL0_MIN_FREE_MB: "512"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      PYANNOTE_METRICS_ENABLED: "0"
+    mem_limit: 10g
+    cpus: 2
+    stop_grace_period: 1m
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health',timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+x-casaos:
+  id: io.github.sal0-apps.sal0-voz
+  main: sal0-voz
+  author: Sal0
+  developer: Sal0
+  category: Media
+  icon: https://raw.githubusercontent.com/Sal0-Apps/Sal0-Voz/main/app/static/icon-512.png
+  title:
+    en_US: Sal0 Voz
+    pt_BR: Sal0 Voz
+  tagline:
+    en_US: Your local voice studio
+    pt_BR: Seu estúdio de voz local
+  description:
+    en_US: Local voice studio with characters, scripts, subtitles and CPU dubbing.
+    pt_BR: Estúdio local com personagens, roteiros, legendas e dublagem em CPU.
+  port_map: "7886"
+  scheme: http
+  index: /
+  architectures: [amd64]
+  version: "0.1.0"
+
