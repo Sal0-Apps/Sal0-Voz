@@ -2,13 +2,21 @@
 
 ## Primeira instalação
 
-O Compose do ZimaOS publica a porta **7886**, preservando a porta 7885 do Karaoke. Confirme o disco antes de usar o caminho `/DATA/AppData/sal0-voz`. Todos os dados e modelos ficam nesse volume; recriar o container não deve apagá-lo.
+O Compose do ZimaOS publica a porta **7886**, preservando a porta 7885 do Karaoke. Confirme o disco antes de usar o caminho `/DATA/AppData/sal0-voz`. Todos os dados, contas, configurações do Telegram e modelos ficam nesse volume; recriar o container não deve apagá-lo.
 
 O entrypoint prepara a pasta e inicia o serviço como usuário não privilegiado (UID 1000). Se restaurar arquivos com outro proprietário, ajuste as permissões do diretório de dados no servidor. Não use container privilegiado.
 
 Crie a senha do proprietário na primeira abertura. A aplicação deve ficar na rede doméstica. HTTPS local permite gravar o microfone de um celular; pelo IP via HTTP, use upload de uma gravação.
 
 A primeira versão inclui uma voz simples de diagnóstico. Ela gera fala real e serve para testar instalação e exportação; não é clonagem nem a qualidade final pretendida.
+
+Na primeira inicialização, o servidor agenda automaticamente `qwen-0.6b` e `whisper-medium`. Os pesos são gravados em `/data/models` no volume do servidor; o navegador nunca baixa nem armazena os modelos. Em **Ajustes**, cada modelo mostra a fila, o progresso, o erro e os botões para iniciar ou cancelar o download. A geração inicia o download do modelo escolhido caso ele ainda não esteja instalado.
+
+## Usuários e Telegram
+
+O primeiro acesso cria uma conta administradora. Em **Ajustes → Usuários**, o administrador cria ou remove contas comuns e administradoras. Cada conta possui seus projetos, mídias, personagens e configuração de Telegram.
+
+Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat ID do destino. O servidor envia a situação do trabalho e anexa os arquivos gerados quando a tarefa termina. O token fica somente no volume `/data`; ele nunca é enviado ao navegador além da máscara parcial.
 
 ## Instalar modelos explicitamente
 
@@ -30,7 +38,7 @@ docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/s
 
 Troque o identificador por `qwen-0.6b`, `whisper-medium` ou `whisper-large-v3`. O comando plan consulta a fonte oficial, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
 
-Os ambientes Python já vêm na imagem. Pesos são baixados separadamente, sem download implícito durante a geração. Um modelo instalado não é sobrescrito automaticamente. Trocar os pesos exige preservar os antigos e atualizar a instalação explicitamente.
+Os ambientes Python já vêm na imagem. Pesos são baixados pelo servidor automaticamente ou pelo painel, sem passar pelo navegador. Um modelo instalado não é sobrescrito automaticamente. Trocar os pesos exige preservar os antigos e atualizar a instalação explicitamente.
 
 Na interface, use Ajustes → Atualizar diagnóstico.
 
