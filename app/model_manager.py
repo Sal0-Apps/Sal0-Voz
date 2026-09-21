@@ -13,7 +13,7 @@ class ModelManager:
     def start(self):
         if self.thread and self.thread.is_alive(): return
         self.thread=threading.Thread(target=self.loop,name="sal0-models",daemon=True); self.thread.start()
-        if os.getenv("SAL0_AUTO_DOWNLOAD_MODELS","1").lower() not in {"0","false","no"}:
+        if os.getenv("SAL0_AUTO_DOWNLOAD_MODELS","0").lower() not in {"0","false","no"}:
             for ident in (x.strip() for x in os.getenv("SAL0_AUTO_MODELS",",".join(DEFAULT_AUTO_MODELS)).split(",")):
                 if ident: self.request(ident,accept_license=True,automatic=True)
     def stop(self):
