@@ -15,12 +15,13 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 5. Para conferir a cadeia de áudio, escolha explicitamente **Voz de diagnóstico** em Criar voz.
 6. Prepare um modelo de clonagem ou transcrição seguindo o [manual](MANUAL.md).
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** testa, constrói e publica `latest`, além da versão fixa `0.1.0` e do SHA do commit para rollback. Se o pacote GHCR ainda estiver privado, o administrador deve torná-lo público na página do pacote para permitir download anônimo pelo ZimaOS.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** testa, constrói e publica `latest`, além da versão fixa `0.1.0` e do SHA do commit para rollback. Ao iniciar, o servidor baixa automaticamente `qwen-0.6b` e `whisper-medium` para o volume `/data`; os downloads também podem ser acompanhados e iniciados em Ajustes. Se o pacote GHCR ainda estiver privado, o administrador deve torná-lo público na página do pacote para permitir download anônimo pelo ZimaOS.
 
 ## O que está implementado
 
 - Identidade Sal0, ícones SVG/PNG/ICO locais, tema claro/escuro e interface para computador/celular.
-- Proprietário com senha local, sessões, proteção de origem e arquivos acessíveis somente após login.
+- Contas de usuários e administradores, sessões, proteção de origem e arquivos acessíveis somente após login.
+- Configuração de Telegram por usuário para receber status e arquivos concluídos diretamente do servidor.
 - Biblioteca com importação validada por FFprobe.
 - Personagens com versões imutáveis; trabalhos preservam uma cópia do personagem usado.
 - Editor com autosave, projetos e histórico de revisões.
@@ -30,7 +31,7 @@ A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow *
 - Adaptadores locais Qwen3-TTS 1.7B/0.6B Base (clonagem) e Faster-Whisper medium/large-v3 CPU INT8.
 - WAV, FLAC, MP3, Opus, SRT/VTT; legendas de TTS com tempos por trecho, sujeitas a revisão.
 - Dublagem por SRT revisado, personagem por fala e ambiente separado opcional. Excesso de duração acima de 10% exige revisão, sem cortar palavras.
-- Download explícito de modelos com revisão fixa, licença, estimativa de tamanho e hashes.
+- Download automático e manual de modelos no próprio servidor, com revisão fixa, licença, estimativa de tamanho e hashes; o navegador recebe apenas o status.
 - Backup/restauração portável por CLI, inventário de hardware e healthcheck.
 
 ## Ainda pendente
