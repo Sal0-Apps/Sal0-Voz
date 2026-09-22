@@ -87,3 +87,26 @@ def test_other_user_cannot_reference_admin_media(owner):
     response = owner.post("/api/projects", json={"name": "Other", "media_id": media["id"]})
     assert response.status_code == 403
     assert owner.get("/api/media").json() == []
+
+
+def test_clone_without_transcript(owner):
+    media = s.put("media", {"audio": True, "path": "media/reference.wav", "owner_username": "admin"})
+    character = owner.post("/api/characters", json={"name": "Voice", "reference_id": media["id"]}).json()
+    project = owner.post("/api/projects", json={"name": "Clone", "text": "Ola", "engine": "qwen-0.6b", "character_id": character["id"]}).json()
+    result = owner.post("/api/projects/" + project["id"] + "/generate")
+    assert result.status_code == 200, result.text
+    assert s.get("job", result.json()["id"])["snapshot"]["segments"][0]["character"]["reference_text"] == ""
+
+
+def test_corrupt_job_does_not_stop_the_queue(data, monkeypatch):
+    import app.worker as module
+    worker = module.Worker()
+    invalid = s.put("job", {"status": "queued", "snapshot": {}})
+    ready = s.put("job", {"status": "queued", "snapshot": {"mode": "tts", "engine": "diagnostic"}})
+    monkeypatch.setattr(module, "require", lambda *args: {"id": "diagnostic"})
+    monkeypatch.setattr(worker, "execute", lambda job: None)
+    monkeypatch.setattr(worker, "check", lambda ident: None)
+    monkeypatch.setattr(module, "notify_job", lambda job: worker.stop_event.set())
+    worker.loop()
+    assert s.get("job", invalid["id"])["status"] == "failed"
+    assert s.get("job", ready["id"])["status"] == "completed"

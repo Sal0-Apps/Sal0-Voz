@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.2.0
+# Manual — Sal0 Voz 0.2.1
 
 ## Primeira instalação
 
@@ -21,7 +21,7 @@ Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat I
 ## Criar sem configurar o motor
 
 - **Voz simples:** escreva o texto e clique em Gerar voz. Disponível imediatamente, com timbre robótico para testar a instalação.
-- **Clonar uma voz:** escolha essa opção, envie o áudio e escreva sua transcrição; clique em Salvar e usar esta voz. O personagem é criado automaticamente no servidor.
+- **Clonar uma voz:** escolha essa opção, envie o áudio e clique em Gerar voz; a referência é salva automaticamente, sem exigir transcrição. O personagem é criado automaticamente no servidor.
 - **Gerar legendas:** envie áudio ou vídeo na própria tela, escolha o idioma e gere.
 - O rascunho é salvo automaticamente no servidor e o projeto mais recente é reaberto ao entrar. O resultado aparece na tela Criar e na Biblioteca.
 - Qwen 0.6B e Whisper medium começam a baixar na inicialização, inclusive ao atualizar uma instalação antiga sem as novas variáveis. Downloads interrompidos são retomados após reiniciar. Se você cancelou um download, retome em Ajustes.
@@ -63,7 +63,7 @@ Na interface, use Ajustes → Atualizar diagnóstico.
 ## Personagens e clonagem
 
 1. Importe uma referência de áudio limpa na Biblioteca.
-2. Crie um personagem, informe a origem, selecione o áudio e transcreva exatamente o conteúdo.
+2. Crie um personagem, informe a origem, selecione o áudio; a transcrição é opcional.
 3. Em Criar voz, selecione o personagem, idioma e Qwen instalado.
 4. Comece com uma frase curta. Ouça e avalie conteúdo, semelhança e naturalidade.
 

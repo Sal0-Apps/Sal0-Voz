@@ -40,7 +40,7 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: |
-            ghcr.io/sal0-apps/sal0-voz:0.2.0
+            ghcr.io/sal0-apps/sal0-voz:0.2.1
             ghcr.io/sal0-apps/sal0-voz:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -72,8 +72,8 @@ jobs:
           docker exec sal0-model-smoke sh -c 'tail -n 60 /data/models/*/download.log' || true
       - name: Publicar imagem versionada
         run: |
-          docker push ghcr.io/sal0-apps/sal0-voz:0.2.0
+          docker push ghcr.io/sal0-apps/sal0-voz:0.2.1
           docker push ghcr.io/sal0-apps/sal0-voz:latest
-          docker tag ghcr.io/sal0-apps/sal0-voz:0.2.0 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
+          docker tag ghcr.io/sal0-apps/sal0-voz:0.2.1 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
           docker push ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
 

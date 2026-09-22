@@ -448,8 +448,8 @@ def snapshot(project, owner=None):
             segment["character"] = character["versions"][-1]
         if project["engine"].startswith("qwen-"):
             character = segment.get("character")
-            if not character or not character["reference"] or not character["reference_text"].strip():
-                raise ValueError("Clonagem exige personagem com áudio de referência e sua transcrição.")
+            if not character or not character.get("reference"):
+                raise ValueError("Selecione um áudio de referência para clonar a voz.")
     return value
 
 @app.post("/api/projects/{ident}/generate")
@@ -477,6 +477,12 @@ def job_action(ident: str, action: str, request: Request):
         allowed = {"pause": ("queued", "running"), "resume": ("paused", "failed", "cancelled"), "cancel": ("queued", "running", "paused", "failed")}
         if action not in allowed or job["status"] not in allowed[action]:
             raise HTTPException(409, "Transição não permitida para este trabalho.")
+        if action == "resume":
+            project = job.get("snapshot", {})
+            engine = project.get("asr_engine") if project.get("mode") == "asr" else project.get("engine")
+            download = model_manager.status(engine) if engine else None
+            if download and download.get("status") in {"failed", "cancelled"}:
+                model_manager.request(engine, accept_license=True, automatic=True)
         status = {"pause": "paused", "resume": "queued", "cancel": "cancelled"}[action]
         job = worker.update(ident, status=status, stage={"paused": "Pausado", "queued": "Aguardando retomada", "cancelled": "Cancelado"}[status], error=None)
     worker.wake.set()

@@ -6,11 +6,13 @@ import pytest
 from app import storage as s
 from app.worker import Worker, Interrupted
 
-def test_resume_after_restart(data):
+def test_resume_after_restart(data, monkeypatch):
     job = s.put("job", {"status":"running","name":"restart","snapshot":{},"progress":25})
     worker = Worker()
     worker.stop_event.set()
+    monkeypatch.setattr(worker, "loop", lambda: None)
     worker.start()
+    assert not worker.stop_event.is_set()
     assert s.get("job", job["id"])["status"] == "queued"
     worker.stop()
 
@@ -57,3 +59,30 @@ def test_dubbing_preserves_video_duration(data):
     assert abs(info["duration"]-6) < 0.2
     assert result["cues"][0]["start_ms"] == 2000
 
+
+
+def test_reclaimable_cache_does_not_pause_work(data, monkeypatch):
+    import app.worker as module
+    from types import SimpleNamespace
+    readings = {"memory.max": "1000", "memory.current": "950", "memory.stat": "inactive_file 500"}
+    class Cgroup:
+        def __truediv__(self, name):
+            return SimpleNamespace(read_text=lambda: readings[name])
+    monkeypatch.setattr(module, "Path", lambda name: Cgroup())
+    monkeypatch.setattr(module.psutil, "virtual_memory", lambda: SimpleNamespace(available=1024**3))
+    worker = Worker()
+    job = s.put("job", {"status": "running"})
+    worker.check(job["id"])
+    assert s.get("job", job["id"])["status"] == "running"
+    readings["memory.stat"] = "inactive_file 0"
+    with pytest.raises(Interrupted):
+        worker.check(job["id"])
+    assert s.get("job", job["id"])["status"] == "paused"
+
+
+def test_process_failure_includes_real_cause(data):
+    import sys
+    job = s.put("job", {"status": "running"})
+    (data / "jobs" / job["id"]).mkdir()
+    with pytest.raises(ValueError, match="specific-engine-error"):
+        Worker().run(job["id"], [sys.executable, "-c", "raise RuntimeError('specific-engine-error')"])

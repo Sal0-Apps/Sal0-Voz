@@ -27,6 +27,9 @@ class Worker:
         self.thread = None
 
     def start(self):
+        if self.thread and self.thread.is_alive():
+            return
+        self.stop_event.clear()
         for job in s.listing("job", limit=-1):
             if job["status"] == "running":
                 job.update(status="queued", stage="Retomando após reinício")
@@ -60,7 +63,9 @@ class Worker:
         try:
             limit = (cgroup / "memory.max").read_text().strip()
             used = int((cgroup / "memory.current").read_text())
-            if limit != "max" and used > int(limit)*0.94:
+            memory_stats = dict(line.split() for line in (cgroup / "memory.stat").read_text().splitlines())
+            working_set = max(0, used - int(memory_stats.get("inactive_file", 0)))
+            if limit != "max" and working_set > int(limit)*0.94:
                 self.update(ident, status="paused", stage="Memória do container próxima do limite")
                 raise Interrupted()
         except (OSError, ValueError):
@@ -81,7 +86,12 @@ class Worker:
                     self.check(ident)
                     self.stop_event.wait(0.4)
                 if process.returncode:
-                    raise ValueError("O processamento falhou. Consulte o diagnóstico do trabalho; entradas e checkpoints foram preservados.")
+                    with log.open("rb") as stream:
+                        stream.seek(max(0, log.stat().st_size - 4000))
+                        detail = stream.read().decode("utf-8", errors="replace").strip()
+                    reason = {-9: "O sistema encerrou o processo; verifique memória e limites do container.",
+                              -4: "O motor encontrou uma instrução incompatível com esta CPU."}.get(process.returncode, "O motor não conseguiu concluir o processamento.")
+                    raise ValueError(f"{reason} Código {process.returncode}. {detail[-1200:]}")
             finally:
                 if process.poll() is None:
                     try:
@@ -101,21 +111,27 @@ class Worker:
                 jobs = [x for x in reversed(s.listing("job", limit=-1)) if x["status"] == "queued"]
                 job = None
                 for candidate in jobs:
-                    project = candidate["snapshot"]
-                    engine = project["asr_engine"] if project["mode"] == "asr" else project["engine"]
                     try:
-                        model = require(engine, "asr" if project["mode"] == "asr" else "tts")
-                    except ValueError:
-                        download = model_manager.status(engine) or {}
-                        if download.get("status") in {"failed", "cancelled"}:
-                            self.update(candidate["id"], status="failed", stage="Modelo indisponível. Em Ajustes, retome o download; depois retome este trabalho.", error=download.get("error"))
-                        else:
+                        project = candidate["snapshot"]
+                        engine = project["asr_engine"] if project["mode"] == "asr" else project["engine"]
+                        try:
+                            model = require(engine, "asr" if project["mode"] == "asr" else "tts")
+                        except ValueError as exc:
+                            if engine == "diagnostic":
+                                raise
+                            download = model_manager.status(engine) or {}
+                            if download.get("status") in {"failed", "cancelled"}:
+                                raise ValueError("Download do modelo interrompido. Retome em Ajustes e retome este trabalho. " + (download.get("error") or ""))
+                            if download.get("status") not in {"queued", "downloading"}:
+                                model_manager.request(engine, accept_license=True, automatic=True)
                             self.update(candidate["id"], stage="Aguardando download do modelo no servidor")
-                        continue
-                    project["model"] = model
-                    self.update(candidate["id"], snapshot=project)
-                    job = candidate
-                    break
+                            continue
+                        project["model"] = model
+                        self.update(candidate["id"], snapshot=project)
+                        job = candidate
+                        break
+                    except Exception as exc:
+                        self.update(candidate["id"], status="failed", stage="Não foi possível preparar este trabalho: " + str(exc), error=str(exc))
                 if job:
                     self.update(job["id"], status="running", stage="Preparando")
             if not job:
@@ -185,7 +201,7 @@ class Worker:
                         text_file.write_text(segment["text"], encoding="utf-8")
                         self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
                     else:
-                        self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["reference"]["path"])), "reference_text": character["reference_text"], "output": str(raw)}, folder)
+                        self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["reference"]["path"])), "reference_text": character.get("reference_text", ""), "output": str(raw)}, folder)
                     self.run(ident, ffargs("-i", raw, "-af", f"atempo={segment['rate']},volume={segment['volume']}dB", "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", tmp))
                 with wave.open(str(tmp), "rb") as wav:
                     duration = wav.getnframes()/wav.getframerate()

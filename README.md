@@ -4,7 +4,7 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.2.0 — primeira versão funcional, com recursos avançados ainda em validação.** Não representa a conclusão integral do guia nem uma qualidade equivalente ao ElevenLabs.
+**Versão 0.2.1 — primeira versão funcional, com recursos avançados ainda em validação.** Não representa a conclusão integral do guia nem uma qualidade equivalente ao ElevenLabs.
 
 ## Instalar no ZimaOS
 
@@ -13,10 +13,10 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 3. Inicie e abra **http://IP-DO-ZIMAOS:7886**.
 4. Crie sua senha local.
 5. Em **Criar voz**, escreva um texto e gere com a **Voz simples**, pronta para testar.
-6. Para clonagem, escolha **Clonar uma voz**, envie uma gravação e sua transcrição na mesma tela. Para legendas, envie o áudio diretamente em **Gerar legendas**.
+6. Para clonagem, escolha **Clonar uma voz**, envie uma gravação na mesma tela e gere, sem precisar transcrevê-la. Para legendas, envie o áudio diretamente em **Gerar legendas**.
 7. Acompanhe o preparo automático dos modelos no aviso da tela inicial ou em **Ajustes**. Trabalhos enviados durante o download aguardam e começam automaticamente.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** testa, constrói e publica `latest`, além da versão fixa `0.2.0` e do SHA do commit para rollback. Ao iniciar, o servidor baixa automaticamente `qwen-0.6b` e `whisper-medium` para o volume `/data`; os downloads também podem ser acompanhados e iniciados em Ajustes. Se o pacote GHCR ainda estiver privado, o administrador deve torná-lo público na página do pacote para permitir download anônimo pelo ZimaOS.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** testa, constrói e publica `latest`, além da versão fixa `0.2.1` e do SHA do commit para rollback. Ao iniciar, o servidor baixa automaticamente `qwen-0.6b` e `whisper-medium` para o volume `/data`; os downloads também podem ser acompanhados e iniciados em Ajustes. Se o pacote GHCR ainda estiver privado, o administrador deve torná-lo público na página do pacote para permitir download anônimo pelo ZimaOS.
 
 ## O que está implementado
 

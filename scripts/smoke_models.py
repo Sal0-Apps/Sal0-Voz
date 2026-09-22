@@ -50,11 +50,11 @@ def main():
         time.sleep(15)
     else:raise AssertionError("Automatic model download timed out")
     assert wait_job(transcription)["cues"], "Whisper produced no subtitles"
-    character=api("/api/characters", {"name":"Synthetic test reference", "language":"en-US", "reference_id":media["id"], "reference_text":reference_text})
-    clone=wait_job(job({"name":"Real Qwen CPU", "engine":"qwen-0.6b", "language":"en-US", "text":"Hello from Sal0.", "character_id":character["id"]}))
+    character=api("/api/characters", {"name":"Synthetic test reference", "language":"en-US", "reference_id":media["id"]})
+    clone=wait_job(job({"name":"Real Qwen CPU", "engine":"qwen-0.6b", "language":"pt-BR", "text":"Olá, esta é minha voz.", "character_id":character["id"]}))
     with opener.open(BASE+"/api/jobs/"+clone["id"]+"/output/0") as response:
         result=response.read()
     assert result[:4]==b"RIFF" and len(result)>1000
-    print("PASS: automatic downloads, queued ASR, real Whisper and Qwen CPU audio",flush=True)
+    print("PASS: automatic downloads, queued ASR, real Whisper and Qwen CPU audio without a reference transcript",flush=True)
 
 if __name__=="__main__":main()

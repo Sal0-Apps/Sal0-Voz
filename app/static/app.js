@@ -71,7 +71,7 @@ async function persistProject(message=true){
 $("save-project").addEventListener("click",safe(()=>saveProject()));
 $("project-form").addEventListener("submit",safe(async event=>{
   event.preventDefault();$("generate").disabled=true;
-  try{const project=await saveProject(false);await post("/projects/"+project.id+"/generate");toast("Trabalho adicionado à fila.");await loadJobs();}finally{$("generate").disabled=false;}
+  try{if(state.mode!=="asr" && $("engine").value.startsWith("qwen-") && $("reference-upload").files[0])await saveQuickReference();const project=await saveProject(false);await post("/projects/"+project.id+"/generate");toast("Trabalho adicionado à fila.");await loadJobs();}finally{$("generate").disabled=false;}
 }));
 $("validate-script").addEventListener("click",safe(async()=>{const result=await post("/script/validate",payload());toast(result.segments.length+" trechos válidos. Pausas e metadados não serão falados.");}));
 $("rate").addEventListener("input",()=>{$("rate-value").textContent=Number($("rate").value).toFixed(2)+"×";});
@@ -101,6 +101,7 @@ async function loadModels(){
 }
 async function loadProject(p){
   clearTimeout(saveTimer);await saveChain.catch(()=>{});state.projectId=p.id||null;state.cues=p.cues||[];
+  $("reference-upload").value="";$("quick-transcript").value="";$("reference-status").textContent="";
   for(const [key,id] of Object.entries({name:"project-name",text:"script",language:"language",engine:"engine",asr_engine:"asr-engine",character_id:"character",media_id:"source-media",background_id:"background-media",rate:"rate",format:"format"})){
     if(p[key]!==undefined)$(id).value=p[key]??"";
   }
@@ -167,9 +168,10 @@ function renderJobs(){
   }));
   renderResults();renderCurrentResult();
 }
-async function loadJobs(){state.jobs=await api("/jobs");renderJobs();}
+async function loadJobs(){const jobs=await api("/jobs");if(JSON.stringify(jobs)!==JSON.stringify(state.jobs)){state.jobs=jobs;renderJobs();}}
 function renderResults(){
   const completed=state.jobs.filter(x=>x.status==="completed");
+  const signature=JSON.stringify(completed);if($("result-list").dataset.rendered===signature)return;$("result-list").dataset.rendered=signature;
   $("result-list").innerHTML=completed.length?completed.map(j=>{
     const playable=j.outputs.findIndex(x=>["audio","video"].includes(x.type));const type=playable>=0?j.outputs[playable].type:null;
     return '<article class="card item-card"><h3>'+escapeHTML(j.name)+'</h3><span class="badge">Concluído · revisão recomendada</span>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+j.id+'/output/'+playable+'"></'+type+'>':"")+'<div class="item-actions">'+outputHTML(j)+'</div></article>';
@@ -232,7 +234,8 @@ async function start(){
   await loadModels();refreshSelectors();renderCharacters();renderProjects();renderMedia();await loadJobs();
   if(!state.projectId && state.projects.length)await loadProject(state.projects[0]);
   updateVoiceChoice();
-  modelTimer=setInterval(()=>{loadModels().then(()=>{if(!$("view-settings").hidden)loadDiagnostics();}).catch(()=>{});},5000);
+  modelTimer=setInterval(()=>{Promise.all([loadModels(),loadJobs(),loadWorkerStatus()]).then(()=>{if(!$("view-settings").hidden)loadDiagnostics();}).catch(()=>{});},5000);
+  await loadWorkerStatus();
   events=new EventSource("/api/events/stream");events.onmessage=e=>{state.jobs=JSON.parse(e.data);renderJobs();};
 }
 safe(start)();
@@ -256,17 +259,19 @@ $("source-upload").onchange=safe(async e=>{
   if(!e.target.files[0])return;
   const m=await upload(e.target.files[0]);$("source-media").value=m.id;saveDraft();e.target.value="";
 });
-$("use-reference").onclick=safe(async()=>{
+async function saveQuickReference(){
   const file=$("reference-upload").files[0], transcript=$("quick-transcript").value.trim();
-  if(!file||!transcript)throw Error("Envie o áudio e escreva a transcrição para salvar sua voz.");
+  if(!file)throw Error("Selecione um áudio de referência.");
   $("use-reference").disabled=true;$("reference-status").textContent="Enviando referência para o servidor…";
   try{
     const m=await upload(file);
-    const c=await post("/characters",{name:file.name,reference_id:m.id,reference_text:transcript,language:$("language").value,origin:"own"});
+    const c=await post("/characters",{name:file.name.slice(0,120),reference_id:m.id,reference_text:transcript,language:$("language").value,origin:"own"});
     state.characters.unshift(c);refreshSelectors();renderCharacters();$("character").value=c.id;
-    $("reference-status").textContent="Voz salva. Agora escreva seu texto e clique em Gerar voz.";saveDraft();
+    $("reference-upload").value="";$("quick-transcript").value="";
+    $("reference-status").textContent="Áudio salvo no servidor. Sua voz está selecionada.";saveDraft();
   }finally{$("use-reference").disabled=false;}
-});
+}
+$("use-reference").onclick=safe(saveQuickReference);
 function renderPreparation(){
   const active=state.models.filter(m=>["queued","downloading"].includes(m.download?.status));
   const failed=state.models.filter(m=>m.download?.status==="failed");
@@ -274,8 +279,20 @@ function renderPreparation(){
 }
 function renderCurrentResult(){
   const job=state.jobs.find(j=>j.project_id===state.projectId)||state.jobs[0];
-  const box=$("current-result");box.hidden=!job;if(!job)return;
+  const box=$("current-result");box.hidden=!job;if(!job){delete box.dataset.rendered;return;}
+  const signature=JSON.stringify(job);if(box.dataset.rendered===signature)return;box.dataset.rendered=signature;
   const i=(job.outputs||[]).findIndex(o=>["audio","video"].includes(o.type));
   const type=i>=0?job.outputs[i].type:null;
-  box.innerHTML='<h2>'+escapeHTML(job.name)+'</h2><p>'+escapeHTML(statuses[job.status]+' · '+job.stage)+'</p><progress max="100" value="'+(job.progress||0)+'"></progress>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+i+'"></'+type+'>':'')+'<div class="item-actions">'+outputHTML(job)+'</div>';
+  box.innerHTML='<h2>'+escapeHTML(job.name)+'</h2><p class="job-error">'+escapeHTML(statuses[job.status]+' · '+job.stage)+'</p><progress max="100" value="'+(job.progress||0)+'"></progress>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+i+'"></'+type+'>':'')+'<div class="item-actions">'+outputHTML(job)+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="secondary" id="retry-current">Tentar novamente</button>':'')+'<button type="button" class="quiet" id="diagnose-current">Ver diagnóstico</button></div>';
+  $("diagnose-current").onclick=safe(async()=>{$("job-log").textContent=(await api("/jobs/"+job.id+"/log")).text;$("log-dialog").showModal();});
+  if($("retry-current"))$("retry-current").onclick=safe(async()=>{await post("/jobs/"+job.id+"/resume");await loadJobs();});
+}
+
+async function loadWorkerStatus(){
+  const response=await fetch("/health",{cache:"no-store"});
+  if(!response.ok)throw Error("Servidor indisponível.");
+  const status=await response.json();
+  $("worker-warning").hidden=!!status.worker;
+  $("worker-warning").textContent="O executor está parado. Os trabalhos não podem iniciar. Reinicie o aplicativo no servidor e consulte Ajustes se o aviso continuar.";
+  $("version").textContent=status.version;
 }

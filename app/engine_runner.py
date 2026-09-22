@@ -14,10 +14,11 @@ def main():
         from qwen_tts import Qwen3TTSModel
         torch.set_num_threads(threads)
         model = Qwen3TTSModel.from_pretrained(request["model_path"], device_map="cpu", dtype=torch.float32, attn_implementation="eager", local_files_only=True)
+        reference_text = (request.get("reference_text") or "").strip()
         wavs, sr = model.generate_voice_clone(
             text=request["text"], language={"pt-BR": "Portuguese", "en-US": "English"}[request["language"]],
-            ref_audio=request["reference"], ref_text=request["reference_text"],
-            x_vector_only_mode=False, max_new_tokens=4096,
+            ref_audio=request["reference"], ref_text=reference_text or None,
+            x_vector_only_mode=not bool(reference_text), max_new_tokens=4096,
         )
         sf.write(request["output"], wavs[0], sr)
     elif engine.startswith("whisper-"):

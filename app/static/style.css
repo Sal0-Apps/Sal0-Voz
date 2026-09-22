@@ -7,3 +7,5 @@
 #preparation{margin-bottom:20px}#current-result{margin-top:24px}#quick-reference{margin:16px 0}.download-error{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}#current-result audio,#current-result video{width:100%;margin:16px 0}.mode-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 
 @media(max-width:780px){.mode-grid{grid-template-columns:1fr}.voice-card{display:block}#quick-reference input{max-width:100%}}
+
+.job-error{white-space:pre-wrap;overflow-wrap:anywhere}#quick-reference details{margin:12px 0}#worker-warning{margin-bottom:16px}
