@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import __version__, storage as s
-from .catalog import installed, require
+from .catalog import CATALOG, installed, require
 from .media import probe
 from .model_manager import manager as model_manager
 from .script import compile_script, parse_srt, validate_cues, subtitles
@@ -32,7 +32,8 @@ STATIC = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app):
     s.init()
-    model_manager.start()
+    if os.getenv("SAL0_DISABLE_WORKER") != "1":
+        model_manager.start()
     if os.getenv("SAL0_DISABLE_WORKER") != "1":
         worker.start()
     yield
@@ -150,12 +151,14 @@ def login(body: Password, request: Request):
             valid = hmac.compare_digest(user["hash"], password_hash(body.password, user["salt"]))
             role = user.get("role", "user")
         except KeyError:
-            valid = body.username == "admin" and bool(saved) and hmac.compare_digest(saved["hash"], password_hash(body.password, saved["salt"]))
+            valid = not s.listing("user", limit=1) and body.username == "admin" and bool(saved) and hmac.compare_digest(saved["hash"], password_hash(body.password, saved["salt"]))
             role = "admin"
         if not valid:
             attempts[ip] = recent + [time.time()]
             raise HTTPException(401, "Senha incorreta.")
         attempts.pop(ip, None)
+    if valid and not s.listing("user", limit=1):
+        s.put("user", {"id": body.username, "username": body.username, "role": role, **saved})
     return session_response(body.username, role)
 
 @app.post("/api/auth/logout")
@@ -237,6 +240,9 @@ def delete_user(username: str, request: Request):
     s.get("user", username)
     with s.db() as conn:
         conn.execute("DELETE FROM records WHERE kind='user' AND id=?", (username,))
+        for session in s.listing("session", limit=-1):
+            if session.get("username") == username:
+                conn.execute("DELETE FROM records WHERE kind='session' AND id=?", (session["id"],))
     return {"ok": True}
 
 @app.get("/api/diagnostics")
@@ -245,7 +251,7 @@ def diagnostics():
     return {"version": __version__, "cpu": "CPU", "threads": int(os.getenv("SAL0_THREADS", "2")), "memory_total": memory.total, "memory_available": memory.available, "disk_free": disk.free, "ffmpeg": bool(shutil.which("ffmpeg") or os.getenv("SAL0_FFMPEG")), "ffprobe": bool(shutil.which("ffprobe") or os.getenv("SAL0_FFPROBE")), "platform": os.name, "validation": "Benchmark do A10 e comparação ElevenLabs pendentes", "features": {"voice_conversion": False, "automatic_emotion": False, "automatic_translation": False, "automatic_separation": False}}
 
 def visible(value, user):
-    return user.get("role") == "admin" or not value.get("owner_username") or value.get("owner_username") == user.get("username")
+    return user.get("role") == "admin" or value.get("owner_username") == user.get("username")
 
 
 @app.get("/api/{kind}")
@@ -306,6 +312,8 @@ def save_character(body, previous=None, owner=None):
     if value["language"] not in ("pt-BR", "en-US") or value["origin"] not in ("own", "authorized", "licensed"):
         raise ValueError("Idioma ou origem inválidos.")
     reference = s.get("media", body.reference_id) if body.reference_id else None
+    if reference and not visible(reference, owner):
+        raise HTTPException(403, "Arquivo pertence a outro usuário.")
     if reference and (not reference.get("audio") or reference.get("video")):
         raise ValueError("Selecione uma referência somente de áudio.")
     version = {"number": len(previous.get("versions", []))+1 if previous else 1, **value, "reference": reference}
@@ -342,6 +350,9 @@ def project_data(body, ident=None, owner=None):
         raise ValueError("Modo indisponível nesta versão.")
     if body.language not in ("pt-BR", "en-US") or body.format not in ("wav", "flac", "mp3", "opus"):
         raise ValueError("Idioma ou formato inválido.")
+    for kind, ref in [("character", body.character_id), ("media", body.media_id), ("media", body.background_id)] + [("character", cue.get("character_id")) for cue in body.cues]:
+        if ref and owner and not visible(s.get(kind, ref), owner):
+            raise HTTPException(403, "Referência pertence a outro usuário.")
     old = s.get("project", ident) if ident else None
     value = {**body.model_dump(), "owner_username": old.get("owner_username") if old else owner["username"], "id": ident or s.uid(), "revision": old["revision"]+1 if old else 1}
     if old:
@@ -378,18 +389,33 @@ def project_revisions(ident: str, request: Request):
 def validate_script(body: Project):
     return {"segments": compile_script(body.text, body.language, body.character_id, body.rate), "capabilities": {"pause": "exact", "rate": "postprocessing", "volume": "postprocessing", "emotion": "unavailable", "reactions": "unavailable"}}
 
-def snapshot(project):
+def model_for_job(ident, kind):
+    if ident not in CATALOG or CATALOG[ident]["kind"] != kind:
+        raise ValueError("Motor incompatível com esta operação.")
+    try:
+        return require(ident, kind)
+    except ValueError:
+        if "repo" not in CATALOG[ident]:
+            raise
+        return {"id": ident, **CATALOG[ident], "available": False}
+
+def snapshot(project, owner=None):
+    def owned(kind, ident):
+        item = s.get(kind, ident)
+        if owner and not visible(item, owner):
+            raise HTTPException(403, "Referência pertence a outro usuário.")
+        return item
     value = dict(project)
     if project["mode"] in ("asr", "dub"):
         if not project["media_id"]:
             raise ValueError("Selecione a mídia original.")
-        value["media"] = s.get("media", project["media_id"])
+        value["media"] = owned("media", project["media_id"])
         if not value["media"].get("audio"):
             raise ValueError("A mídia precisa ter uma faixa de áudio.")
     if project["mode"] == "asr":
-        value["model"] = require(project["asr_engine"], "asr")
+        value["model"] = model_for_job(project["asr_engine"], "asr")
         return value
-    value["model"] = require(project["engine"], "tts")
+    value["model"] = model_for_job(project["engine"], "tts")
     if project["mode"] == "dub":
         if not value["media"].get("video"):
             raise ValueError("Selecione um vídeo para dublar.")
@@ -408,7 +434,7 @@ def snapshot(project):
                 raise ValueError("Divida as falas longas em mais de uma legenda antes de dublar.")
             value["segments"].append({**parsed[0], "start_ms": cue["start_ms"], "end_ms": cue["end_ms"]})
         if project["background_id"]:
-            value["background"] = s.get("media", project["background_id"])
+            value["background"] = owned("media", project["background_id"])
             if not value["background"].get("audio") or value["background"].get("video"):
                 raise ValueError("O ambiente separado deve ser um arquivo de áudio.")
     else:
@@ -418,7 +444,7 @@ def snapshot(project):
             continue
         char_id = segment.get("character_id")
         if char_id:
-            character = s.get("character", char_id)
+            character = owned("character", char_id)
             segment["character"] = character["versions"][-1]
         if project["engine"].startswith("qwen-"):
             character = segment.get("character")
@@ -432,16 +458,12 @@ def generate(ident: str, request: Request):
     project_record = s.get("project", ident)
     if not visible(project_record, owner):
         raise HTTPException(403, "Projeto pertence a outro usuário.")
-    try:
-        project = snapshot(project_record)
-    except ValueError as exc:
-        engine = project_record.get("asr_engine") if project_record.get("mode") == "asr" else project_record.get("engine")
-        if engine and "não instalado" in str(exc):
-            model_manager.request(engine, accept_license=True, automatic=True)
-            raise HTTPException(400, f"Modelo {engine} não instalado; o download começou no servidor. Aguarde a conclusão e gere novamente.")
-        raise
-    job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["name"], "snapshot": project, "status": "queued", "stage": "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
-    notify_job(job)
+    project = snapshot(project_record, owner)
+    waiting = project["model"].get("available") is False
+    if waiting:
+        model_manager.request(project["model"]["id"], accept_license=True, automatic=True)
+    job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["name"], "snapshot": project, "status": "queued", "stage": "Aguardando modelo — o trabalho começará automaticamente" if waiting else "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
+    threading.Thread(target=notify_job, args=(job,), daemon=True).start()
     (s.DATA / "jobs" / job["id"]).mkdir(parents=True, exist_ok=True)
     worker.wake.set()
     return {"id": job["id"], "status": job["status"]}
@@ -491,7 +513,7 @@ def update_cues(ident: str, body: Cues, request: Request):
     if not visible(project, current_user(request)):
         raise HTTPException(403, "Projeto pertence a outro usuário.")
     project["cues"] = validate_cues(body.cues)
-    return project_data(Project(**project), ident)
+    return project_data(Project(**project), ident, current_user(request))
 
 @app.get("/api/projects/{ident}/subtitles/{extension}")
 def export_cues(ident: str, extension: str, request: Request):
@@ -506,10 +528,15 @@ def export_cues(ident: str, extension: str, request: Request):
 @app.get("/api/events/stream")
 async def events(request: Request):
     import asyncio
+    owner = current_user(request)
     async def stream():
         previous = ""
         while not await request.is_disconnected():
-            jobs = [{k: v for k, v in x.items() if k != "snapshot"} for x in s.listing("job", limit=50)]
+            try:
+                current_user(request)
+            except HTTPException:
+                return
+            jobs = [{k: v for k, v in x.items() if k != "snapshot"} for x in s.listing("job", limit=50) if visible(x, owner)]
             data = json.dumps(jobs, ensure_ascii=False)
             if data != previous:
                 yield "data: " + data + "\n\n"

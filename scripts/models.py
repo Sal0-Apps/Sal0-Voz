@@ -45,10 +45,9 @@ def main():
     plan_path = folder / "download-plan.json"
     if not plan_path.exists():
         parser.error("Execute plan primeiro para fixar revisão e tamanho.")
-    if (folder / "manifest.json").exists():
-        raise SystemExit("Modelo já instalado. Preserve esta revisão; remova a instalação explicitamente antes de trocar os pesos.")
     plan = json.loads(plan_path.read_text())
-    if shutil.disk_usage(folder).free < plan["bytes"] + 512*1024**2:
+    existing = sum(min((folder / name).stat().st_size, size) for name, size in plan["files"].items() if (folder / name).is_file())
+    if shutil.disk_usage(folder).free < max(0, plan["bytes"] - existing) + 512*1024**2:
         raise SystemExit("Espaço livre insuficiente para o plano.")
     snapshot_download(repo_id=plan["repo"], revision=plan["revision"], local_dir=str(folder), allow_patterns=list(plan["files"]))
     files = {}

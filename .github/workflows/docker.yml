@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
   packages: write
+concurrency:
+  group: sal0-voz-release
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -20,6 +23,7 @@ jobs:
       - run: docker compose -f compose.yaml config -q && docker compose -f docker-compose.yml config -q
       - run: node --check app/static/app.js
   docker:
+    timeout-minutes: 60
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -36,13 +40,13 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: |
-            ghcr.io/sal0-apps/sal0-voz:0.1.0
+            ghcr.io/sal0-apps/sal0-voz:0.2.0
             ghcr.io/sal0-apps/sal0-voz:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Testar imagem
         run: |
-          docker run -d --name sal0-smoke --network none ghcr.io/sal0-apps/sal0-voz:latest
+          docker run -d --name sal0-smoke --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
           for i in $(seq 1 30); do
             if docker exec sal0-smoke python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
             sleep 2
@@ -52,10 +56,24 @@ jobs:
           docker exec sal0-smoke /opt/engines/whisper/bin/python -c "from faster_whisper import WhisperModel"
           docker exec sal0-smoke python -c "from pathlib import Path; status=Path('/proc/1/status').read_text(); assert any(x.startswith('Uid:\t1000') for x in status.splitlines()), status"
           docker stop sal0-smoke
+      - name: Validar preparo automatico e inferencia real
+        run: |
+          docker run -d --name sal0-model-smoke ghcr.io/sal0-apps/sal0-voz:latest
+          for i in $(seq 1 30); do
+            if docker exec sal0-model-smoke python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
+            sleep 2
+          done
+          docker exec sal0-model-smoke python -m scripts.smoke_models
+          docker stop sal0-model-smoke
+      - name: Diagnostico em caso de falha
+        if: failure()
+        run: |
+          docker logs sal0-model-smoke || true
+          docker exec sal0-model-smoke sh -c 'tail -n 60 /data/models/*/download.log' || true
       - name: Publicar imagem versionada
         run: |
-          docker push ghcr.io/sal0-apps/sal0-voz:0.1.0
+          docker push ghcr.io/sal0-apps/sal0-voz:0.2.0
           docker push ghcr.io/sal0-apps/sal0-voz:latest
-          docker tag ghcr.io/sal0-apps/sal0-voz:0.1.0 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
+          docker tag ghcr.io/sal0-apps/sal0-voz:0.2.0 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
           docker push ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
 

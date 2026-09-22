@@ -29,7 +29,7 @@ def test_unavailable_model_does_not_fake_success(owner):
     p = owner.post("/api/projects", json={"name":"Clone","text":"Olá","engine":"qwen-1.7b"}).json()
     result = owner.post("/api/projects/"+p["id"]+"/generate")
     assert result.status_code == 400
-    assert "não instalado" in result.json()["detail"]
+    assert "referência" in result.json()["detail"]
     assert owner.get("/api/jobs").json() == []
 
 def test_script_upload_and_safe_download(owner, data):

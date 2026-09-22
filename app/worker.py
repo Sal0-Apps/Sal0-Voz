@@ -10,7 +10,8 @@ from pathlib import Path
 
 import psutil
 from . import storage as s
-from .catalog import runtime
+from .catalog import runtime, require
+from .model_manager import manager as model_manager
 from .media import ffargs
 from .script import subtitles
 from .telegram import notify_job
@@ -98,7 +99,23 @@ class Worker:
         while not self.stop_event.is_set():
             with self.lock:
                 jobs = [x for x in reversed(s.listing("job", limit=-1)) if x["status"] == "queued"]
-                job = jobs[0] if jobs else None
+                job = None
+                for candidate in jobs:
+                    project = candidate["snapshot"]
+                    engine = project["asr_engine"] if project["mode"] == "asr" else project["engine"]
+                    try:
+                        model = require(engine, "asr" if project["mode"] == "asr" else "tts")
+                    except ValueError:
+                        download = model_manager.status(engine) or {}
+                        if download.get("status") in {"failed", "cancelled"}:
+                            self.update(candidate["id"], status="failed", stage="Modelo indisponível. Em Ajustes, retome o download; depois retome este trabalho.", error=download.get("error"))
+                        else:
+                            self.update(candidate["id"], stage="Aguardando download do modelo no servidor")
+                        continue
+                    project["model"] = model
+                    self.update(candidate["id"], snapshot=project)
+                    job = candidate
+                    break
                 if job:
                     self.update(job["id"], status="running", stage="Preparando")
             if not job:
@@ -110,7 +127,7 @@ class Worker:
                 with self.lock:
                     self.check(ident)
                     finished = self.update(ident, status="completed", stage="Concluído — revise o resultado", progress=100, elapsed_seconds=round(time.monotonic()-started, 2))
-                    notify_job(finished)
+                notify_job(finished)
             except Interrupted:
                 if self.stop_event.is_set() and s.get("job", ident)["status"] == "running":
                     self.update(ident, status="queued", stage="Interrompido com segurança; aguardando reinício")

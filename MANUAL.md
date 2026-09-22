@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.1.0
+# Manual — Sal0 Voz 0.2.0
 
 ## Primeira instalação
 
@@ -18,7 +18,25 @@ O primeiro acesso cria uma conta administradora. Em **Ajustes → Usuários**, o
 
 Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat ID do destino. O servidor envia a situação do trabalho e anexa os arquivos gerados quando a tarefa termina. O token fica somente no volume `/data`; ele nunca é enviado ao navegador além da máscara parcial.
 
-## Instalar modelos explicitamente
+## Criar sem configurar o motor
+
+- **Voz simples:** escreva o texto e clique em Gerar voz. Disponível imediatamente, com timbre robótico para testar a instalação.
+- **Clonar uma voz:** escolha essa opção, envie o áudio e escreva sua transcrição; clique em Salvar e usar esta voz. O personagem é criado automaticamente no servidor.
+- **Gerar legendas:** envie áudio ou vídeo na própria tela, escolha o idioma e gere.
+- O rascunho é salvo automaticamente no servidor e o projeto mais recente é reaberto ao entrar. O resultado aparece na tela Criar e na Biblioteca.
+- Qwen 0.6B e Whisper medium começam a baixar na inicialização, inclusive ao atualizar uma instalação antiga sem as novas variáveis. Downloads interrompidos são retomados após reiniciar. Se você cancelou um download, retome em Ajustes.
+- Uma tarefa enviada antes do modelo ficar pronto permanece na fila. Em caso de falha de rede ou espaço, Ajustes mostra o erro; retome o download e o trabalho.
+
+## Atualizar usando latest
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+No ZimaOS, use a atualização/recriação do aplicativo mantendo o volume de dados. Não basta reiniciar o mesmo container: ele precisa ser recriado com a imagem nova. `SAL0_AUTO_DOWNLOAD_MODELS=0` continua permitindo desativar explicitamente os downloads automáticos.
+
+## Instalar modelos explicitamente (opcional)
 
 Com o repositório no servidor:
 

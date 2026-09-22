@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], configured:false, user:{}};
 let events, toastTimer, saveTimer, recorder, modelTimer;
+let saveChain=Promise.resolve();
 const escapeHTML = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const bytes = n => (n/1024**3).toFixed(1)+" GB";
 function toast(text){ $("toast").textContent=text; $("toast").hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$("toast").hidden=true,7000); }
@@ -27,12 +28,14 @@ document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",(
 function setMode(mode){
   if(mode==="convert"){toast("Conversão direta de voz aguarda integração e validação em CPU. Não será substituída por transcrição + TTS.");return;}
   state.mode=mode;
+  $("voice-choice").parentElement.hidden=mode==="asr";
+  updateVoiceChoice();
   document.querySelectorAll("[data-mode]").forEach(x=>x.classList.toggle("selected",x.dataset.mode===mode));
   $("script-fields").hidden=mode!=="tts"; $("source-fields").hidden=mode==="tts"; $("dub-fields").hidden=mode!=="dub";
   $("engine-label").hidden=mode==="asr"; $("asr-label").hidden=mode!=="asr"; $("rate-label").hidden=mode==="asr"; $("format-label").hidden=mode!=="tts";
   $("editor-title").textContent={tts:"Seu roteiro",asr:"Áudio para transcrever",dub:"Roteiro e linha do tempo"}[mode];
   $("generate").textContent={tts:"✦ Gerar voz",asr:"≡ Gerar legendas",dub:"▷ Gerar dublagem"}[mode];
-  modelNotice();
+  updateVoiceChoice();modelNotice();
 }
 document.querySelectorAll("[data-mode]").forEach(x=>x.addEventListener("click",()=>setMode(x.dataset.mode)));
 document.querySelectorAll("[data-editor]").forEach(x=>x.addEventListener("click",()=>{
@@ -46,13 +49,18 @@ function payload(){
 }
 function saveDraft(){
   $("char-count").textContent=$("script").value.length.toLocaleString("pt-BR")+" caracteres";
-  $("save-state").textContent=state.projectId?"Alterações salvas no servidor após uma breve pausa":"Salve o projeto no servidor para manter o rascunho";
+  $("save-state").textContent="Salvando no servidor…";
   clearTimeout(saveTimer);
-  if(state.projectId) saveTimer=setTimeout(safe(async()=>{await saveProject(false);}),1500);
+  saveTimer=setTimeout(safe(async()=>{await saveProject(false);}),1500);
 }
 $("project-form").addEventListener("input",saveDraft);
 $("project-form").addEventListener("change",saveDraft);
-async function saveProject(message=true){
+function saveProject(message=true){
+  clearTimeout(saveTimer);
+  saveChain=saveChain.catch(()=>{}).then(()=>persistProject(message));
+  return saveChain;
+}
+async function persistProject(message=true){
   clearTimeout(saveTimer);
   const project=await api(state.projectId?"/projects/"+state.projectId:"/projects",{method:state.projectId?"PUT":"POST",body:JSON.stringify(payload())});
   state.projectId=project.id;$("save-state").textContent="Projeto salvo no servidor";
@@ -63,7 +71,7 @@ async function saveProject(message=true){
 $("save-project").addEventListener("click",safe(()=>saveProject()));
 $("project-form").addEventListener("submit",safe(async event=>{
   event.preventDefault();$("generate").disabled=true;
-  try{const project=await saveProject(false);await post("/projects/"+project.id+"/generate");$("queue-panel").hidden=false;toast("Trabalho adicionado à fila.");await loadJobs();}finally{$("generate").disabled=false;}
+  try{const project=await saveProject(false);await post("/projects/"+project.id+"/generate");toast("Trabalho adicionado à fila.");await loadJobs();}finally{$("generate").disabled=false;}
 }));
 $("validate-script").addEventListener("click",safe(async()=>{const result=await post("/script/validate",payload());toast(result.segments.length+" trechos válidos. Pausas e metadados não serão falados.");}));
 $("rate").addEventListener("input",()=>{$("rate-value").textContent=Number($("rate").value).toFixed(2)+"×";});
@@ -84,20 +92,21 @@ function refreshSelectors(){
   for(const id of ["character-reference","background-media"])fillOptions($(id),state.media.filter(x=>x.audio&&!x.video),id==="background-media"?"Sem ambiente separado":"Selecione uma referência",x=>x.name);
 }
 async function loadModels(){
-  const selectedEngine=$("engine").value||"qwen-0.6b";
+  const selectedEngine=$("engine").value||"diagnostic";
   state.models=await api("/models");
   fillOptions($("engine"),state.models.filter(x=>x.kind==="tts"),null,x=>x.name+(x.available?"":" · não instalado"));
   fillOptions($("asr-engine"),state.models.filter(x=>x.kind==="asr"),null,x=>x.name+(x.available?"":" · não instalado"));
   $("engine").value=selectedEngine;
-  modelNotice();
+  modelNotice();renderPreparation();
 }
-function loadProject(p){
-  clearTimeout(saveTimer);state.projectId=p.id||null;state.cues=p.cues||[];
+async function loadProject(p){
+  clearTimeout(saveTimer);await saveChain.catch(()=>{});state.projectId=p.id||null;state.cues=p.cues||[];
   for(const [key,id] of Object.entries({name:"project-name",text:"script",language:"language",engine:"engine",asr_engine:"asr-engine",character_id:"character",media_id:"source-media",background_id:"background-media",rate:"rate",format:"format"})){
     if(p[key]!==undefined)$(id).value=p[key]??"";
   }
+  $("voice-choice").value=$("engine").value==="diagnostic"?"simple":"clone";
   setMode(p.mode||"tts");renderCues();$("rate-value").textContent=Number($("rate").value).toFixed(2)+"×";
-  $("char-count").textContent=$("script").value.length+" caracteres";view("create");$("save-state").textContent=p.id?"Projeto carregado":"Rascunho local";
+  $("char-count").textContent=$("script").value.length+" caracteres";view("create");$("save-state").textContent=p.id?"Projeto carregado":"Novo projeto · salvamento automático no servidor";
 }
 function renderProjects(){
   $("project-list").innerHTML=state.projects.length?state.projects.map(p=>'<article class="card item-card"><span class="badge">'+escapeHTML({tts:"Texto para voz",asr:"Legendas",dub:"Dublagem"}[p.mode])+'</span><h3 class="section-title">'+escapeHTML(p.name)+'</h3><p>Revisão '+p.revision+' · '+new Date(p.updated*1000).toLocaleDateString("pt-BR")+'</p><div class="item-actions"><button class="secondary" data-open="'+p.id+'">Abrir projeto</button><button class="quiet" data-duplicate="'+p.id+'">Duplicar</button></div></article>').join(""):'<div class="empty">Seu próximo projeto começa em Criar voz.</div>';
@@ -156,7 +165,7 @@ function renderJobs(){
     const job=state.jobs.find(j=>j.id===b.dataset.review);const project=await api("/projects/"+job.project_id);
     project.cues=job.cues;project.mode="dub";project.id=null;project.name+=" · revisão";loadProject(project);$("queue-panel").hidden=true;toast("Legendas carregadas em uma cópia. Salve as alterações antes de gerar.");
   }));
-  renderResults();
+  renderResults();renderCurrentResult();
 }
 async function loadJobs(){state.jobs=await api("/jobs");renderJobs();}
 function renderResults(){
@@ -173,7 +182,7 @@ function renderModelList(){
     const d=m.download||{}, busy=["queued","downloading"].includes(d.status);
     const action=m.available?"":busy?'<button class="quiet" data-model-cancel="'+m.id+'">Cancelar</button>':'<button class="secondary" data-model-download="'+m.id+'">Baixar no servidor</button>';
     const label=m.available?"Instalado":d.status==="failed"?"Falhou":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Não instalado";
-    return '<div class="model-row"><span class="badge">'+label+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Revisão ainda não baixada")+'</p><div class="item-actions">'+action+'</div></div>';
+    return '<div class="model-row"><span class="badge">'+label+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Revisão ainda não baixada")+'</p>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(d.stage||'')+' · '+(d.progress||0)+'%</p>':'')+(d.error?'<p class="download-error">'+escapeHTML(d.error)+'</p>':'')+'<div class="item-actions">'+action+'</div></div>';
   }).join("");
   document.querySelectorAll("[data-model-download]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelDownload+"/download",{accept_license:true});toast("Download iniciado no servidor.");await loadModels();await loadDiagnostics();}));
   document.querySelectorAll("[data-model-cancel]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelCancel+"/cancel");await loadModels();await loadDiagnostics();}));
@@ -218,9 +227,11 @@ async function start(){
   state.user={username:auth.username||"admin",role:auth.role||"admin"};
   $("auth-description").textContent=auth.configured?"Bem-vindo de volta ao seu estúdio.":"Crie o primeiro usuário administrador para abrir seu estúdio local.";
   $("auth-submit").textContent=auth.configured?"Entrar no estúdio":"Criar meu estúdio";
-  if(!auth.authenticated)return;
+  if(!auth.authenticated){clearTimeout(saveTimer);state.projectId=null;return;}
   [state.characters,state.media,state.projects]=await Promise.all([api("/characters?limit=100"),api("/media?limit=100"),api("/projects")]);
   await loadModels();refreshSelectors();renderCharacters();renderProjects();renderMedia();await loadJobs();
+  if(!state.projectId && state.projects.length)await loadProject(state.projects[0]);
+  updateVoiceChoice();
   modelTimer=setInterval(()=>{loadModels().then(()=>{if(!$("view-settings").hidden)loadDiagnostics();}).catch(()=>{});},5000);
   events=new EventSource("/api/events/stream");events.onmessage=e=>{state.jobs=JSON.parse(e.data);renderJobs();};
 }
@@ -228,4 +239,43 @@ safe(start)();
 
 
 $("export-srt").onclick=safe(async()=>{const p=await saveProject(false);const link=document.createElement("a");link.href="/api/projects/"+p.id+"/subtitles/srt";link.download="legendas.srt";link.click();});
-$("new-project").onclick=()=>{clearTimeout(saveTimer);state.projectId=null;state.cues=[];$("project-form").reset();$("engine").value="qwen-0.6b";setMode("tts");renderCues();view("create");saveDraft();};
+$("new-project").onclick=async()=>{clearTimeout(saveTimer);await saveChain.catch(()=>{});state.projectId=null;state.cues=[];$("project-form").reset();$("engine").value="diagnostic";$("voice-choice").value="simple";setMode("tts");renderCues();view("create");saveDraft();};
+
+function updateVoiceChoice(){
+  const clone=$("voice-choice").value==="clone";
+  $("quick-reference").hidden=!clone||state.mode==="asr";
+  $("simple-hint").hidden=clone||state.mode==="asr";
+  $("character").parentElement.hidden=!clone||state.mode==="asr";
+  $("engine-label").hidden=!clone||state.mode==="asr";
+}
+$("voice-choice").onchange=()=>{
+  $("engine").value=$("voice-choice").value==="clone"?"qwen-0.6b":"diagnostic";
+  updateVoiceChoice();modelNotice();saveDraft();
+};
+$("source-upload").onchange=safe(async e=>{
+  if(!e.target.files[0])return;
+  const m=await upload(e.target.files[0]);$("source-media").value=m.id;saveDraft();e.target.value="";
+});
+$("use-reference").onclick=safe(async()=>{
+  const file=$("reference-upload").files[0], transcript=$("quick-transcript").value.trim();
+  if(!file||!transcript)throw Error("Envie o áudio e escreva a transcrição para salvar sua voz.");
+  $("use-reference").disabled=true;$("reference-status").textContent="Enviando referência para o servidor…";
+  try{
+    const m=await upload(file);
+    const c=await post("/characters",{name:file.name,reference_id:m.id,reference_text:transcript,language:$("language").value,origin:"own"});
+    state.characters.unshift(c);refreshSelectors();renderCharacters();$("character").value=c.id;
+    $("reference-status").textContent="Voz salva. Agora escreva seu texto e clique em Gerar voz.";saveDraft();
+  }finally{$("use-reference").disabled=false;}
+});
+function renderPreparation(){
+  const active=state.models.filter(m=>["queued","downloading"].includes(m.download?.status));
+  const failed=state.models.filter(m=>m.download?.status==="failed");
+  $("preparation").textContent=active.length?"Preparando seu servidor: "+active.map(m=>m.name+" — "+(m.download.status==="queued"?"na fila":(m.download.progress||0)+"%")).join(" · ")+". Você já pode enviar trabalhos; eles aguardam o modelo automaticamente.":failed.length?"Um modelo não terminou de baixar. Abra Ajustes para ver o erro e retomar.":"Servidor pronto. Escolha uma voz, escreva seu texto ou envie um arquivo para transcrever.";
+}
+function renderCurrentResult(){
+  const job=state.jobs.find(j=>j.project_id===state.projectId)||state.jobs[0];
+  const box=$("current-result");box.hidden=!job;if(!job)return;
+  const i=(job.outputs||[]).findIndex(o=>["audio","video"].includes(o.type));
+  const type=i>=0?job.outputs[i].type:null;
+  box.innerHTML='<h2>'+escapeHTML(job.name)+'</h2><p>'+escapeHTML(statuses[job.status]+' · '+job.stage)+'</p><progress max="100" value="'+(job.progress||0)+'"></progress>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+i+'"></'+type+'>':'')+'<div class="item-actions">'+outputHTML(job)+'</div>';
+}
