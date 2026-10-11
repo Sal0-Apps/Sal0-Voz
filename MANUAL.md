@@ -1,16 +1,16 @@
-# Manual — Sal0 Voz 0.2.1
+# Manual — Sal0 Voz 0.3.0
 
 ## Primeira instalação
 
-O Compose do ZimaOS publica a porta **7886**, preservando a porta 7885 do Karaoke. Confirme o disco antes de usar o caminho `/DATA/AppData/sal0-voz`. Todos os dados, contas, configurações do Telegram e modelos ficam nesse volume; recriar o container não deve apagá-lo.
+O Compose do ZimaOS publica a porta **7886**, preservando a porta 7885 do Karaoke. Confirme o disco antes de usar o caminho `/DATA/AppData/sal0-voz`. Os dados, contas, configurações do Telegram e modelos opcionais ficam nesse volume; recriar o container não deve apagá-lo. Os modelos principais ficam na própria imagem, fora do volume.
 
 O entrypoint prepara a pasta e inicia o serviço como usuário não privilegiado (UID 1000). Se restaurar arquivos com outro proprietário, ajuste as permissões do diretório de dados no servidor. Não use container privilegiado.
 
 Crie a senha do proprietário na primeira abertura. A aplicação deve ficar na rede doméstica. HTTPS local permite gravar o microfone de um celular; pelo IP via HTTP, use upload de uma gravação.
 
-A primeira versão inclui uma voz simples de diagnóstico. Ela gera fala real e serve para testar instalação e exportação; não é clonagem nem a qualidade final pretendida.
+A tela inicial usa **Clonar uma voz**, no perfil **Maior fidelidade · Qwen 1.7B**. A voz simples de diagnóstico continua disponível no seletor Tipo de voz para testar instalação e exportação.
 
-Na primeira inicialização, o servidor agenda automaticamente `qwen-0.6b` e `whisper-medium`. Os pesos são gravados em `/data/models` no volume do servidor; o navegador nunca baixa nem armazena os modelos. Em **Ajustes**, cada modelo mostra a fila, o progresso, o erro e os botões para iniciar ou cancelar o download. A geração inicia o download do modelo escolhido caso ele ainda não esteja instalado.
+`qwen-1.7b` e `whisper-large-v3-turbo` vêm na imagem em `/opt/sal0-models/models`, com revisões fixas e hashes verificados durante a construção. A primeira geração usa esses arquivos sem download separado. Os modelos opcionais são gravados em `/data/models`; o navegador recebe somente o status. Uma cópia completa no volume tem preferência; uma cópia incompleta não esconde o modelo da imagem. Em **Ajustes**, cada modelo mostra a disponibilidade, a fila, o progresso e os controles de preparação.
 
 ## Usuários e Telegram
 
@@ -21,10 +21,10 @@ Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat I
 ## Criar sem configurar o motor
 
 - **Voz simples:** escreva o texto e clique em Gerar voz. Disponível imediatamente, com timbre robótico para testar a instalação.
-- **Clonar uma voz:** escolha essa opção, envie o áudio e clique em Gerar voz; a referência é salva automaticamente, sem exigir transcrição. O personagem é criado automaticamente no servidor.
+- **Clonar uma voz:** envie uma gravação, informe o idioma dela, escreva o texto e clique em Gerar voz. O app salva a voz e prepara a transcrição automaticamente. O idioma do texto pode ser diferente do da gravação.
 - **Gerar legendas:** envie áudio ou vídeo na própria tela, escolha o idioma e gere.
 - O rascunho é salvo automaticamente no servidor e o projeto mais recente é reaberto ao entrar. O resultado aparece na tela Criar e na Biblioteca.
-- Qwen 0.6B e Whisper medium começam a baixar na inicialização, inclusive ao atualizar uma instalação antiga sem as novas variáveis. Downloads interrompidos são retomados após reiniciar. Se você cancelou um download, retome em Ajustes.
+- Qwen 1.7B e large-v3-turbo já estão incluídos. Se escolher o perfil opcional Qwen 0.6B, o servidor o prepara uma vez. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
 - Uma tarefa enviada antes do modelo ficar pronto permanece na fila. Em caso de falha de rede ou espaço, Ajustes mostra o erro; retome o download e o trabalho.
 
 ## Atualizar usando latest
@@ -42,21 +42,21 @@ Com o repositório no servidor:
 
 ```sh
 docker compose -f compose.yaml --profile setup run --rm model-setup list
-docker compose -f compose.yaml --profile setup run --rm model-setup plan qwen-1.7b
-docker compose -f compose.yaml --profile setup run --rm model-setup install qwen-1.7b --accept-license
-docker compose -f compose.yaml --profile setup run --rm model-setup verify qwen-1.7b
+docker compose -f compose.yaml --profile setup run --rm model-setup plan qwen-0.6b
+docker compose -f compose.yaml --profile setup run --rm model-setup install qwen-0.6b --accept-license
+docker compose -f compose.yaml --profile setup run --rm model-setup verify qwen-0.6b
 ```
 
 Se o ZimaOS foi instalado pelo Compose simplificado, sem clonar o código:
 
 ```sh
-docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models plan qwen-1.7b
-docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models install qwen-1.7b --accept-license
+docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models plan qwen-0.6b
+docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models install qwen-0.6b --accept-license
 ```
 
-Troque o identificador por `qwen-0.6b`, `whisper-medium` ou `whisper-large-v3`. O comando plan consulta a fonte oficial, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
+Troque o identificador por `whisper-medium` ou `whisper-large-v3` para preparar modelos opcionais antigos. Os modelos principais também podem ser copiados ao volume explicitamente. O comando plan consulta a fonte, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
 
-Os ambientes Python já vêm na imagem. Pesos são baixados pelo servidor automaticamente ou pelo painel, sem passar pelo navegador. Um modelo instalado não é sobrescrito automaticamente. Trocar os pesos exige preservar os antigos e atualizar a instalação explicitamente.
+Os ambientes Python e os pesos principais já vêm na imagem. Pesos opcionais são baixados pelo servidor, sem passar pelo navegador. Um modelo instalado não é sobrescrito automaticamente. Trocar uma cópia persistente exige preservar os pesos antigos e atualizar a instalação explicitamente.
 
 Na interface, use Ajustes → Atualizar diagnóstico.
 
@@ -71,6 +71,10 @@ Editar um personagem cria nova versão. Trabalhos já enviados preservam a vers�
 
 A implementação segue a API oficial [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS). A execução real do modelo no seu A10 precisa de benchmark; não foi comprovada por testes de API.
 
+Prefira de 6 a 30 segundos de fala clara, de uma pessoa e sem música. A duração mínima aceita é 3 segundos. Na preparação automática, o app usa os primeiros 30 segundos, converte para mono/24 kHz e transcreve com large-v3-turbo. Se informar a transcrição manual, use um áudio de até 30 segundos e escreva o texto correspondente ao áudio inteiro.
+
+A clonagem usa o áudio **e** a transcrição (`x_vector_only_mode=False`). A preparação fica em cache e não altera a versão salva da voz. Confira o texto em Minhas vozes → Conferir transcrição; se houver erro, edite a voz e informe o texto correto. O Whisper termina antes de carregar Qwen, e Qwen permanece carregado para todos os trechos do mesmo trabalho. Adicionar outro texto preserva a voz selecionada.
+
 ## Roteiros e VoiceScript
 
 ```text
@@ -84,11 +88,11 @@ Olá! [pausa=450ms]
 
 Tags desconhecidas, emoções, tons e reações não suportados causam erro explícito. O aplicativo não as envia como fala. Não há cota de caracteres, mas tempo, memória e disco limitam os projetos. Os blocos são pequenos para o motor; o original é preservado.
 
-O editor salva o rascunho neste navegador. Depois de Salvar projeto, alterações são salvas no servidor após uma breve pausa. Duplicar cria projeto independente. Resultados anteriores permanecem na Biblioteca.
+O editor salva o rascunho no servidor após uma breve pausa, inclusive antes de clicar em Salvar projeto. Duplicar cria projeto independente. Resultados anteriores permanecem na Biblioteca.
 
 ## Legendas
 
-Escolha Gerar legendas, mídia e modelo Whisper instalado. A fila gera SRT e VTT; revise nomes, pontuação e tempos. O pipeline segue [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper).
+Escolha Gerar legendas, mídia e idioma. O padrão é Faster-Whisper large-v3-turbo, em CPU INT8 com quatro threads. A fila gera SRT e VTT; revise nomes, pontuação e tempos. O pipeline segue [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper). Projetos com outro modelo escolhido explicitamente mantêm essa opção.
 
 O SRT de TTS acompanha os tempos de cada trecho gerado, incluindo pausas inseridas; não é alinhamento por palavra. As quebras editoriais e velocidade de leitura ainda precisam de revisão.
 
@@ -111,7 +115,7 @@ Uma tarefa pesada por vez, incluindo exportação. Fechar o navegador não encer
 
 Reiniciar o container recupera trabalhos interrompidos. Exportações parciais são refeitas. Erros preservam entradas e referências. O diagnóstico do trabalho mostra o log local, acessível somente ao proprietário.
 
-O teto inicial é 10 GB e 2 CPUs. O executor pausa perto do limite cgroup de RAM ou com pouco disco. Isso não garante que uma alocação instantânea não provoque OOM. Valide o consumo real. Não execute geração pesada simultaneamente ao Karaoke no A10.
+O Compose permite até **12 GiB e quatro CPUs**, para um servidor de 16 GB. O perfil 1.7B pede cerca de 9,5 GiB livres para carregar e prioriza fidelidade; o 0.6B pede 5,5 GiB e reduz o custo de CPU. Os dois executam Qwen em float32/eager, sem CUDA. A execução sequencial evita carregar Whisper e Qwen juntos. O executor considera o limite de memória do container, desconta cache de arquivos limpos e pausa com pouca memória ou disco. As margens não substituem a medição real de pico no A10. Feche outras tarefas pesadas antes de gerar.
 
 ## Backup e restauração
 
@@ -142,9 +146,9 @@ docker pull ghcr.io/sal0-apps/sal0-voz:latest
 docker save ghcr.io/sal0-apps/sal0-voz:latest -o sal0-voz-latest.tar
 ```
 
-Leve a imagem, os modelos e o Compose ao servidor. Use `docker load -i sal0-voz-latest.tar`, copie os modelos ao volume e inicie. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
+Leve a imagem e o Compose ao servidor. Use `docker load -i sal0-voz-latest.tar` e inicie: Qwen 1.7B e large-v3-turbo já estão na imagem. Se quiser o perfil opcional 0.6B offline, copie também sua instalação verificada ao volume. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
 
-As flags offline impedem downloads pelas bibliotecas compatíveis; **não são um firewall**. A homologação exige repetir os fluxos com saída para internet bloqueada, mantendo LAN.
+As flags offline impedem downloads pelas bibliotecas compatíveis; **não são um firewall**. A telemetria de Hugging Face, Gradio e ONNX Runtime é desativada no motor. O workflow executa o teste de modelos reais com `--network none`; a homologação no servidor deve manter acesso LAN e bloquear saída externa.
 
 ## Diagnóstico da máquina alvo
 

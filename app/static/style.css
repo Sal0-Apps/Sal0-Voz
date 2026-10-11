@@ -9,3 +9,28 @@
 @media(max-width:780px){.mode-grid{grid-template-columns:1fr}.voice-card{display:block}#quick-reference input{max-width:100%}}
 
 .job-error{white-space:pre-wrap;overflow-wrap:anywhere}#quick-reference details{margin:12px 0}#worker-warning{margin-bottom:16px}
+
+/* Reference first on mobile; settings stay collapsed until requested. */
+.studio-grid{grid-template-columns:minmax(280px,340px) minmax(0,1fr)}
+.submission{grid-column:1/-1;display:flex;gap:24px;align-items:center;justify-content:space-between;padding:20px 24px}
+.submission .generate{margin:0;width:auto;min-width:200px;flex-shrink:0}
+.reference-picker{padding:14px;border:1px dashed var(--blue);border-radius:12px;background:#49aeef08}
+.reference-picker input{margin-top:10px;max-width:100%;font-size:12px}
+details summary{cursor:pointer;font-size:13px;color:var(--text);font-weight:600;line-height:1.5}
+.voice-options{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.voice-card .hint{font-size:12px;line-height:1.6}
+.settings-section{margin-bottom:14px}
+.settings-section summary{font-size:16px}
+.settings-section summary span{display:block;font-size:12px;font-weight:400;color:var(--muted);margin:4px 0 0 18px}
+.settings-section[open] summary{margin-bottom:18px}
+.settings-section p{font-size:13px}
+.notice{font-size:12px;line-height:1.6}
+#preparation-progress{display:block;width:100%;height:6px;margin-top:12px;accent-color:var(--blue)}
+#retry-preparation{margin-top:12px}
+.model-row .download-error{margin-top:8px;font-size:11px}
+#current-result progress{width:100%;accent-color:var(--blue);height:8px}
+button:disabled{opacity:.6;cursor:wait}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:4px}
+@media(max-width:1100px){.studio-grid{grid-template-columns:minmax(260px,300px) minmax(0,1fr)}}
+@media(max-width:780px){.studio-grid{grid-template-columns:minmax(0,1fr)}.submission{display:block}.submission .generate{width:100%;margin-top:16px;min-width:0}.voice-card{display:block}.voice-card label{font-size:12px}.voice-card input,.voice-card select{font-size:16px}.mode-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.mode{padding:12px 9px}.mode small{font-size:10px}.mode-icon{height:30px}.card-title{flex-wrap:wrap}}
+@media(max-width:780px){.sidebar-bottom{display:block;border:0;margin:0;padding:0}.sidebar-bottom>.local-status,.sidebar-bottom>small{display:none}.sidebar-actions{margin:0;justify-content:flex-end}.sidebar-actions button{padding:6px 10px}.sidebar{flex-wrap:wrap}.sidebar nav{order:3;width:100%}}

@@ -2,6 +2,23 @@ import threading
 import pytest
 from app import storage as s
 from app.model_manager import ModelManager
+from app.catalog import DEFAULT_ASR_MODEL
+
+
+@pytest.mark.parametrize("status", ["queued", "failed"])
+def test_old_download_record_is_completed_when_image_already_has_model(data, monkeypatch, status):
+    import app.model_manager as module
+    manager=ModelManager()
+    manager._record("qwen-1.7b", status=status, error="old interruption", retry_at=1)
+    monkeypatch.setattr(module, "installed", lambda:[{"id":"qwen-1.7b", "available":True}])
+    def download(_):
+        pytest.fail("An installed model must not be downloaded again")
+    monkeypatch.setattr(manager, "_download", download)
+    monkeypatch.setattr(manager.wake, "wait", lambda _:manager.stop_event.set())
+    manager.loop()
+    record=manager.status("qwen-1.7b")
+    assert record["status"]=="completed" and record["progress"]==100
+    assert record["error"] is None and record["retry_at"] is None
 
 
 def test_default_install_and_restart_recovery(data, monkeypatch):
@@ -12,8 +29,8 @@ def test_default_install_and_restart_recovery(data, monkeypatch):
     manager._record("qwen-1.7b", status="downloading")
     manager.start()
     manager.stop()
-    assert manager.status("qwen-0.6b")["status"] == "queued"
-    assert manager.status("whisper-medium")["status"] == "queued"
+    assert manager.status("qwen-0.6b") is None  # Optional profile is not downloaded at startup.
+    assert manager.status(DEFAULT_ASR_MODEL)["status"] == "queued"
     assert manager.status("qwen-1.7b")["status"] == "queued"
     manager.start()
     assert not manager.stop_event.is_set()
@@ -53,7 +70,7 @@ def test_valid_transcription_waits_for_model(owner):
     job = s.get("job", result.json()["id"])
     assert job["status"] == "queued"
     assert job["snapshot"]["media"]["id"] == media["id"]
-    assert s.get("model_download", "whisper-medium")["status"] == "queued"
+    assert s.get("model_download", DEFAULT_ASR_MODEL)["status"] == "queued"
 
 
 def test_worker_skips_waiting_model_and_runs_ready_job(data, monkeypatch):

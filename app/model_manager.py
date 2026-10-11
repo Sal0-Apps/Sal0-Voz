@@ -6,8 +6,8 @@ import sys
 import threading
 import time
 from . import storage as s
-from .catalog import CATALOG, installed
-DEFAULT_AUTO_MODELS = ("qwen-0.6b", "whisper-medium")
+from .catalog import CATALOG, installed, DEFAULT_MODELS
+DEFAULT_AUTO_MODELS = DEFAULT_MODELS
 class ModelManager:
     def __init__(self):
         self.stop_event=threading.Event(); self.wake=threading.Event(); self.lock=threading.RLock(); self.thread=None; self.processes={}
@@ -42,11 +42,16 @@ class ModelManager:
         with self.lock:
             if ident not in CATALOG or "repo" not in CATALOG[ident]: raise ValueError("Escolha um modelo baixável.")
             if any(item["id"]==ident and item["available"] for item in installed()):
-                return {"id":ident,"status":"completed","stage":"Instalado","progress":100}
+                completed={"id":ident,"status":"completed","stage":"Instalado","progress":100,"error":None,"retry_at":None}
+                if self.status(ident):
+                    return self._record(ident,**{k:v for k,v in completed.items() if k!="id"})
+                return completed
             current=self.status(ident)
             if current and current.get("status") in {"queued","downloading"}: return current
+            if automatic and current and current.get("status") == "failed":
+                return current  # Backoff is handled by loop; manual retry resets attempts.
             if not accept_license: raise ValueError("Confirme a licença do modelo antes de iniciar o download.")
-            result=self._record(ident,status="queued",stage="Aguardando download no servidor",progress=0,error=None,automatic=automatic,started=None,finished=None)
+            result=self._record(ident,status="queued",stage="Aguardando download no servidor",progress=0,error=None,automatic=automatic,started=None,finished=None,attempt=0,retry_at=None)
             self.wake.set(); return result
 
     def cancel(self,ident):
@@ -59,7 +64,7 @@ class ModelManager:
             return result
 
     def _run(self,ident,args,log_path):
-        env=os.environ.copy(); env.update(SAL0_DATA=str(s.DATA), HF_HUB_OFFLINE="0",TRANSFORMERS_OFFLINE="0",HF_HUB_DISABLE_TELEMETRY="1")
+        env=os.environ.copy(); env.update(SAL0_DATA=str(s.DATA), HF_HUB_OFFLINE="0",TRANSFORMERS_OFFLINE="0",HF_HUB_DISABLE_TELEMETRY="1", HF_HUB_DISABLE_XET="1", HF_HUB_ETAG_TIMEOUT="30", HF_HUB_DOWNLOAD_TIMEOUT="60")
         log_path.parent.mkdir(parents=True,exist_ok=True)
         with log_path.open("ab") as stream:
             process=subprocess.Popen(args,stdout=stream,stderr=subprocess.STDOUT,env=env); self.processes[ident]=process
@@ -104,7 +109,7 @@ class ModelManager:
         folder=s.DATA/"models"/ident; folder.mkdir(parents=True,exist_ok=True); log=folder/"download.log"; plan=folder/"download-plan.json"
         with self.lock:
             self._check(ident)
-            self._record(ident,status="downloading",stage="Consultando revisão e tamanho",progress=0,started=time.time(),error=None)
+            self._record(ident,status="downloading",stage="Consultando revisão e tamanho",progress=0,started=time.time(),error=None,retry_at=None,attempt=(self.status(ident) or {}).get("attempt",0)+1)
         if not plan.exists(): self._run(ident,[sys.executable,"-m","scripts.models","plan",ident],log)
         self._check(ident)
         self._record(ident,stage="Baixando pesos para o servidor",progress=0)
@@ -116,15 +121,26 @@ class ModelManager:
             self._record(ident,status="completed",stage="Instalado no servidor",progress=100,finished=time.time(),error=None)
     def loop(self):
         while not self.stop_event.is_set():
+            records=s.listing("model_download",limit=-1)
+            for row in records:
+                if row.get("status")=="failed" and row.get("retry_at") and row["retry_at"] <= time.time():
+                    self._record(row["id"],status="queued",stage="Retomando download automaticamente",retry_at=None)
             queued=[x for x in s.listing("model_download",limit=-1) if x.get("status")=="queued"]
             if not queued: self.wake.wait(2); self.wake.clear(); continue
             ident=sorted(queued,key=lambda x:x.get("updated",0))[0]["id"]
-            try: self._download(ident)
+            try:
+                if any(item["id"]==ident and item["available"] for item in installed()):
+                    self.request(ident,accept_license=True,automatic=True)
+                    continue
+                self._download(ident)
             except InterruptedError:
                 if self.stop_event.is_set() and self.status(ident).get("status") != "cancelled":
                     self._record(ident, status="queued", stage="Aguardando reinício")
             except Exception as exc:
-                if self.status(ident) and self.status(ident).get("status")!="cancelled": self._record(ident,status="failed",stage="Falha no download",error=str(exc)[-4000:],finished=time.time())
+                current=self.status(ident) or {}
+                if current.get("status")!="cancelled":
+                    retry=current.get("automatic") and current.get("attempt",1)<3
+                    self._record(ident,status="failed",stage="Conexão interrompida; uma nova tentativa será feita" if retry else "Não foi possível preparar o modelo. Tente novamente.",error=str(exc)[-4000:],finished=time.time(),retry_at=time.time()+30*2**max(0,current.get("attempt",1)-1) if retry else None)
     def snapshot(self):
         result=[]
         for item in installed():

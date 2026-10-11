@@ -5,13 +5,56 @@ import sys
 from pathlib import Path
 from . import storage as s
 
+DEFAULT_CLONE_MODEL = "qwen-1.7b"
+DEFAULT_ASR_MODEL = "whisper-large-v3-turbo"
+DEFAULT_MODELS = (DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL)
+
 CATALOG = {
     "diagnostic": {"name": "Voz de diagnóstico", "kind": "tts", "clone": False, "license": "GPL-3.0 (eSpeak NG)", "notice": "Voz sintética simples para testar o app; não representa a qualidade final."},
-    "qwen-1.7b": {"name": "Qwen3-TTS · 1.7B Base", "kind": "tts", "clone": True, "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "runtime": "qwen", "license": "Apache-2.0", "notice": "Clonagem candidata. Qualidade e memória ainda precisam ser medidas no A10."},
-    "qwen-0.6b": {"name": "Qwen3-TTS · 0.6B Base", "kind": "tts", "clone": True, "repo": "Qwen/Qwen3-TTS-12Hz-0.6B-Base", "runtime": "qwen", "license": "Apache-2.0", "notice": "Alternativa de memória; não substitui o modelo escolhido automaticamente."},
-    "whisper-medium": {"name": "Whisper medium · INT8", "kind": "asr", "repo": "Systran/faster-whisper-medium", "runtime": "whisper", "license": "MIT", "notice": "Transcrição local em CPU. Revise as legendas."},
-    "whisper-large-v3": {"name": "Whisper large-v3 · INT8", "kind": "asr", "repo": "Systran/faster-whisper-large-v3", "runtime": "whisper", "license": "MIT", "notice": "Candidato de qualidade; valide RAM e precisão na máquina alvo."},
+    "qwen-1.7b": {"name": "Maior fidelidade · Qwen 1.7B", "kind": "tts", "clone": True, "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "revision": "fd4b254389122332181a7c3db7f27e918eec64e3", "runtime": "qwen", "license": "Apache-2.0", "memory_gib": 9.5, "notice": "Prioriza fidelidade em CPU, com pesos em float32. Mais lento e exige cerca de 9,5 GiB livres; a qualidade depende da gravação."},
+    "qwen-0.6b": {"name": "Mais leve · Qwen 0.6B", "kind": "tts", "clone": True, "repo": "Qwen/Qwen3-TTS-12Hz-0.6B-Base", "revision": "5d83992436eae1d760afd27aff78a71d676296fc", "runtime": "qwen", "license": "Apache-2.0", "memory_gib": 5.5, "notice": "Clonagem completa com menos memória e menor custo em CPU. Download opcional, feito pelo servidor."},
+    "whisper-large-v3-turbo": {"name": "Faster-Whisper large-v3-turbo · INT8", "kind": "asr", "repo": "dropbox-dash/faster-whisper-large-v3-turbo", "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf", "runtime": "whisper", "license": "MIT", "notice": "Incluído na imagem. Transcreve sua gravação automaticamente e gera legendas em CPU, com INT8 e quatro threads."},
+    "whisper-medium": {"name": "Whisper medium · INT8", "kind": "asr", "repo": "Systran/faster-whisper-medium", "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f", "runtime": "whisper", "license": "MIT", "notice": "Modelo opcional mantido para projetos existentes. Novas transcrições usam large-v3-turbo."},
+    "whisper-large-v3": {"name": "Whisper large-v3 · INT8", "kind": "asr", "repo": "Systran/faster-whisper-large-v3", "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478", "runtime": "whisper", "license": "MIT", "notice": "Transcrição opcional com maior custo em CPU e memória. Revise os resultados."},
 }
+
+def model_files(ident):
+    """Prefer a complete persistent model; volumes never hide the image's models."""
+    roots = [(s.DATA / "models", "downloaded"),
+             (Path(os.getenv("SAL0_BUNDLED_MODELS", "/opt/sal0-models/models")), "bundled")]
+    for root, source in roots:
+        folder = root / ident
+        try:
+            saved = json.loads((folder / "manifest.json").read_text())
+            if (not isinstance(saved.get("revision"), str) or not saved["revision"]
+                    or not isinstance(saved["files"], dict) or not saved["files"]):
+                continue
+            sizes = saved.get("file_sizes", {})
+            complete = True
+            for relative in saved["files"]:
+                path = (folder / relative).resolve()
+                if (not path.is_relative_to(folder.resolve()) or not path.is_file()
+                        or (relative in sizes and path.stat().st_size != sizes[relative])):
+                    complete = False
+                    break
+            if complete:
+                return folder, saved, source
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return None, {}, "missing"
+
+def models_needed(project):
+    if project["mode"] == "asr":
+        return [project.get("asr_engine", DEFAULT_ASR_MODEL)]
+    engine = project.get("engine", DEFAULT_CLONE_MODEL)
+    result = [engine]
+    if engine.startswith("qwen-") and any(
+        segment.get("character", {}).get("reference")
+        and not segment["character"].get("reference_text", "").strip()
+        for segment in project.get("segments", [])
+    ):
+        result.append(DEFAULT_ASR_MODEL)
+    return result
 
 def runtime(engine):
     family = CATALOG[engine].get("runtime")
@@ -28,14 +71,11 @@ def installed():
         if ident == "diagnostic":
             item["available"] = bool(shutil.which("espeak-ng") or shutil.which("espeak"))
         else:
-            folder = s.DATA / "models" / ident
-            manifest = folder / "manifest.json"
-            try:
-                saved = json.loads(manifest.read_text())
-                item["available"] = Path(runtime(ident)).is_file() and all((folder / f).is_file() for f in saved["files"]) and bool(saved["files"])
+            folder, saved, source = model_files(ident)
+            item["available"] = folder is not None and Path(runtime(ident)).is_file()
+            item["source"] = source
+            if saved:
                 item["revision"] = saved["revision"]
-            except (OSError, ValueError, KeyError):
-                item["available"] = False
         item["validation"] = "Não avaliado no A10"
         out.append(item)
     return out

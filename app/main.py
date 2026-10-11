@@ -17,7 +17,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import __version__, storage as s
-from .catalog import CATALOG, installed, require
+from .catalog import CATALOG, installed, require, models_needed, DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL, DEFAULT_MODELS
+from .resources import memory_available
 from .media import probe
 from .model_manager import manager as model_manager
 from .script import compile_script, parse_srt, validate_cues, subtitles
@@ -186,6 +187,15 @@ def download_model(ident: str, body: ModelDownload):
 def cancel_model(ident: str):
     return model_manager.cancel(ident)
 
+@app.post("/api/models/prepare")
+def prepare_models():
+    needed = set(DEFAULT_MODELS)
+    for job in s.listing("job", limit=-1):
+        if job.get("status") == "queued" and job.get("snapshot", {}).get("mode"):
+            needed.update(models_needed(job["snapshot"]))
+    return [model_manager.request(ident, accept_license=True) for ident in sorted(needed)
+            if ident in CATALOG and "repo" in CATALOG[ident]]
+
 
 class TelegramConfig(BaseModel):
     telegram_token: str = Field(default="", max_length=256)
@@ -248,7 +258,7 @@ def delete_user(username: str, request: Request):
 @app.get("/api/diagnostics")
 def diagnostics():
     disk = shutil.disk_usage(s.DATA); memory = psutil.virtual_memory()
-    return {"version": __version__, "cpu": "CPU", "threads": int(os.getenv("SAL0_THREADS", "2")), "memory_total": memory.total, "memory_available": memory.available, "disk_free": disk.free, "ffmpeg": bool(shutil.which("ffmpeg") or os.getenv("SAL0_FFMPEG")), "ffprobe": bool(shutil.which("ffprobe") or os.getenv("SAL0_FFPROBE")), "platform": os.name, "validation": "Benchmark do A10 e comparação ElevenLabs pendentes", "features": {"voice_conversion": False, "automatic_emotion": False, "automatic_translation": False, "automatic_separation": False}}
+    return {"version": __version__, "cpu": "CPU", "threads": int(os.getenv("SAL0_THREADS", "4")), "memory_total": memory.total, "memory_available": memory_available(), "disk_free": disk.free, "ffmpeg": bool(shutil.which("ffmpeg") or os.getenv("SAL0_FFMPEG")), "ffprobe": bool(shutil.which("ffprobe") or os.getenv("SAL0_FFPROBE")), "platform": os.name, "validation": "Benchmark no servidor do proprietário pendente", "features": {"voice_conversion": False, "automatic_emotion": False, "automatic_translation": False, "automatic_separation": False}}
 
 def visible(value, user):
     return user.get("role") == "admin" or value.get("owner_username") == user.get("username")
@@ -331,13 +341,26 @@ def update_character(ident: str, body: Character, request: Request):
         raise HTTPException(403, "Personagem pertence a outro usuário.")
     return save_character(body, previous, current_user(request))
 
+@app.get("/api/characters/{ident}/reference-text")
+def reference_text(ident: str, request: Request):
+    character = s.get("character", ident)
+    if not visible(character, current_user(request)):
+        raise HTTPException(403, "Voz pertence a outro usuário.")
+    if character.get("reference_text", "").strip():
+        return {"text": character["reference_text"], "automatic": False}
+    try:
+        value = s.get("reference_preparation", ident+"-"+str(character["version"]))
+        return {key: value[key] for key in ("text", "automatic", "seconds")}
+    except KeyError:
+        return {"text": "", "automatic": True}
+
 class Project(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     mode: str = "tts"
     text: str = ""
     language: str = "pt-BR"
-    engine: str = "qwen-0.6b"
-    asr_engine: str = "whisper-medium"
+    engine: str = DEFAULT_CLONE_MODEL
+    asr_engine: str = DEFAULT_ASR_MODEL
     character_id: str | None = None
     media_id: str | None = None
     background_id: str | None = None
@@ -459,9 +482,12 @@ def generate(ident: str, request: Request):
     if not visible(project_record, owner):
         raise HTTPException(403, "Projeto pertence a outro usuário.")
     project = snapshot(project_record, owner)
-    waiting = project["model"].get("available") is False
-    if waiting:
-        model_manager.request(project["model"]["id"], accept_license=True, automatic=True)
+    waiting = False
+    for engine in models_needed(project):
+        model = model_for_job(engine, "asr" if engine.startswith("whisper-") else "tts")
+        if model.get("available") is False:
+            waiting = True
+            model_manager.request(engine, accept_license=True, automatic=True)
     job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["name"], "snapshot": project, "status": "queued", "stage": "Aguardando modelo — o trabalho começará automaticamente" if waiting else "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
     threading.Thread(target=notify_job, args=(job,), daemon=True).start()
     (s.DATA / "jobs" / job["id"]).mkdir(parents=True, exist_ok=True)

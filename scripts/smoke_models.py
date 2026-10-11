@@ -1,11 +1,13 @@
-"""Online release check: bootstrap real models and exercise ASR and cloning."""
+"""Offline release check: bundled defaults, real ASR and full CPU cloning."""
 import http.cookiejar
 import json
+import os
 import secrets
 import time
 import urllib.request
+from app.catalog import DEFAULT_MODELS, DEFAULT_ASR_MODEL
 
-BASE = "http://127.0.0.1:7860"
+BASE = os.getenv("SAL0_SMOKE_BASE", "http://127.0.0.1:7860")
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
 def api(path, value=None):
@@ -29,8 +31,14 @@ def wait_job(ident, timeout=900):
     raise AssertionError("Job timeout: "+ident)
 
 def main():
-    api("/api/auth/setup", {"password":secrets.token_urlsafe(24)})
-    reference_text="Hello, this is a reference voice for the local speech test."
+    password=os.getenv("SAL0_SMOKE_PASSWORD") or secrets.token_urlsafe(24)
+    auth=api("/api/auth/status")
+    api("/api/auth/login" if auth["configured"] else "/api/auth/setup", {"password":password})
+    catalog={m["id"]:m for m in api("/api/models")}
+    for ident in DEFAULT_MODELS:
+        assert catalog[ident]["available"] and catalog[ident]["source"]=="bundled", catalog[ident]
+    reference_text=("Hello, this is a reference voice for the local speech test. "
+                    "I am reading clearly, with short pauses, to help the model reproduce this voice.")
     source=wait_job(job({"name":"Reference", "engine":"diagnostic", "language":"en-US", "text":reference_text}))
     with opener.open(BASE+"/api/jobs/"+source["id"]+"/output/0") as response:
         audio=response.read()
@@ -38,11 +46,10 @@ def main():
     body=(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="reference.wav"\r\nContent-Type: audio/wav\r\n\r\n'.encode()+audio+f'\r\n--{boundary}--\r\n'.encode())
     req=urllib.request.Request(BASE+"/api/media",data=body,headers={"Content-Type":"multipart/form-data; boundary="+boundary})
     with opener.open(req) as response:media=json.load(response)
-    # Submit while bootstrap is still running: the server must resume this job itself.
     transcription=job({"name":"Automatic ASR", "mode":"asr", "language":"en-US", "media_id":media["id"]})
     deadline=time.monotonic()+1800
     while time.monotonic()<deadline:
-        models=[x for x in api("/api/models") if x["id"] in {"qwen-0.6b","whisper-medium"}]
+        models=[x for x in api("/api/models") if x["id"] in {"qwen-0.6b",DEFAULT_ASR_MODEL}]
         print([(m["id"],m["available"],m.get("download",{}).get("progress")) for m in models],flush=True)
         for model in models:
             assert model.get("download",{}).get("status") != "failed", model
@@ -51,10 +58,13 @@ def main():
     else:raise AssertionError("Automatic model download timed out")
     assert wait_job(transcription)["cues"], "Whisper produced no subtitles"
     character=api("/api/characters", {"name":"Synthetic test reference", "language":"en-US", "reference_id":media["id"]})
-    clone=wait_job(job({"name":"Real Qwen CPU", "engine":"qwen-0.6b", "language":"pt-BR", "text":"Olá, esta é minha voz.", "character_id":character["id"]}))
+    clone=wait_job(job({"name":"Real Qwen CPU", "engine":"qwen-0.6b", "language":"pt-BR", "text":"Olá, esta é minha voz. [pausa=250ms] Agora, outro trecho.", "character_id":character["id"]}))
     with opener.open(BASE+"/api/jobs/"+clone["id"]+"/output/0") as response:
         result=response.read()
     assert result[:4]==b"RIFF" and len(result)>1000
-    print("PASS: automatic downloads, queued ASR, real Whisper and Qwen CPU audio without a reference transcript",flush=True)
+    assert len(clone["cues"])==2, "Clone did not generate both speech segments"
+    prepared=api("/api/characters/"+character["id"]+"/reference-text")
+    assert prepared["automatic"] and prepared["text"], "Clone did not use an automatic full reference transcript"
+    print("PASS: bundled defaults, real large-v3-turbo ASR and two-segment Qwen CPU cloning with automatic full reference transcription",flush=True)
 
 if __name__=="__main__":main()
