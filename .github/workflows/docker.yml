@@ -28,7 +28,7 @@ jobs:
           /tmp/sal0-browser/node_modules/.bin/playwright install --with-deps chromium
           NODE_PATH=/tmp/sal0-browser/node_modules node tests/browser_clone_flow.cjs
   docker:
-    timeout-minutes: 60
+    timeout-minutes: 90
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -61,15 +61,23 @@ jobs:
           docker exec sal0-smoke /opt/engines/whisper/bin/python -c "from faster_whisper import WhisperModel"
           docker exec sal0-smoke python -c "from pathlib import Path; status=Path('/proc/1/status').read_text(); assert any(x.startswith('Uid:\t1000') for x in status.splitlines()), status"
           docker stop sal0-smoke
-      - name: Validar modelos incluidos e clonagem completa offline
+      - name: Validar perfil padrao com quatro CPUs e 12 GiB offline
+        run: |
+          docker run -d --name sal0-default-smoke --cpus 4 --memory 12g --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
+          for i in $(seq 1 30); do
+            if docker exec sal0-default-smoke python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
+            sleep 2
+          done
+          docker exec -e SAL0_SMOKE_CLONE_ENGINE=qwen-1.7b sal0-default-smoke python -m scripts.smoke_models
+          docker stop sal0-default-smoke
+      - name: Validar perfil opcional e clonagem completa offline
         run: |
           docker volume create sal0-model-test
-          # Both default models must be available from the image itself.
-          # Real CPU synthesis exercises the optional 0.6B profile on four cores.
+          # The optional profile uses a separate data volume from the default test.
           for action in plan install verify; do
             docker run --rm -v sal0-model-test:/data -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models "$action" qwen-0.6b --accept-license
           done
-          docker run -d --name sal0-model-smoke --cpus 4 --network none -v sal0-model-test:/data -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
+          docker run -d --name sal0-model-smoke --cpus 4 --memory 12g --network none -v sal0-model-test:/data -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
           for i in $(seq 1 30); do
             if docker exec sal0-model-smoke python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
             sleep 2
@@ -79,7 +87,10 @@ jobs:
       - name: Diagnostico em caso de falha
         if: failure()
         run: |
+          docker logs sal0-default-smoke || true
+          docker exec sal0-default-smoke sh -c 'tail -n 60 /data/jobs/*/process.log' || true
           docker logs sal0-model-smoke || true
+          docker exec sal0-model-smoke sh -c 'tail -n 60 /data/jobs/*/process.log' || true
           docker exec sal0-model-smoke sh -c 'tail -n 60 /data/models/*/download.log' || true
       - name: Publicar imagem versionada
         run: |

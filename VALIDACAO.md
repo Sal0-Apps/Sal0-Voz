@@ -21,7 +21,7 @@ Os arquivos reais dos dois modelos padrão e do perfil opcional 0.6B foram baixa
 
 O workflow `.github/workflows/docker.yml` executa a suíte, o teste Chromium e `docker compose config -q`. Depois constrói os ambientes de IA em CPU e inclui Qwen 1.7B/Turbo com hashes verificados.
 
-Antes do push das tags, testa healthcheck, geração de diagnóstico e importação dos motores. Prepara o perfil 0.6B em volume separado e executa `scripts.smoke_models` com **quatro CPUs e `--network none`**. Esse ensaio exige os dois modelos padrão disponíveis na imagem, ASR real, referência transcrita automaticamente, clonagem completa com duas falas e um WAV válido. Uma falha impede a publicação de `0.3.0`, `latest` e da tag do SHA.
+Antes do push das tags, testa healthcheck, geração de diagnóstico e importação dos motores. Executa `scripts.smoke_models` com o perfil padrão 1.7B, **quatro CPUs, limite de 12 GiB e `--network none`**. Depois prepara o perfil 0.6B em volume separado e repete o ensaio nas mesmas condições. Cada ensaio exige os dois modelos padrão disponíveis na imagem, ASR real, referência transcrita automaticamente, clonagem completa com duas falas e um WAV válido. Uma falha impede a publicação de `0.3.0`, `latest` e da tag do SHA. A CPU do CI ainda difere da CPU do proprietário.
 
 Telemetria de Hugging Face, Gradio e ONNX Runtime é desativada. Flags de biblioteca não substituem o bloqueio de rede aplicado no ensaio Docker. O estado e os logs da execução ficam em [GitHub Actions](https://github.com/Sal0-Apps/Sal0-Voz/actions); definir o teste não significa que ele já passou.
 

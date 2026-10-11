@@ -19,4 +19,4 @@ Os pesos padrão ficam em `/opt/sal0-models/models`, fora do volume `/data`. Cad
 
 O fluxo recebe gravações com pelo menos três segundos, recomenda de 6 a 30 e usa os primeiros 30 segundos na preparação automática. Uma transcrição manual exige áudio de até 30 segundos. O idioma da referência é separado do idioma do texto novo. A versão salva da voz é preservada.
 
-O CI publica a imagem somente após testes de código, interface e inferência real offline com 0.6B/Turbo. A qualidade com a voz do proprietário e o consumo real de 1.7B no servidor de quatro núcleos/16 GB ainda precisam ser medidos. Consulte [VALIDACAO.md](VALIDACAO.md) e [MANUAL.md](MANUAL.md).
+O CI publica a imagem somente após testes de código, interface e inferência real offline dos perfis 1.7B e 0.6B com Turbo, quatro CPUs e limite de 12 GiB. A qualidade com a voz do proprietário e o consumo real no servidor ainda precisam ser medidos. Consulte [VALIDACAO.md](VALIDACAO.md) e [MANUAL.md](MANUAL.md).

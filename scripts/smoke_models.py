@@ -20,7 +20,7 @@ def job(project):
     created = api("/api/projects", project)
     return api("/api/projects/"+created["id"]+"/generate", {})["id"]
 
-def wait_job(ident, timeout=900):
+def wait_job(ident, timeout=1800):
     deadline=time.monotonic()+timeout
     while time.monotonic()<deadline:
         value=next(x for x in api("/api/jobs") if x["id"]==ident)
@@ -31,6 +31,7 @@ def wait_job(ident, timeout=900):
     raise AssertionError("Job timeout: "+ident)
 
 def main():
+    engine=os.getenv("SAL0_SMOKE_CLONE_ENGINE", "qwen-0.6b")
     password=os.getenv("SAL0_SMOKE_PASSWORD") or secrets.token_urlsafe(24)
     auth=api("/api/auth/status")
     api("/api/auth/login" if auth["configured"] else "/api/auth/setup", {"password":password})
@@ -49,7 +50,7 @@ def main():
     transcription=job({"name":"Automatic ASR", "mode":"asr", "language":"en-US", "media_id":media["id"]})
     deadline=time.monotonic()+1800
     while time.monotonic()<deadline:
-        models=[x for x in api("/api/models") if x["id"] in {"qwen-0.6b",DEFAULT_ASR_MODEL}]
+        models=[x for x in api("/api/models") if x["id"] in {engine,DEFAULT_ASR_MODEL}]
         print([(m["id"],m["available"],m.get("download",{}).get("progress")) for m in models],flush=True)
         for model in models:
             assert model.get("download",{}).get("status") != "failed", model
@@ -58,13 +59,13 @@ def main():
     else:raise AssertionError("Automatic model download timed out")
     assert wait_job(transcription)["cues"], "Whisper produced no subtitles"
     character=api("/api/characters", {"name":"Synthetic test reference", "language":"en-US", "reference_id":media["id"]})
-    clone=wait_job(job({"name":"Real Qwen CPU", "engine":"qwen-0.6b", "language":"pt-BR", "text":"Olá, esta é minha voz. [pausa=250ms] Agora, outro trecho.", "character_id":character["id"]}))
+    clone=wait_job(job({"name":"Real Qwen CPU", "engine":engine, "language":"pt-BR", "text":"Olá, esta é minha voz. [pausa=250ms] Agora, outro trecho.", "character_id":character["id"]}))
     with opener.open(BASE+"/api/jobs/"+clone["id"]+"/output/0") as response:
         result=response.read()
     assert result[:4]==b"RIFF" and len(result)>1000
     assert len(clone["cues"])==2, "Clone did not generate both speech segments"
     prepared=api("/api/characters/"+character["id"]+"/reference-text")
     assert prepared["automatic"] and prepared["text"], "Clone did not use an automatic full reference transcript"
-    print("PASS: bundled defaults, real large-v3-turbo ASR and two-segment Qwen CPU cloning with automatic full reference transcription",flush=True)
+    print("PASS: bundled defaults, real large-v3-turbo ASR and two-segment "+engine+" CPU cloning with automatic full reference transcription",flush=True)
 
 if __name__=="__main__":main()
