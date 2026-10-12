@@ -93,6 +93,7 @@ class Worker:
         env = os.environ.copy()
         env.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1", PYANNOTE_METRICS_ENABLED="0", GRADIO_ANALYTICS_ENABLED="False", DO_NOT_TRACK="1")
         with log.open("ab") as output:
+            log_start = log.stat().st_size
             process = subprocess.Popen(args, cwd=cwd, env=env, stdout=output, stderr=output, start_new_session=os.name == "posix")
             try:
                 while process.poll() is None:
@@ -100,7 +101,7 @@ class Worker:
                     self.stop_event.wait(0.4)
                 if process.returncode:
                     with log.open("rb") as stream:
-                        stream.seek(max(0, log.stat().st_size - 4000))
+                        stream.seek(max(log_start, log.stat().st_size - 4000))
                         detail = stream.read().decode("utf-8", errors="replace").strip()
                     reason = {-9: "O sistema encerrou o processo; verifique memória e limites do container.",
                               -4: "O motor encontrou uma instrução incompatível com esta CPU."}.get(process.returncode, "O motor não conseguiu concluir o processamento.")

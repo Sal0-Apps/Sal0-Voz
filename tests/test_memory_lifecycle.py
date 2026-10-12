@@ -307,3 +307,12 @@ def test_generation_runtime_failure_requests_resume_but_bad_input_does_not(monke
     module.error_reply(RuntimeError("Invalid model environment"),request)
     assert replies[0]["kind"]=="interrupted"
     assert "kind" not in replies[1] and "kind" not in replies[2]
+
+
+def test_old_memory_log_does_not_hide_a_new_input_failure(data):
+    job=speech_job(data); worker=Worker(); worker.update(job["id"],status="running")
+    (data/"jobs"/job["id"]).mkdir()
+    with pytest.raises(MemoryUnavailable):
+        worker.run(job["id"],[sys.executable,"-c","raise MemoryError('previous attempt')"])
+    with pytest.raises(ValueError,match="invalid-current-input"):
+        worker.run(job["id"],[sys.executable,"-c","raise RuntimeError('invalid-current-input')"])
