@@ -75,9 +75,11 @@ def test_reclaimable_cache_does_not_pause_work(data, monkeypatch):
     worker.check(job["id"])
     assert s.get("job", job["id"])["status"] == "running"
     readings["memory.stat"] = "inactive_file 0"
-    with pytest.raises(Interrupted):
+    from app.engine_policy import MemoryUnavailable
+    with pytest.raises(MemoryUnavailable):
         worker.check(job["id"])
-    assert s.get("job", job["id"])["status"] == "paused"
+    # The loop releases the engine and queues an automatic Resume on this signal.
+    assert s.get("job", job["id"])["status"] == "running"
 
 
 def test_process_failure_includes_real_cause(data):

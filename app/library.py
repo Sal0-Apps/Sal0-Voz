@@ -76,7 +76,10 @@ def remove_items(kind, identifiers, owner, worker):
         with s.db() as conn:
             conn.execute("BEGIN IMMEDIATE")
             records = {}
-            for entry_kind, ident, body in conn.execute("SELECT kind,id,body FROM records WHERE kind IN ('media','character','job','project')"):
+            # Frozen snapshots are needed only to protect source media of
+            # unfinished jobs. Results/voices and completed history use metadata.
+            rows = conn.execute("SELECT kind,id,CASE WHEN kind='job' AND (?!='media' OR json_extract(body, '$.status')='completed') THEN json_remove(body, '$.snapshot') ELSE body END FROM records WHERE kind IN ('media','character','job','project')", (kind,))
+            for entry_kind, ident, body in rows:
                 records.setdefault(entry_kind, {})[ident] = json.loads(body)
             targets = records.get(record_kind, {})
             # Check the entire request before making any filesystem changes.

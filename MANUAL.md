@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.2
+# Manual — Sal0 Voz 0.3.3
 
 ## Primeira instalação
 
@@ -73,7 +73,13 @@ A implementação segue a API oficial [Qwen3-TTS](https://github.com/QwenLM/Qwen
 
 Prefira de 6 a 30 segundos de fala clara, de uma pessoa e sem música. A duração mínima aceita é 3 segundos. Na preparação automática, o app usa os primeiros 30 segundos, converte para mono/24 kHz e transcreve com large-v3-turbo. Se informar a transcrição manual, use um áudio de até 30 segundos e escreva o texto correspondente ao áudio inteiro.
 
-A clonagem usa o áudio **e** a transcrição (`x_vector_only_mode=False`). A preparação fica em cache e não altera a versão salva da voz. Confira o texto em Minhas vozes → Conferir transcrição; se houver erro, edite a voz e informe o texto correto. O Whisper termina antes de carregar Qwen, e Qwen permanece carregado para todos os trechos do mesmo trabalho. Adicionar outro texto preserva a voz selecionada.
+A clonagem usa o áudio **e** a transcrição (`x_vector_only_mode=False`). A preparação fica em cache e não altera a versão salva da voz. Confira o texto em Minhas vozes → Conferir transcrição; se houver erro, edite a voz e informe o texto correto. O Whisper termina antes de carregar Qwen. Qwen permanece carregado enquanto há falas para gerar e encerra logo após a última, antes da conversão final e montagem. Adicionar outro texto preserva a voz selecionada.
+
+Na 0.3.3, áudio longo do Whisper e espectrogramas ficam no disco, com FFT calculada em blocos sobre a mesma linha do tempo. O cálculo preserva contexto das janelas, padding e normalização global. Não muda o áudio enviado, VAD, beam size ou tempos da transcrição. Prompts completos da clonagem guardam codec, embedding, transcrição e precisão original; somente a voz atual permanece na RAM e as outras são relidas do disco quando necessárias.
+
+Cada fala gerada é gravada e verificada no disco antes de confirmação ao executor. Se ocorrer falta de RAM ou interrupção inesperada do motor, o app libera o processo, aguarda um intervalo e retoma automaticamente. O intervalo cresce de 5 segundos até 5 minutos se a mesma falha se repetir, e volta ao menor intervalo quando novos trechos são salvos. A retomada conserva o modelo e a precisão depois da primeira fala salva, reaproveita áudio bruto/conversões já prontas e recarrega o motor somente para as falas faltantes. Pausar ou cancelar manualmente interrompe essa retomada. Dados inválidos e CPU incompatível continuam exigindo correção.
+
+O histórico mostrado na interface é paginado no banco, sem carregar snapshots completos na RAM. Os arquivos enviados ao Telegram são lidos em blocos de 256 KiB. Os arquivos de áudio de trabalho ficam em /data/jobs até a exclusão do resultado; os arquivos temporários de decodificação do Whisper são removidos ao encerrar o processo.
 
 ## Roteiros e VoiceScript
 

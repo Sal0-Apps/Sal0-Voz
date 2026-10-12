@@ -14,7 +14,8 @@ from .catalog import runtime, require, model_files, models_needed, DEFAULT_ASR_M
 from .engine_session import EngineSession
 from .engine_policy import choose_profile, MemoryUnavailable
 from .engine_policy import MEMORY_GIB
-from .resources import cgroup_memory
+from .resources import cgroup_memory, memory_available, release_temporary_memory, ProcessInterrupted, stop_process_tree, is_memory_error
+from .audio_files import audio_valid, checkpoint_audio
 from .model_manager import manager as model_manager
 from .media import ffargs, probe, input_args
 from .script import subtitles
@@ -32,15 +33,26 @@ class Worker:
         self.thread = None
         self.clone_session = None
         self.active_job_id = None
+        self.processing_engine = None
 
     def start(self):
         if self.thread and self.thread.is_alive():
             return
         self.stop_event.clear()
-        for job in s.listing("job", limit=-1):
-            if job["status"] == "running":
-                job.update(status="queued", stage="Retomando após reinício")
-                s.put("job", job)
+        for ident in s.job_ids("running"):
+            self.update(ident, status="queued", stage="Retomando após reinício", retry_at=None)
+        # Upgrade older RAM/interruption failures to the same automatic Resume.
+        # A manual pause/cancel and invalid inputs remain under user control.
+        for status in ("failed", "paused"):
+            for ident in s.job_ids(status):
+                saved = s.get("job", ident)
+                detail = (str(saved.get("error") or "") + " " + str(saved.get("stage") or "")).lower()
+                terms = ("out of memory", "defaultcpuallocator", "not enough memory", "std::bad_alloc",
+                         "aguardando ram", "memória livre insuficiente", "memória do container próxima",
+                         "pouca memória disponível", "modelo de voz foi interrompido",
+                         "motor de voz encerrou a conexão", "o sistema encerrou o processo")
+                if (is_memory_error(detail) or any(term in detail for term in terms)) and "instrução incompatível" not in detail and (status != "paused" or saved.get("stage") != "Pausado"):
+                    self.update(ident, status="queued", stage="Retomando automaticamente dos trechos salvos", error=None, retry_at=None, consecutive_retries=0)
         self.thread = threading.Thread(target=self.loop, daemon=True)
         self.thread.start()
 
@@ -59,7 +71,8 @@ class Worker:
     def check(self, ident):
         if self.stop_event.is_set():
             raise Interrupted()
-        if s.get("job", ident)["status"] != "running":
+        state = s.job_state(ident)
+        if state["status"] != "running":
             raise Interrupted()
         minimum = int(os.getenv("SAL0_MIN_FREE_MB", "512")) * 1024**2
         if shutil.disk_usage(s.DATA).free < minimum:
@@ -68,14 +81,11 @@ class Worker:
         memory = psutil.virtual_memory()
         usage = cgroup_memory(Path("/sys/fs/cgroup"))
         if usage and usage[1] > usage[0]*0.94:
-            project = s.get("job", ident).get("snapshot", {})
-            if project.get("mode") != "asr" and project.get("engine", "").startswith("qwen-"):
-                raise MemoryUnavailable(MEMORY_GIB[project["engine"], project.get("dtype", "float32")], max(0, usage[0]-usage[1])/1024**3)
-            self.update(ident, status="paused", stage="Memória do container próxima do limite")
-            raise Interrupted()
+            cloning = state["mode"] != "asr" and not (self.processing_engine or "").startswith("whisper-")
+            needed = MEMORY_GIB.get((state["engine"], state["dtype"]), 0.5) if cloning else 0.5
+            raise MemoryUnavailable(needed, max(0, usage[0]-usage[1])/1024**3)
         if memory.available < 256*1024**2:
-            self.update(ident, status="paused", stage="Pouca memória disponível")
-            raise Interrupted()
+            raise MemoryUnavailable(0.5, memory.available/1024**3)
 
     def run(self, ident, args, cwd=None):
         self.check(ident)
@@ -83,7 +93,7 @@ class Worker:
         env = os.environ.copy()
         env.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1", PYANNOTE_METRICS_ENABLED="0", GRADIO_ANALYTICS_ENABLED="False", DO_NOT_TRACK="1")
         with log.open("ab") as output:
-            process = subprocess.Popen(args, cwd=cwd, env=env, stdout=output, stderr=output)
+            process = subprocess.Popen(args, cwd=cwd, env=env, stdout=output, stderr=output, start_new_session=os.name == "posix")
             try:
                 while process.poll() is None:
                     self.check(ident)
@@ -94,32 +104,64 @@ class Worker:
                         detail = stream.read().decode("utf-8", errors="replace").strip()
                     reason = {-9: "O sistema encerrou o processo; verifique memória e limites do container.",
                               -4: "O motor encontrou uma instrução incompatível com esta CPU."}.get(process.returncode, "O motor não conseguiu concluir o processamento.")
+                    if is_memory_error(detail):
+                        state = s.job_state(ident)
+                        needed = MEMORY_GIB.get((state["engine"], state["dtype"]), 0.5) if (self.processing_engine or "").startswith("qwen-") else 0.5
+                        raise MemoryUnavailable(needed, memory_available()/1024**3)
+                    if process.returncode < 0 and process.returncode != -4:
+                        raise ProcessInterrupted(f"{reason} Código {process.returncode}. {detail[-1200:]}")
                     raise ValueError(f"{reason} Código {process.returncode}. {detail[-1200:]}")
             finally:
-                if process.poll() is None:
-                    try:
-                        parent = psutil.Process(process.pid)
-                        children = parent.children(recursive=True)
-                        for child in children:
-                            child.kill()
-                        parent.kill()
-                        psutil.wait_procs(children + [parent], timeout=5)
-                    except psutil.NoSuchProcess:
-                        pass
-                    process.wait()
+                stop_process_tree(process)
+
+    @staticmethod
+    def speech_started(project, folder):
+        return any(segment.get("pause_ms") is None and not segment.get("reaction") and
+                   any((folder / f"{prefix}-{index:06d}.json").is_file() for prefix in ("segment", "raw"))
+                   for index, segment in enumerate(project.get("segments", [])))
+
+    def close_clone(self):
+        session, self.clone_session = self.clone_session, None
+        if session:
+            session.close()
+            release_temporary_memory()
+
+    def retry(self, ident, exc, project=None, waiting_memory=None):
+        """Automatic equivalent of Resume, respecting manual pause/cancel."""
+        self.close_clone()
+        release_temporary_memory()
+        with self.lock:
+            job = s.get("job", ident)
+            if job["status"] != "running":
+                return
+            project = project or job["snapshot"]
+            folder = s.DATA / "jobs" / ident
+            saved = sum(any((folder / f"{prefix}-{index:06d}.json").is_file() for prefix in ("segment", "raw"))
+                        for index in range(len(project.get("segments", []))))
+            previous = job.get("consecutive_retries", 0) if saved <= job.get("retry_checkpoint_count", -1) else 0
+            consecutive = previous + 1
+            delay = min(300, 5 * 2**min(consecutive-1, 6))
+            stage = f"Retomada automática em {delay}s · {saved} trechos salvos"
+            if waiting_memory:
+                stage = "Liberando RAM. " + stage
+            self.update(ident, status="queued", snapshot=project, stage=stage, error=None,
+                        waiting_memory=waiting_memory, retry_at=time.time()+delay,
+                        automatic_retries=job.get("automatic_retries", 0)+1,
+                        consecutive_retries=consecutive, retry_checkpoint_count=saved,
+                        last_recovery_error=str(exc)[-2000:])
 
     def loop(self):
         while not self.stop_event.is_set():
             with self.lock:
-                jobs = [x for x in reversed(s.listing("job", limit=-1)) if x["status"] == "queued"]
                 job = None
-                for candidate in jobs:
+                for candidate_id in s.job_ids("queued"):
+                    candidate = s.get("job", candidate_id)
+                    if candidate.get("retry_at") and candidate["retry_at"] > time.time():
+                        continue
                     try:
                         project = candidate["snapshot"]
                         folder = s.DATA / "jobs" / candidate["id"]
-                        locked = any(segment.get("pause_ms") is None and not segment.get("reaction") and
-                                     (folder / f"segment-{index:06d}.json").is_file()
-                                     for index, segment in enumerate(project.get("segments", [])))
+                        locked = self.speech_started(project, folder)
                         profile = choose_profile(project, locked=locked)
                         if profile:
                             project.setdefault("requested_engine", project["engine"])
@@ -158,7 +200,7 @@ class Worker:
                     except Exception as exc:
                         self.update(candidate["id"], status="failed", stage="Não foi possível preparar este trabalho: " + str(exc), error=str(exc))
                 if job:
-                    self.update(job["id"], status="running", stage="Preparando", waiting_models=[], started=time.time())
+                    self.update(job["id"], status="running", stage="Preparando", waiting_models=[], retry_at=None, started=time.time())
                     self.active_job_id = job["id"]
             if not job:
                 self.wake.wait(2); self.wake.clear(); continue
@@ -168,7 +210,7 @@ class Worker:
                 self.execute(job)
                 with self.lock:
                     self.check(ident)
-                    finished = self.update(ident, status="completed", stage="Concluído — revise o resultado", progress=100, elapsed_seconds=round(time.monotonic()-started, 2))
+                    finished = self.update(ident, status="completed", stage="Concluído — revise o resultado", progress=100, consecutive_retries=0, retry_at=None, waiting_memory=None, elapsed_seconds=round(time.monotonic()-started, 2))
                 notify_job(finished)
             except Interrupted:
                 if self.stop_event.is_set() and s.get("job", ident)["status"] == "running":
@@ -176,27 +218,40 @@ class Worker:
             except MemoryUnavailable as exc:
                 project = s.get("job", ident)["snapshot"]
                 folder = s.DATA / "jobs" / ident
-                locked = any(x.get("pause_ms") is None and not x.get("reaction") and (folder / f"segment-{i:06d}.json").is_file() for i,x in enumerate(project.get("segments", [])))
-                if not locked and project.get("adaptive_memory", True):
+                locked = self.speech_started(project, folder)
+                if not locked and exc.required == MEMORY_GIB.get((project.get("engine"), project.get("dtype", "float32"))) and project.get("adaptive_memory", True):
                     failed = project.setdefault("memory_failed_profiles", [])
                     key = project["engine"] + "/" + project.get("dtype", "float32")
                     if key not in failed:
                         failed.append(key)
-                self.update(ident, status="queued", stage=str(exc), snapshot=project, waiting_memory={"required_gib": exc.required, "available_gib": round(exc.available, 1)}, error=None)
-                self.stop_event.wait(2)
+                self.retry(ident, exc, project, {"required_gib": exc.required, "available_gib": round(exc.available, 1)})
+            except ProcessInterrupted as exc:
+                self.retry(ident, exc)
             except Exception as exc:
                 failed = self.update(ident, status="failed", stage=str(exc), error=str(exc))
                 notify_job(failed)
             finally:
                 with self.lock:
                     self.active_job_id = None
+                release_temporary_memory()
 
     def engine(self, ident, request, folder):
+        previous, self.processing_engine = self.processing_engine, request["engine"]
+        try:
+            return self._engine(ident, request, folder)
+        finally:
+            self.processing_engine = previous
+
+    def _engine(self, ident, request, folder):
+        if request["engine"].startswith("whisper-"):
+            self.close_clone()
+            request["work_dir"] = str(folder / "asr-work")
         if request["engine"].startswith("qwen-"):
             request["dtype"] = s.get("job", ident)["snapshot"].get("dtype", "float32")
         path = folder / "request.json"
-        model, _, _ = model_files(request["engine"])
+        model, manifest, _ = model_files(request["engine"])
         request["model_path"] = str(model or (s.DATA / "models" / request["engine"]))
+        request["model_revision"] = manifest.get("revision")
         s.atomic_json(path, request)
         if request["engine"].startswith("qwen-"):
             if self.clone_session is None:
@@ -205,19 +260,22 @@ class Worker:
                 self.update(ident, stage=stage)
             self.clone_session.generate(request)
         else:
-            self.run(ident, [runtime(request["engine"]), "-m", "app.engine_runner", str(path)])
+            try:
+                self.run(ident, [runtime(request["engine"]), "-m", "app.engine_runner", str(path)])
+            finally:
+                shutil.rmtree(folder / "asr-work", ignore_errors=True)
+                release_temporary_memory()
 
     def execute(self, job):
         self.clone_session = None
         try:
             self._execute(job)
         finally:
-            if self.clone_session:
-                self.clone_session.close()
-                self.clone_session = None
+            self.close_clone()
 
     def prepare_references(self, ident, project, folder):
         # ASR exits before Qwen loads, keeping only one heavy model in memory.
+        source_hashes = {}
         for segment in project["segments"]:
             if segment.get("pause_ms") is not None or segment.get("reaction"):
                 continue
@@ -226,7 +284,9 @@ class Worker:
             transcript = character.get("reference_text", "").strip()
             language = character.get("language", project["language"])
             asr_revision = require(DEFAULT_ASR_MODEL, "asr").get("revision") if not transcript else None
-            key = json.dumps([s.digest(source), language, transcript,
+            if source not in source_hashes:
+                source_hashes[source] = s.digest(source)
+            key = json.dumps([source_hashes[source], language, transcript,
                               [DEFAULT_ASR_MODEL, asr_revision] if not transcript else None,
                               "reference-v2"])
             import hashlib
@@ -291,15 +351,15 @@ class Worker:
         cursor = 0
         timed_groups = {}
         segments = project["segments"]
+        last_speech = max((i for i, segment in enumerate(segments)
+                           if segment.get("pause_ms") is None and not segment.get("reaction")), default=-1)
         for index, segment in enumerate(segments):
             self.check(ident)
             self.update(ident, progress=round(index/len(segments)*85), stage=f"Gerando trecho {index+1} de {len(segments)}")
             target = folder / f"segment-{index:06d}.wav"
-            checkpoint = target.with_suffix(".json")
-            valid = False
-            if target.exists() and checkpoint.exists():
-                meta = json.loads(checkpoint.read_text())
-                valid = meta.get("sha256") == s.digest(target)
+            valid = audio_valid(target)
+            if valid and index == last_speech:
+                self.close_clone()
             if not valid:
                 tmp = folder / f"temporary-{index}.wav"
                 if segment.get("pause_ms") is not None:
@@ -311,24 +371,25 @@ class Worker:
                             chunk = min(frames, 24000)
                             wav.writeframesraw(b"\0\0"*chunk); frames -= chunk
                 else:
-                    raw = folder / f"raw-{index}.wav"
+                    raw = folder / f"raw-{index:06d}.wav"
                     character = segment.get("character")
-                    if segment.get("reaction"):
-                        source = s.safe_path(segment["reaction_media"]["path"]) if segment.get("reaction_media") else reaction_file(segment["reaction"])
-                        self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", raw))
-                    elif project["engine"] == "diagnostic":
-                        text_file = folder / "spoken.txt"
-                        text_file.write_text(segment["text"], encoding="utf-8")
-                        self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
-                    else:
-                        self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "output": str(raw)}, folder)
+                    if not audio_valid(raw):
+                        if segment.get("reaction"):
+                            source = s.safe_path(segment["reaction_media"]["path"]) if segment.get("reaction_media") else reaction_file(segment["reaction"])
+                            self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", raw))
+                        elif project["engine"] == "diagnostic":
+                            text_file = folder / "spoken.txt"
+                            text_file.write_text(segment["text"], encoding="utf-8")
+                            self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
+                        else:
+                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "output": str(raw), "checkpoint": True}, folder)
+                        if not audio_valid(raw):
+                            checkpoint_audio(raw)
+                    if index == last_speech:
+                        self.close_clone()
                     self.run(ident, ffargs("-i", raw, "-af", f"atempo={segment['rate']},volume={segment['volume']}dB", "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", tmp))
-                with wave.open(str(tmp), "rb") as wav:
-                    duration = wav.getnframes()/wav.getframerate()
-                    if not duration:
-                        raise ValueError("Motor produziu áudio vazio.")
                 os.replace(tmp, target)
-                s.atomic_json(checkpoint, {"sha256": s.digest(target), "duration": duration})
+                checkpoint_audio(target)
             with wave.open(str(target), "rb") as wav:
                 duration_ms = round(wav.getnframes()*1000/wav.getframerate())
             if project["mode"] == "dub":
@@ -342,9 +403,7 @@ class Worker:
                 if caption(segment):
                     cues.append({"start_ms": cursor, "end_ms": cursor+duration_ms, "text": caption(segment)})
                 cursor += duration_ms
-        if self.clone_session:
-            self.clone_session.close()
-            self.clone_session = None
+        self.close_clone()
         self.update(ident, progress=90, stage="Montando exportação")
         joined = folder / "joined.wav"
         if project["mode"] == "dub":

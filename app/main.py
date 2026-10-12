@@ -194,7 +194,8 @@ def cancel_model(ident: str):
 @app.post("/api/models/prepare")
 def prepare_models():
     needed = set(DEFAULT_MODELS)
-    for job in s.listing("job", limit=-1):
+    for ident in s.job_ids("queued"):
+        job = s.get("job", ident)
         if job.get("status") == "queued" and job.get("snapshot", {}).get("mode"):
             needed.update(models_needed(job["snapshot"]))
     return [model_manager.request(ident, accept_license=True) for ident in sorted(needed)
@@ -273,10 +274,7 @@ def list_records(kind: str, request: Request, offset: int = 0, limit: int = 50):
     if kind not in ("characters", "projects", "media", "jobs"):
         raise HTTPException(404)
     singular = {"characters": "character", "projects": "project", "media": "media", "jobs": "job"}[kind]
-    values = [x for x in s.listing(singular, limit=-1) if visible(x, current_user(request))][max(offset, 0):max(offset, 0)+min(max(limit, 1), 100)]
-    if kind == "jobs":
-        return [{k: v for k, v in x.items() if k != "snapshot"} for x in values]
-    return values
+    return s.catalog_page(singular, current_user(request), offset, limit)
 
 @app.get("/api/characters")
 def list_characters(request: Request, offset: int = 0, limit: int = 50):
@@ -612,7 +610,7 @@ def job_action(ident: str, action: str, request: Request):
             if download and download.get("status") in {"failed", "cancelled"}:
                 model_manager.request(engine, accept_license=True, automatic=True)
         status = {"pause": "paused", "resume": "queued", "cancel": "cancelled"}[action]
-        job = worker.update(ident, status=status, stage={"paused": "Pausado", "queued": "Aguardando retomada", "cancelled": "Cancelado"}[status], error=None)
+        job = worker.update(ident, status=status, stage={"paused": "Pausado", "queued": "Aguardando retomada", "cancelled": "Cancelado"}[status], error=None, retry_at=None, consecutive_retries=0)
     worker.wake.set()
     return {"id": ident, "status": status}
 
@@ -670,7 +668,7 @@ async def events(request: Request):
                 current_user(request)
             except HTTPException:
                 return
-            jobs = [{k: v for k, v in x.items() if k != "snapshot"} for x in s.listing("job", limit=-1) if visible(x, owner)][:50]
+            jobs = s.catalog_page("job", owner, limit=50)
             data = json.dumps(jobs, ensure_ascii=False)
             if data != previous:
                 yield "data: " + data + "\n\n"

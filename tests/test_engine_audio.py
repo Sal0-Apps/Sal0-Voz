@@ -20,10 +20,13 @@ def recording(tmp_path):
 
 
 def test_decoder_preserves_audio_and_resamples(recording):
-    audio = decode_audio(recording)
-    assert audio.dtype == np.float32 and len(audio) == 40000
-    assert np.isfinite(audio).all() and abs(audio).max() > .3
-    assert abs(audio[-1600:]).max() > .3
+    with decode_audio(recording, recording.parent) as audio:
+        assert isinstance(audio, np.memmap) and audio.dtype == np.float32 and len(audio) == 40000
+        assert np.isfinite(audio).all() and abs(audio).max() > .3
+        assert abs(audio[-1600:]).max() > .3
+        backing = str(audio.filename)
+    from pathlib import Path
+    assert not Path(backing).exists() and audio._mmap.closed
 
 
 def test_transcriber_receives_decoded_audio_and_cpu_options(recording, tmp_path, monkeypatch):
@@ -32,8 +35,9 @@ def test_transcriber_receives_decoded_audio_and_cpu_options(recording, tmp_path,
     class Whisper:
         def __init__(self, path, **options):
             calls.update(path=path, options=options)
+            self.feature_extractor = SimpleNamespace()
         def transcribe(self, audio, **options):
-            calls.update(audio=audio, transcribe=options)
+            calls.update(audio=audio.copy(), disk_audio=isinstance(audio, np.memmap), transcribe=options)
             return iter([SimpleNamespace(start=.5, end=2.25, text=" Olá. "),
                          SimpleNamespace(start=2.25, end=2.5, text=" ")]), None
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Whisper))
@@ -44,6 +48,7 @@ def test_transcriber_receives_decoded_audio_and_cpu_options(recording, tmp_path,
     assert calls["options"] == {"device": "cpu", "compute_type": "int8", "cpu_threads": 4,
                                 "num_workers": 1, "local_files_only": True}
     assert isinstance(calls["audio"], np.ndarray) and len(calls["audio"]) == 40000
+    assert calls["disk_audio"]
     assert calls["transcribe"] == {"language": "pt", "beam_size": 5, "vad_filter": True,
                                    "word_timestamps": True, "condition_on_previous_text": False}
     assert json.loads(output.read_text()) == [{"start_ms": 500, "end_ms": 2250, "text": "Olá."}]
@@ -53,4 +58,5 @@ def test_invalid_recording_has_a_useful_error(tmp_path):
     path = tmp_path / "invalid.wav"
     path.write_bytes(b"invalid audio")
     with pytest.raises(ValueError, match="Não foi possível ler o áudio"):
-        decode_audio(path)
+        with decode_audio(path, tmp_path):
+            pytest.fail("Invalid audio must not be mapped")

@@ -1,5 +1,5 @@
 FROM python:3.11-slim-bookworm AS base
-LABEL org.opencontainers.image.title="Sal0 Voz" org.opencontainers.image.version="0.3.2" org.opencontainers.image.source="https://github.com/Sal0-Apps/Sal0-Voz"
+LABEL org.opencontainers.image.title="Sal0 Voz" org.opencontainers.image.version="0.3.3" org.opencontainers.image.source="https://github.com/Sal0-Apps/Sal0-Voz"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg espeak-ng libsndfile1 libgomp1 sox gosu ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

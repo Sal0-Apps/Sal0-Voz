@@ -67,6 +67,36 @@ def listing(kind, offset=0, limit=50):
     return [json.loads(row[0]) for row in rows]
 
 
+def catalog_page(kind, owner, offset=0, limit=50):
+    """Filter/page in SQLite; never load job snapshots for UI polling."""
+    body = "json_remove(body, '$.snapshot')" if kind == "job" else "body"
+    query = f"SELECT {body} FROM records WHERE kind=?"
+    args = [kind]
+    if owner.get("role") != "admin":
+        query += " AND json_extract(body, '$.owner_username')=?"
+        args.append(owner["username"])
+    query += " ORDER BY updated DESC LIMIT ? OFFSET ?"
+    args.extend((min(max(limit, 1), 100), max(offset, 0)))
+    with db() as conn:
+        rows = conn.execute(query, args).fetchall()
+    return [json.loads(row[0]) for row in rows]
+
+
+def job_ids(status):
+    with db() as conn:
+        rows = conn.execute("SELECT id FROM records WHERE kind='job' AND json_extract(body, '$.status')=? ORDER BY updated ASC", (status,)).fetchall()
+    return [row[0] for row in rows]
+
+
+def job_state(ident):
+    """Small status record for the guard called while a model is running."""
+    with db() as conn:
+        row = conn.execute("SELECT json_extract(body, '$.status'), json_extract(body, '$.snapshot.engine'), json_extract(body, '$.snapshot.dtype'), json_extract(body, '$.snapshot.mode') FROM records WHERE kind='job' AND id=?", (ident,)).fetchone()
+    if row is None:
+        raise KeyError("Registro não encontrado")
+    return {"status": row[0], "engine": row[1], "dtype": row[2] or "float32", "mode": row[3]}
+
+
 def setting(key, value=None):
     with db() as conn:
         if value is not None:

@@ -4,7 +4,7 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.3.2 — clonagem como fluxo principal, com modelos incluídos na imagem e configuração para quatro núcleos/16 GB de RAM.** A fidelidade e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
+**Versão 0.3.3 — clonagem como fluxo principal, com modelos incluídos, uso de disco para reduzir RAM e retomada automática após interrupção do motor.** Configuração para quatro núcleos/16 GB de RAM, com perfil adaptado ao limite de 10 GiB do container. A fidelidade e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
 
 ## Instalar no ZimaOS
 
@@ -16,7 +16,7 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 6. Clique em **Gerar voz**. O app prepara e transcreve a referência automaticamente, usa a clonagem completa do Qwen e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro texto** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Gerar legendas**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.2` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.3` e o SHA do commit para rollback.
 
 **Qwen3-TTS 1.7B/0.6B Base e Faster-Whisper large-v3-turbo já vêm na imagem**, com revisões fixas e hashes verificados na construção. Ficam em `/opt/sal0-models/models`, fora de `/data`, para que o volume de uma instalação nova ou antiga não esconda os pesos. O Whisper transcreve a referência e as legendas em CPU INT8; o Qwen reproduz a voz em CPU float32 ou bfloat16. Não é necessário instalar CUDA ou baixar os modelos separadamente.
 
@@ -32,11 +32,12 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - Upload na Biblioteca e em Minhas vozes; formatos de áudio/vídeo reconhecidos por FFmpeg são validados pelo conteúdo e convertidos automaticamente para a referência. Arquivos originais são preservados.
 - Personagens com versões imutáveis; trabalhos preservam uma cópia do personagem usado.
 - Editor com autosave, projetos e histórico de revisões.
-- VoiceScript: personagem, idioma, pausa exata, ritmo, volume e reações. Texto dividido por pontuação, com frases longas subdivididas; modelo e processo únicos por trabalho.
-- Fila SQLite, um executor pesado por vez, pausa, cancelamento da árvore de processos e retomada por checkpoint validado com SHA-256.
+- VoiceScript: personagem, idioma, pausa exata, ritmo, volume e reações. Texto dividido por pontuação, com frases longas subdivididas; mesmo modelo durante todo o áudio e um processo de voz ativo por vez.
+- Fila SQLite, um executor pesado por vez, pausa, cancelamento da árvore de processos e retomada automática após falta de RAM/interrupção, por checkpoint validado com SHA-256. Intervalo crescente entre tentativas; pausa e cancelamento manuais são respeitados.
 - TTS de diagnóstico real em pt-BR/en-US com eSpeak NG.
 - Adaptadores locais Qwen3-TTS 1.7B/0.6B Base (clonagem) e Faster-Whisper large-v3-turbo/medium/large-v3 CPU INT8.
-- Referência mono a 24 kHz, transcrição automática em cache, áudio junto com texto na clonagem completa e um carregamento de Qwen por trabalho.
+- Referência mono a 24 kHz, transcrição automática em cache, áudio junto com texto na clonagem completa. Qwen carrega uma vez na execução normal e encerra após a última fala; numa retomada, recarrega e reutiliza os trechos salvos.
+- Whisper encerra antes da clonagem; áudio longo e espectrograma usam disco com cálculo em blocos. Prompts completos de vozes persistem no trabalho, com apenas a voz atual em RAM. Montagem e envio ao Telegram também usam blocos.
 - WAV, FLAC, MP3, Opus, SRT/VTT; legendas de TTS com tempos por trecho, sujeitas a revisão.
 - Dublagem direta do vídeo, com transcrição Turbo automática e ajuste de ritmo para manter os tempos. SRT revisado continua opcional; nesse modo, excesso de duração acima de 10% exige revisão.
 - 33 reações e sons offline no editor Detalhado: risada, gemido de dor, choro, surpresa, suspiro, tosse e outras. Gravações próprias por voz, com versões preservadas.
@@ -93,4 +94,4 @@ Em **Criar voz**, escolha a voz, digite ou importe TXT/SRT como texto, escolha o
 
 A versão 0.3.2 corrige o `Not Found` ao carregar o catálogo de reações, que interrompia a restauração da interface. Há teste de inicialização pela API real e teste de navegador com recarga e reconexão. O APK Android 0.3.1 recebe esta interface ao atualizar o servidor.
 
-Os testes de geração dos modelos foram retirados do workflow a pedido do proprietário. A avaliação dos modelos da 0.3.2 será feita no servidor; a publicação mantém os modelos incluídos e verificados durante a construção.
+Os testes de geração dos modelos foram retirados do workflow a pedido do proprietário. A avaliação dos modelos destas revisões será feita no servidor; a publicação mantém os modelos incluídos e verificados durante a construção.

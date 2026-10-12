@@ -3,9 +3,13 @@ import contextlib
 import json
 import io
 import os
-import subprocess
 import sys
+import tempfile
 from pathlib import Path
+from .asr_memory import decode_audio, DiskFeatures
+from .prompt_cache import PromptCache
+from .resources import release_temporary_memory, is_memory_error
+from .audio_files import checkpoint_audio
 
 LANGUAGES = {"pt-BR": "Portuguese", "en-US": "English"}
 
@@ -13,18 +17,6 @@ LANGUAGES = {"pt-BR": "Portuguese", "en-US": "English"}
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
 os.environ["DO_NOT_TRACK"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-
-def decode_audio(source):
-    """Use our FFmpeg decoder instead of depending on PyAV's changing API."""
-    import numpy as np
-    from .media import ffargs, input_args
-    result = subprocess.run(ffargs(*input_args(source),
-                                  "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000",
-                                  "-f", "f32le", "pipe:1"),
-                            capture_output=True, timeout=300)
-    if result.returncode or not result.stdout:
-        raise ValueError("Não foi possível ler o áudio para transcrição. Confira a gravação.")
-    return np.frombuffer(result.stdout, dtype="<f4")
 
 class QwenEngine:
     def __init__(self, request):
@@ -53,69 +45,74 @@ class QwenEngine:
         )
         self.model.model.talker.generation_config.pad_token_id = self.model.model.config.talker_config.codec_eos_token_id
         print(f"CPU · atenção PyTorch eager · {self.dtype} · sem CUDA", file=sys.stderr)
-        self.prompts = {}
+        self.prompts = PromptCache(Path(request["output"]).parent / "clone-prompts", request["engine"], self.dtype, request.get("model_revision"))
 
     def generate(self, request):
         import torch
         import soundfile as sf
+        from qwen_tts.inference.qwen3_tts_model import VoiceClonePromptItem
         transcript = (request.get("reference_text") or "").strip()
         if not transcript:
             raise ValueError("A gravação precisa ser transcrita antes da clonagem. Confira a preparação da referência.")
-        key = (request["reference"], transcript)
         with torch.inference_mode(), torch.autocast(device_type="cpu", dtype=torch.bfloat16, enabled=self.dtype == "bfloat16"):
-            if key not in self.prompts:
-                self.prompts[key] = self.model.create_voice_clone_prompt(
-                    ref_audio=request["reference"], ref_text=transcript, x_vector_only_mode=False,
-                )
+            prompt = self.prompts.get(request["reference"], transcript,
+                                     lambda: self.model.create_voice_clone_prompt(
+                                         ref_audio=request["reference"], ref_text=transcript, x_vector_only_mode=False),
+                                     VoiceClonePromptItem, torch)
             wavs, sr = self.model.generate_voice_clone(
                 text=request["text"], language=LANGUAGES[request["language"]],
-                voice_clone_prompt=self.prompts[key], non_streaming_mode=True, max_new_tokens=4096,
+                voice_clone_prompt=prompt, non_streaming_mode=True, max_new_tokens=4096,
             )
         if not wavs or not len(wavs[0]):
             raise ValueError("O modelo não gerou áudio. Confira sua referência.")
-        sf.write(request["output"], wavs[0], sr)
+        output = Path(request["output"])
+        temporary = output.with_name(output.stem + ".partial.wav")
+        sf.write(temporary, wavs[0], sr)
+        os.replace(temporary, output)
+        if request.get("checkpoint"):
+            checkpoint_audio(output)
 
 def transcribe(request):
     from faster_whisper import WhisperModel
     threads = max(1, int(os.getenv("SAL0_THREADS", "4")))
-    model = WhisperModel(request["model_path"], device="cpu", compute_type="int8",
-                         cpu_threads=threads, num_workers=1, local_files_only=True)
-    segments, _ = model.transcribe(
-        decode_audio(request["source"]), language=request["language"].split("-")[0],
-        beam_size=5, vad_filter=True, word_timestamps=True, condition_on_previous_text=False,
-    )
-    cues = [{"start_ms": round(x.start*1000), "end_ms": round(x.end*1000), "text": x.text.strip()}
-            for x in segments if x.text.strip()]
-    Path(request["output"]).write_text(json.dumps(cues, ensure_ascii=False), encoding="utf-8")
+    root = Path(request.get("work_dir", Path(request["output"]).parent / "asr-work"))
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="whisper-", dir=root) as directory:
+        with decode_audio(request["source"], directory) as audio:
+            model = WhisperModel(request["model_path"], device="cpu", compute_type="int8",
+                                 cpu_threads=threads, num_workers=1, local_files_only=True)
+            features = DiskFeatures(model.feature_extractor, directory)
+            model.feature_extractor = features
+            segments = None
+            try:
+                segments, _ = model.transcribe(
+                    audio, language=request["language"].split("-")[0],
+                    beam_size=5, vad_filter=True, word_timestamps=True, condition_on_previous_text=False,
+                )
+                cues = [{"start_ms": round(x.start*1000), "end_ms": round(x.end*1000), "text": x.text.strip()}
+                        for x in segments if x.text.strip()]
+                from .storage import atomic_json
+                atomic_json(request["output"], cues)
+            finally:
+                segments = None
+                model = None
+                features.close()
+    release_temporary_memory()
 
 def reply(value):
     sys.stdout.write(json.dumps(value, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
-def error_reply(exc, request):
+def error_reply(exc, request, retryable=False):
     from .engine_policy import MemoryUnavailable, MEMORY_GIB
     from .resources import memory_available
     value = {"error": str(exc)}
-    memory_error = isinstance(exc, (MemoryError, MemoryUnavailable)) or any(
-        term in str(exc).lower() for term in ("defaultcpuallocator", "not enough memory", "out of memory", "std::bad_alloc")
-    )
+    memory_error = isinstance(exc, MemoryUnavailable) or is_memory_error(exc)
     if memory_error:
         value.update(kind="memory", required=getattr(exc, "required", MEMORY_GIB[(request["engine"], request.get("dtype", "float32"))]), available=getattr(exc, "available", memory_available()/1024**3))
+    elif retryable and isinstance(exc, (RuntimeError, InterruptedError, TimeoutError)):
+        value["kind"] = "interrupted"
     reply(value)
-
-def release_temporary_memory():
-    # Keep model/prompt tensors alive, release completed utterance buffers.
-    import gc
-    gc.collect()
-    if sys.platform.startswith("linux"):
-        import ctypes
-        try:
-            trim = ctypes.CDLL(None).malloc_trim
-            trim.argtypes = [ctypes.c_size_t]
-            trim.restype = ctypes.c_int
-            trim(0)
-        except (AttributeError, OSError):
-            pass
 
 def main():
     from onnxruntime import disable_telemetry_events
@@ -147,7 +144,7 @@ def main():
             except Exception as exc:
                 import traceback
                 traceback.print_exc(file=sys.stderr)
-                error_reply(exc, request)
+                error_reply(exc, request, retryable=True)
                 return
     elif request["engine"].startswith("whisper-") and not serving:
         transcribe(request)

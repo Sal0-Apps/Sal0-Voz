@@ -122,6 +122,10 @@ def test_queue_recovers_from_memory_failure_with_same_model_economically(data,mo
     monkeypatch.setattr(policy,'cgroup_memory',lambda:(12*1024**3,0))
     monkeypatch.setattr(module,'require',lambda *args:{'id':args[0]})
     worker=Worker();attempts=[]
+    clock=[1000]
+    from types import SimpleNamespace
+    monkeypatch.setattr(module, 'time', SimpleNamespace(time=lambda:clock[0], monotonic=lambda:clock[0]))
+    monkeypatch.setattr(worker.wake, 'wait', lambda seconds:clock.__setitem__(0,clock[0]+seconds))
     job=s.put('job',{'status':'queued','snapshot':{'mode':'tts','engine':'qwen-1.7b','segments':[{'text':'Oi.'}]}})
     def execute(value):
         profile=s.get('job',value['id'])['profile'];attempts.append(profile)

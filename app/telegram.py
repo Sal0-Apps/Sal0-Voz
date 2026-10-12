@@ -20,12 +20,21 @@ def masked(user):
     return {"telegram_token":token,"telegram_chat_id":config.get("telegram_chat_id","")}
 def _request(token,method,fields,file_path=None):
     if not token: return False
-    boundary="----Sal0Voz"+uuid.uuid4().hex; body=bytearray()
-    for key,value in fields.items(): body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
+    boundary="----Sal0Voz"+uuid.uuid4().hex; header=bytearray()
+    for key,value in fields.items(): header.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
+    path=None
     if file_path:
-        path=Path(file_path); body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="document"; filename="{path.name}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode()); body.extend(path.read_bytes()); body.extend(b"\r\n")
-    body.extend(f"--{boundary}--\r\n".encode())
-    request=urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}",data=bytes(body),headers={"Content-Type":f"multipart/form-data; boundary={boundary}"},method="POST")
+        path=Path(file_path); header.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="document"; filename="{path.name}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode())
+    footer=(b"\r\n" if path else b"")+f"--{boundary}--\r\n".encode()
+    length=len(header)+(path.stat().st_size if path else 0)+len(footer)
+    def body():
+        yield bytes(header)
+        if path:
+            with path.open("rb") as stream:
+                while block:=stream.read(256*1024):
+                    yield block
+        yield footer
+    request=urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}",data=body(),headers={"Content-Type":f"multipart/form-data; boundary={boundary}","Content-Length":str(length)},method="POST")
     try:
         with urllib.request.urlopen(request,timeout=120) as response: return 200<=response.status<300
     except Exception: return False

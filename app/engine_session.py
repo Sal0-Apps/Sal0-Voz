@@ -4,11 +4,10 @@ import os
 import queue
 import subprocess
 import threading
-import psutil
 from . import storage as s
 from .catalog import runtime
 from .engine_policy import MemoryUnavailable, MEMORY_GIB
-from .resources import oom_kills, memory_available
+from .resources import oom_kills, memory_available, ProcessInterrupted, stop_process_tree
 
 class EngineSession:
     def __init__(self, worker, ident, request, folder):
@@ -27,7 +26,7 @@ class EngineSession:
             self.process = subprocess.Popen(
                 [runtime(request["engine"]), "-m", "app.engine_runner", "--serve", str(path)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.output,
-                text=True, encoding="utf-8", env=env, bufsize=1,
+                text=True, encoding="utf-8", env=env, bufsize=1, start_new_session=os.name == "posix",
             )
             self.reader = threading.Thread(target=self._read, daemon=True)
             self.reader.start()
@@ -53,12 +52,18 @@ class EngineSession:
             except queue.Empty:
                 continue
             if line is None:
-                if oom_kills() > self.oom_before:
+                try:
+                    code = self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired as exc:
+                    raise ProcessInterrupted("O motor encerrou a comunicação antes de concluir. O trabalho será retomado.") from exc
+                if oom_kills() > self.oom_before or code == -9:
                     raise MemoryUnavailable(MEMORY_GIB[self.profile], memory_available()/1024**3)
                 with self.log.open("rb") as stream:
                     stream.seek(max(0, self.log.stat().st_size - 2000))
                     detail = stream.read().decode("utf-8", errors="replace").strip()
-                raise ValueError("O modelo de voz foi interrompido. " + detail)
+                if code == -4:
+                    raise ValueError("O motor encontrou uma instrução incompatível com esta CPU. " + detail)
+                raise ProcessInterrupted("O modelo de voz foi interrompido. " + detail)
             try:
                 value = json.loads(line)
             except ValueError:
@@ -66,6 +71,8 @@ class EngineSession:
             if value.get("error"):
                 if value.get("kind") == "memory":
                     raise MemoryUnavailable(value["required"], value["available"])
+                if value.get("kind") == "interrupted":
+                    raise ProcessInterrupted(value["error"])
                 raise ValueError(value["error"])
             return value
 
@@ -75,28 +82,21 @@ class EngineSession:
             self.process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
             self.process.stdin.flush()
         except (BrokenPipeError, OSError) as exc:
-            raise ValueError("O motor de voz encerrou a conexão. Consulte o diagnóstico do trabalho.") from exc
+            raise ProcessInterrupted("O motor de voz encerrou a conexão. O trabalho continuará dos trechos salvos.") from exc
         if not self.wait().get("ok"):
             raise ValueError("O motor não confirmou a geração do trecho.")
 
     def close(self):
         process = self.process
         if process:
-            if process.poll() is None:
-                try:
-                    parent = psutil.Process(process.pid)
-                    for child in parent.children(recursive=True):
-                        child.kill()
-                    parent.terminate()
-                    process.wait(timeout=5)
-                except psutil.NoSuchProcess:
-                    pass
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-            for stream in (process.stdin, process.stdout):
-                if stream:
-                    stream.close()
+            stop_process_tree(process)
             if hasattr(self, "reader"):
                 self.reader.join(timeout=1)
+            for stream in (process.stdin, process.stdout):
+                if stream:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass  # Do not mask the recoverable broken-pipe error.
+            self.process = None
         self.output.close()
