@@ -31,8 +31,8 @@ def download_plan(meta, api):
 def validate_plan(plan, meta, folder):
     if plan["repo"] != meta["repo"] or any(not (folder / name).resolve().is_relative_to(folder.resolve()) for name in plan["files"]):
         raise ValueError("Plano inválido. Remova download-plan.json e execute plan novamente.")
-    if "companions" in meta:
-        specifications = [meta, *meta["companions"]]
+    if "files" in meta:
+        specifications = [meta, *meta.get("companions", [])]
         expected = [(item["repo"], item["revision"], set(item["files"])) for item in specifications]
         actual = [(item["repo"], item["revision"], set(item["files"])) for item in plan.get("sources", [])]
         if expected != actual or set(plan["files"]) != set().union(*(item[2] for item in expected)):

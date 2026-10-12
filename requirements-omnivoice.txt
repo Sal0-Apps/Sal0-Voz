@@ -1,0 +1,5 @@
+omnivoice @ https://codeload.github.com/k2-fsa/OmniVoice/tar.gz/08be0b4ccbac3e13e374e86fbfead4b4cac343e2
+transformers==5.19.0
+accelerate==1.15.0
+soundfile==0.14.0
+psutil==7.0.0

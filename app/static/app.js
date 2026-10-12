@@ -58,7 +58,7 @@ document.querySelectorAll("[data-insert]").forEach(x=>x.addEventListener("click"
   const area=$("script");area.setRangeText(x.dataset.insert,area.selectionStart,area.selectionEnd,"end");area.dispatchEvent(new Event("input"));area.focus();
 }));
 function payload(){
-  return {name:$("project-name").value.trim()||"Projeto sem título",audio_name:$("audio-name").value.trim(),adaptive_memory:$("adaptive-memory").checked,expressiveness:Number($("expressiveness").value),mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
+  return {name:$("project-name").value.trim()||"Projeto sem título",audio_name:$("audio-name").value.trim(),adaptive_memory:$("adaptive-memory").checked,expressiveness:Number($("expressiveness").value),voice_style:$("voice-style").value,mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
 }
 function saveDraft(){
   $("char-count").textContent=$("script").value.length.toLocaleString("pt-BR")+" caracteres";
@@ -109,8 +109,10 @@ function modelNotice(){
   $("download-selected-model").hidden=!model||model.available||ident==="diagnostic"||["queued","downloading"].includes(download?.status);
   $("download-selected-model").textContent="Baixar "+(model?.download_gib?"· cerca de "+model.download_gib+" GiB ":"")+"no servidor";
   $("expression-settings").hidden=state.mode==="asr"||!model?.expressiveness;
-  $("memory-label").hidden=state.mode==="asr"||ident==="chatterbox-pt-br";
-  $("memory-hint").textContent=ident==="chatterbox-pt-br"?"Este modelo usa float32 em CPU. Se faltar RAM, aguarda memória e retoma dos trechos salvos com o mesmo modelo.":"Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória.";
+  $("voice-style-settings").hidden=state.mode==="asr"||!model?.style_control;
+  const fixedPrecision=["chatterbox-pt-br","omnivoice","voxcpm2"].includes(ident);
+  $("memory-label").hidden=state.mode==="asr"||fixedPrecision;
+  $("memory-hint").textContent=fixedPrecision?"Mantém o modelo e a precisão escolhidos. Se faltar RAM, aguarda memória e retoma dos trechos salvos.":"Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória.";
   $("expression-value").textContent=Number($("expressiveness").value).toFixed(2);
 }
 $("expressiveness").addEventListener("input",()=>{$("expression-value").textContent=Number($("expressiveness").value).toFixed(2);});
@@ -155,6 +157,7 @@ async function loadProject(p){
   }
   $("audio-name").value=p.audio_name||"";$("adaptive-memory").checked=p.adaptive_memory!==false;
   $("expressiveness").value=p.expressiveness??0.7;
+  $("voice-style").value=p.voice_style||"natural";
   state.sourceId=$("source-media").value;$("source-upload").value="";
   $("voice-choice").value=$("engine").value==="diagnostic"?"simple":"clone";
   if(isClone($("engine").value))state.cloneEngine=$("engine").value;

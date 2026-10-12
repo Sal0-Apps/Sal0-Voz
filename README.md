@@ -4,7 +4,7 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.3.5 — imagem sem pesos: modelos preparados após a instalação e preservados na pasta de dados.** Mantém Chatterbox V3 pt-BR opcional, o uso de disco para reduzir RAM e a retomada automática. Configuração para quatro núcleos/16 GB de RAM, com limite de 10 GiB do container. A fidelidade e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
+**Versão 0.3.6 — OmniVoice e VoxCPM2 disponíveis como downloads opcionais, com clonagem em CPU.** Mantém a imagem sem pesos, os modelos na pasta de dados, o uso de disco para reduzir RAM e a retomada automática. Configuração para quatro núcleos/16 GB de RAM, com limite de 10 GiB do container. A fidelidade, a expressão e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
 
 ## Instalar no ZimaOS
 
@@ -16,7 +16,7 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 6. Clique em **Gerar voz**. O app prepara e transcreve a referência automaticamente, usa a clonagem completa do Qwen e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro texto** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Gerar legendas**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.5` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.6` e o SHA do commit para rollback.
 
 **Os pesos são baixados pelo próprio aplicativo depois que ele inicia**, em segundo plano. Qwen3-TTS 1.7B Base e Faster-Whisper large-v3-turbo são preparados automaticamente em `/data/models`, com revisões fixas e hashes verificados. A interface e o healthcheck funcionam enquanto o download acontece; trabalhos que precisam desses modelos aguardam na fila. O progresso aparece em **Ajustes → Modelos do aplicativo**. As dependências de CPU continuam na imagem, sem precisar instalar CUDA.
 
@@ -25,6 +25,17 @@ Modelos completos na pasta de dados são reutilizados nas atualizações. Downlo
 O perfil **Mais leve · Qwen 0.6B** é baixado quando escolhido para um trabalho ou pelo botão **Preparar este modelo**. Chatterbox, `whisper-medium` e `whisper-large-v3` também são opcionais. A fila preserva o texto durante a preparação. Se o pacote GHCR estiver privado, o administrador deve torná-lo público para permitir download anônimo pelo ZimaOS.
 
 ### Clonagem com mais expressão em português
+
+Após atualizar e recriar o container, abra **Ajustes → Modelos do aplicativo**. Também é possível escolher o modelo no passo 3 e clicar em **Baixar no servidor**:
+
+| Opção | Download | Perfil |
+|---|---|---|
+| Fidelidade e expressão · OmniVoice 0.6B | Cerca de 3,1 GiB | CPU float32, 32 passos completos; referência de 3 a 10 segundos com transcrição automática |
+| Clonagem e emoções · VoxCPM2 2B | Cerca de 4,8 GiB | Motor GGML em CPU, pesos F16 completos, áudio e transcrição da referência, 48 kHz |
+
+Os dois funcionam em Criar voz e Dublar arquivo. VoxCPM2 oferece **Como interpretar a fala**, com alegria, tristeza, raiva, medo, surpresa, calma, entusiasmo, carinho, seriedade, sussurro e grito. A orientação fica congelada no trabalho e é enviada em todos os trechos. OmniVoice segue o estilo da referência; a gravação deve ter a interpretação que você quer reproduzir.
+
+Whisper transcreve a referência e encerra antes da clonagem. OmniVoice mantém um modelo por trabalho e guarda prompts no disco. VoxCPM2 carrega seus pesos no processo nativo de cada trecho e o encerra antes de montar o áudio. A memória e o tempo real ainda precisam ser avaliados no A10; as reservas iniciais são 5,5 GiB para OmniVoice e 7,5 GiB para VoxCPM2, com margem adicional. Esses modelos aguardam RAM em vez de trocar de modelo, precisão ou reduzir passos. Os pesos do OmniVoice têm licença não comercial; as licenças acompanham as fontes de download.
 
 Em **Ajustes → Modelos do aplicativo**, prepare **Expressiva · Chatterbox V3 pt-BR**. Também pode selecioná-lo no passo 3 de Criar voz e clicar em **Baixar no servidor**. É um download opcional de aproximadamente **3 GiB**, salvo no volume; não ocorre ao iniciar o aplicativo. Depois, escolha uma voz salva ou envie uma gravação, selecione esse modelo e gere. A dublagem usa a mesma opção.
 
@@ -60,7 +71,7 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 
 - Benchmark dos modelos no AMD A10-9700E/16 GB e avaliação auditiva pt-BR/inglês.
 - Validação da clonagem real com referências do proprietário.
-- VoxCPM2 como candidato adicional.
+- Avaliação auditiva de OmniVoice e VoxCPM2 e seus picos de RAM no A10.
 - Conversão direta de voz, tradução automática, separação/diarização, emoções específicas por instrução, reações geradas pelo modelo, voice design e treinamento.
 - Alinhamento por palavra, editor gráfico de forma de onda, comparação de tomadas e testes extensivos de vídeo longo.
 - Homologação no ZimaOS e teste com rede externa bloqueada no servidor real.

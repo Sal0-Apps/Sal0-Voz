@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psutil
 from . import storage as s
-from .catalog import runtime, require, model_files, models_needed, DEFAULT_ASR_MODEL, is_clone, needs_reference_text
+from .catalog import CATALOG, runtime, require, model_files, models_needed, DEFAULT_ASR_MODEL, is_clone, needs_reference_text
 from .engine_session import EngineSession
 from .engine_policy import choose_profile, MemoryUnavailable
 from .engine_policy import MEMORY_GIB
@@ -248,7 +248,7 @@ class Worker:
             self.close_clone()
             request["work_dir"] = str(folder / "asr-work")
         if is_clone(request["engine"]):
-            request["dtype"] = s.get("job", ident)["snapshot"].get("dtype", "float32")
+            request["dtype"] = s.get("job", ident)["snapshot"].get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
         path = folder / "request.json"
         model, manifest, _ = model_files(request["engine"])
         request["model_path"] = str(model or (s.DATA / "models" / request["engine"]))
@@ -277,6 +277,8 @@ class Worker:
     def prepare_references(self, ident, project, folder):
         # ASR exits before cloning; Chatterbox does not need a transcript.
         needs_text = needs_reference_text(project["engine"])
+        reference_seconds = CATALOG[project["engine"]].get("reference_seconds", 30)
+        reference_hz = CATALOG[project["engine"]].get("reference_hz", 24000)
         source_hashes = {}
         for segment in project["segments"]:
             if segment.get("pause_ms") is not None or segment.get("reaction"):
@@ -291,6 +293,8 @@ class Worker:
             key = json.dumps([source_hashes[source], language, transcript,
                               [DEFAULT_ASR_MODEL, asr_revision] if needs_text and not transcript else None,
                               "reference-v2" if needs_text else "reference-audio-v1"])
+            if reference_seconds != 30 or reference_hz != 24000:
+                key += json.dumps([reference_seconds, reference_hz])
             import hashlib
             cache = s.DATA / "cache" / "voice-reference" / hashlib.sha256(key.encode()).hexdigest()
             cache.mkdir(parents=True, exist_ok=True)
@@ -303,14 +307,14 @@ class Worker:
             if not valid:
                 self.update(ident, stage="Preparando a gravação da sua voz")
                 duration = probe(source)["duration"]
-                if needs_text and transcript and duration > 30.1:
-                    raise ValueError("Com transcrição manual, use uma referência de até 30 segundos. Deixe a transcrição vazia para preparar um trecho automaticamente.")
+                if needs_text and transcript and duration > reference_seconds + 0.1:
+                    raise ValueError(f"Com transcrição manual, use uma referência de até {reference_seconds} segundos. Deixe a transcrição vazia para preparar um trecho automaticamente.")
                 temporary = cache / "reference.partial.wav"
-                self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", temporary))
+                self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", str(reference_seconds), "-vn", "-ac", "1", "-ar", str(reference_hz), "-c:a", "pcm_s16le", temporary))
                 with wave.open(str(temporary)) as wav:
                     seconds = wav.getnframes() / wav.getframerate()
                 if seconds < 3:
-                    raise ValueError("Use uma gravação com pelo menos 3 segundos de fala clara. O ideal é de 6 a 30 segundos, com uma pessoa e sem música.")
+                    raise ValueError(f"Use uma gravação com pelo menos 3 segundos de fala clara e até {reference_seconds} segundos, com uma pessoa e sem música.")
                 os.replace(temporary, audio)
                 if needs_text and not transcript:
                     self.update(ident, stage="Transcrevendo sua gravação automaticamente na CPU")
@@ -349,6 +353,7 @@ class Worker:
         if is_clone(project["engine"]):
             self.prepare_references(ident, project, folder)
         parts = []
+        sample_rate = project.get("output_sample_rate", CATALOG[project["engine"]].get("sample_rate", 24000))
         cues = []
         cursor = 0
         timed_groups = {}
@@ -366,11 +371,11 @@ class Worker:
                 tmp = folder / f"temporary-{index}.wav"
                 if segment.get("pause_ms") is not None:
                     with wave.open(str(tmp), "wb") as wav:
-                        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000)
-                        frames = round(segment["pause_ms"]*24)
+                        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(sample_rate)
+                        frames = round(segment["pause_ms"]*sample_rate/1000)
                         while frames:
                             self.check(ident)
-                            chunk = min(frames, 24000)
+                            chunk = min(frames, sample_rate)
                             wav.writeframesraw(b"\0\0"*chunk); frames -= chunk
                 else:
                     raw = folder / f"raw-{index:06d}.wav"
@@ -378,18 +383,23 @@ class Worker:
                     if not audio_valid(raw):
                         if segment.get("reaction"):
                             source = s.safe_path(segment["reaction_media"]["path"]) if segment.get("reaction_media") else reaction_file(segment["reaction"])
-                            self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", raw))
+                            self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", raw))
                         elif project["engine"] == "diagnostic":
                             text_file = folder / "spoken.txt"
                             text_file.write_text(segment["text"], encoding="utf-8")
                             self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
                         else:
-                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "expressiveness": project.get("expressiveness", 0.7), "output": str(raw), "checkpoint": True}, folder)
+                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "expressiveness": project.get("expressiveness", 0.7), "voice_style": project.get("voice_style", "natural"), "output": str(raw), "checkpoint": True}, folder)
                         if not audio_valid(raw):
                             checkpoint_audio(raw)
                     if index == last_speech:
                         self.close_clone()
-                    self.run(ident, ffargs("-i", raw, "-af", f"atempo={segment['rate']},volume={segment['volume']}dB", "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", tmp))
+                    filters = []
+                    if segment["rate"] != 1:
+                        filters.append(f"atempo={segment['rate']}")
+                    if segment["volume"] != 0:
+                        filters.append(f"volume={segment['volume']}dB")
+                    self.run(ident, ffargs("-i", raw, *( ["-af", ",".join(filters)] if filters else [] ), "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", tmp))
                 os.replace(tmp, target)
                 checkpoint_audio(target)
             with wave.open(str(target), "rb") as wav:
@@ -411,7 +421,7 @@ class Worker:
         if project["mode"] == "dub":
             for index, group in enumerate(timed_groups.values()):
                 target = folder / f"cue-{index:06d}.wav"
-                self.concatenate(group["paths"], target, ident)
+                self.concatenate(group["paths"], target, ident, sample_rate)
                 with wave.open(str(target), "rb") as wav:
                     duration_ms = wav.getnframes()*1000/wav.getframerate()
                 window = group["end_ms"]-group["start_ms"]
@@ -438,9 +448,9 @@ class Worker:
                         raise ValueError(f"Trecho {index+1} não coube no intervalo. Revise os tempos; nenhuma palavra foi cortada.")
                 parts.append((target, group["start_ms"]))
                 cues.append({"start_ms": group["start_ms"], "end_ms": group["end_ms"], "text": " ".join(group["text"])})
-            self.timeline(parts, joined, round(project["media"]["duration"]*24000), ident)
+            self.timeline(parts, joined, round(project["media"]["duration"]*sample_rate), ident, sample_rate)
         else:
-            self.concatenate(parts, joined, ident)
+            self.concatenate(parts, joined, ident, sample_rate)
         extension = "mp4" if project["mode"] == "dub" else project.get("format", "wav")
         output = s.DATA / "exports" / f"{ident}.{extension}"
         temporary = output.with_name(ident + ".partial." + extension)
@@ -500,32 +510,32 @@ class Worker:
         project["cues"] = cues
         self.update(ident, snapshot=project, cues=cues)
 
-    def concatenate(self, paths, output, ident):
+    def concatenate(self, paths, output, ident, sample_rate=24000):
         with wave.open(str(output), "wb") as out:
-            out.setnchannels(1); out.setsampwidth(2); out.setframerate(24000)
+            out.setnchannels(1); out.setsampwidth(2); out.setframerate(sample_rate)
             for path in paths:
                 self.check(ident)
                 with wave.open(str(path), "rb") as inp:
-                    while block := inp.readframes(24000):
+                    while block := inp.readframes(sample_rate):
                         out.writeframesraw(block)
 
-    def timeline(self, parts, output, frames, ident):
+    def timeline(self, parts, output, frames, ident, sample_rate=24000):
         # Disk-based timeline, constant memory. Overlap is rejected during submission.
         with wave.open(str(output), "wb") as out:
-            out.setnchannels(1); out.setsampwidth(2); out.setframerate(24000)
+            out.setnchannels(1); out.setsampwidth(2); out.setframerate(sample_rate)
             cursor = 0
             for path, start in parts:
                 self.check(ident)
-                gap = round(start*24)-cursor
+                gap = round(start*sample_rate/1000)-cursor
                 while gap > 0:
                     self.check(ident)
-                    n = min(gap, 24000); out.writeframesraw(b"\0\0"*n); gap -= n; cursor += n
+                    n = min(gap, sample_rate); out.writeframesraw(b"\0\0"*n); gap -= n; cursor += n
                 with wave.open(str(path), "rb") as inp:
-                    while block := inp.readframes(24000):
+                    while block := inp.readframes(sample_rate):
                         out.writeframesraw(block); cursor += len(block)//2
             while cursor < frames:
                 self.check(ident)
-                n = min(frames-cursor, 24000); out.writeframesraw(b"\0\0"*n); cursor += n
+                n = min(frames-cursor, sample_rate); out.writeframesraw(b"\0\0"*n); cursor += n
 
     def finish_subtitles(self, ident, cues, outputs=None):
         outputs = outputs or []

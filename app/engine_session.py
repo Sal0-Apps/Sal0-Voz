@@ -30,7 +30,7 @@ class EngineSession:
             )
             self.reader = threading.Thread(target=self._read, daemon=True)
             self.reader.start()
-            self.worker.update(ident, stage="Carregando o modelo de voz na CPU; uma vez por trabalho")
+            self.worker.update(ident, stage="Preparando o motor de clonagem na CPU" if request["engine"] == "voxcpm2" else "Carregando o modelo de voz na CPU; uma vez por trabalho")
             if not self.wait().get("ready"):
                 raise ValueError("O modelo não ficou pronto.")
         except BaseException:

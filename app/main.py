@@ -439,6 +439,7 @@ class Project(BaseModel):
     asr_engine: str = DEFAULT_ASR_MODEL
     adaptive_memory: bool = True
     expressiveness: float = Field(default=0.7, ge=0.25, le=1.2)
+    voice_style: str = "natural"
     audio_name: str = Field(default="", max_length=160)
     character_id: str | None = None
     media_id: str | None = None
@@ -449,6 +450,8 @@ class Project(BaseModel):
 
 @catalog_write
 def project_data(body, ident=None, owner=None):
+    from .voice_styles import instruction
+    instruction(body.voice_style)
     if body.mode not in ("tts", "asr", "dub"):
         raise ValueError("Modo indisponível nesta versão.")
     if body.language not in ("pt-BR", "en-US") or body.format not in ("wav", "flac", "mp3", "opus"):
@@ -519,6 +522,7 @@ def snapshot(project, owner=None):
             raise HTTPException(403, "Referência pertence a outro usuário.")
         return item
     value = dict(project)
+    value["output_sample_rate"] = CATALOG.get(project.get("engine"), {}).get("sample_rate", 24000)
     if project["mode"] in ("asr", "dub"):
         if not project["media_id"]:
             raise ValueError("Selecione a mídia original.")

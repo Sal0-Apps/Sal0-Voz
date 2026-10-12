@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.5
+# Manual — Sal0 Voz 0.3.6
 
 ## Primeira instalação
 
@@ -13,6 +13,16 @@ A tela inicial usa **Clonar uma voz**, no perfil **Maior fidelidade · Qwen 1.7B
 A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e `whisper-large-v3-turbo` são preparados automaticamente em segundo plano, em `/data/models`, com revisões fixas e verificação dos arquivos. O navegador recebe somente o status. Você já pode criar a senha, enviar arquivos e preparar textos enquanto espera. A geração aguarda o modelo necessário ficar pronto; não bloqueia a abertura do aplicativo. Em **Ajustes → Modelos do aplicativo**, confira a fila, o progresso e os controles de preparação.
 
 `qwen-0.6b`, Chatterbox e os Whisper opcionais são baixados quando você os prepara ou envia um trabalho que precisa deles. Arquivos completos são reutilizados e downloads interrompidos preservam os arquivos parciais para retomada. A preparação precisa de internet; a inferência usa arquivos locais mesmo com `HF_HUB_OFFLINE=1` e `TRANSFORMERS_OFFLINE=1` no Compose.
+
+## OmniVoice e VoxCPM2 opcionais
+
+1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.3.6** em Ajustes. Atualizar somente a página não instala os motores novos.
+2. Abra **Ajustes → Modelos do aplicativo → Preparar este modelo**, ou escolha o modelo no passo 3 e clique em **Baixar no servidor**.
+3. **Fidelidade e expressão · OmniVoice 0.6B** baixa cerca de 3,1 GiB, incluindo seu codec. Usa float32 em CPU, 32 passos completos e segue a interpretação da referência. Prefira 3 a 10 segundos de fala limpa. Uma gravação maior com transcrição vazia é recortada e transcrita automaticamente. Com transcrição manual, use uma gravação de até 10 segundos e o texto exato dela.
+4. **Clonagem e emoções · VoxCPM2 2B** baixa cerca de 4,8 GiB. Usa os dois componentes F16 completos no motor de CPU, áudio e transcrição da referência e 10 passos de difusão. A montagem preserva os 48 kHz do modelo. Escolha **Como interpretar a fala** para orientar a emoção ou o estilo. A intensidade pode variar entre gravações.
+5. Escolha a voz, escreva ou importe o texto, selecione o modelo e gere. Na dublagem, escolha a voz, envie o áudio/vídeo, selecione o modelo e gere; a transcrição do original é automática.
+
+Os pesos não estão na imagem e permanecem no volume após atualizar. As dependências e o motor de CPU vêm instalados. Whisper encerra antes de carregar a voz. Os modelos mantêm a precisão escolhida durante o trabalho e retomam dos trechos salvos após interrupção. OmniVoice usa prompts persistentes; VoxCPM2 encerra seu processo pesado após gerar cada trecho. As reservas iniciais de 5,5/7,5 GiB são políticas de preparação, não medições no servidor. Os testes neurais serão feitos pelo proprietário.
 
 ## Chatterbox V3 pt-BR opcional
 

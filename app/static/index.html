@@ -105,6 +105,10 @@
             <label id="asr-label" hidden>Modelo de transcrição<select id="asr-engine"><option value="whisper-large-v3-turbo">Faster-Whisper large-v3-turbo · INT8</option></select></label>
             <p id="model-notice" class="hint"></p>
             <button type="button" id="download-selected-model" class="secondary" hidden>Baixar modelo no servidor</button>
+            <div id="voice-style-settings" hidden>
+              <label>Como interpretar a fala<select id="voice-style"><option value="natural">Natural · seguir a gravação</option><option value="happy">Alegre</option><option value="sad">Triste</option><option value="angry">Com raiva</option><option value="afraid">Com medo</option><option value="surprised">Surpreso</option><option value="calm">Calmo</option><option value="excited">Entusiasmado</option><option value="affectionate">Carinhoso</option><option value="serious">Sério</option><option value="whisper">Sussurrando</option><option value="shouting">Gritando</option></select></label>
+              <p class="hint">O VoxCPM2 recebe esta orientação junto com a referência da sua voz. A intensidade da interpretação pode variar entre gravações.</p>
+            </div>
             <div id="expression-settings" hidden>
               <label>Expressividade <output id="expression-value">0.70</output><input id="expressiveness" type="range" min="0.25" max="1.2" step="0.05" value="0.7"></label>
               <p class="hint">0,50 é mais discreto; 0,70 dá mais expressão; valores maiores intensificam a fala e podem acelerar o ritmo. Use uma referência com a interpretação desejada. Este ajuste não seleciona emoções específicas.</p>

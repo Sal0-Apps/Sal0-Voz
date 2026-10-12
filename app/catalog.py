@@ -11,6 +11,23 @@ DEFAULT_MODELS = (DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL)
 
 CATALOG = {
     "diagnostic": {"name": "Voz de diagnóstico", "kind": "tts", "clone": False, "license": "GPL-3.0 (eSpeak NG)", "notice": "Voz sintética simples para testar o app; não representa a qualidade final."},
+    "omnivoice": {
+        "name": "Fidelidade e expressão · OmniVoice 0.6B", "kind": "tts", "clone": True,
+        "reference_text": True, "reference_seconds": 10, "runtime": "omnivoice",
+        "repo": "k2-fsa/OmniVoice", "revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+        "files": ["README.md", "config.json", "model.safetensors", "tokenizer.json", "tokenizer_config.json", "chat_template.jinja", "audio_tokenizer/LICENSE", "audio_tokenizer/README.md", "audio_tokenizer/config.json", "audio_tokenizer/model.safetensors", "audio_tokenizer/preprocessor_config.json"],
+        "license": "CC-BY-NC (pesos); Apache-2.0 (código)", "memory_gib": 5.5, "download_gib": 3.1,
+        "notice": "Download opcional de cerca de 3,1 GiB. Clonagem com áudio e transcrição automática, CPU float32 e 32 passos completos. Prioriza fidelidade e interpretação; use 3 a 10 segundos de fala expressiva. Os pesos permitem uso não comercial. Qualidade, tempo e RAM real precisam ser avaliados no seu servidor.",
+    },
+    "voxcpm2": {
+        "name": "Clonagem e emoções · VoxCPM2 2B", "kind": "tts", "clone": True,
+        "reference_text": True, "reference_hz": 16000, "runtime": "base",
+        "runtime_binary": "voxcpm/bin/voxcpm2-cli", "dtype": "float16", "style_control": True, "sample_rate": 48000,
+        "repo": "DennisHuang648/VoxCPM2-GGUF", "revision": "169f64d8b98bbaab1761e4ca3a83e6af653456cc",
+        "files": ["README.md", "VoxCPM2-BaseLM-F16.gguf", "VoxCPM2-Acoustic-F16.gguf"],
+        "license": "Apache-2.0 (pesos); MIT (motor)", "memory_gib": 7.5, "download_gib": 4.8,
+        "notice": "Download opcional de cerca de 4,8 GiB. Pesos F16 completos, sem quantização de 4/8 bits. Motor GGML em CPU, clonagem com áudio e transcrição e orientação de emoção/estilo. Dez passos de difusão e saída de 48 kHz. Pode ser lento; qualidade e consumo real precisam ser avaliados no seu servidor.",
+    },
     "chatterbox-pt-br": {
         "name": "Expressiva · Chatterbox V3 pt-BR", "kind": "tts", "clone": True,
         "reference_text": False, "languages": ["pt-BR"], "expressiveness": True,
@@ -78,11 +95,15 @@ def models_needed(project):
 
 def runtime(engine):
     family = CATALOG[engine].get("runtime")
-    if not family:
+    if not family or family == "base":
         return sys.executable
     root = Path(os.getenv("SAL0_ENGINES", "/opt/engines"))
     path = root / family / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     return str(path)
+
+def runtime_binary(engine):
+    relative = CATALOG[engine].get("runtime_binary")
+    return Path(os.getenv("SAL0_ENGINES", "/opt/engines")) / relative if relative else None
 
 def installed():
     out = []
@@ -93,6 +114,9 @@ def installed():
         else:
             folder, saved, source = model_files(ident)
             item["available"] = folder is not None and Path(runtime(ident)).is_file()
+            binary = runtime_binary(ident)
+            if binary is not None:
+                item["available"] = item["available"] and binary.is_file() and os.access(binary, os.X_OK)
             item["source"] = source
             if saved:
                 item["revision"] = saved["revision"]

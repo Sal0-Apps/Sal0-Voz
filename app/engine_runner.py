@@ -6,7 +6,6 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from .asr_memory import decode_audio, DiskFeatures
 from .prompt_cache import PromptCache
 from .resources import release_temporary_memory, is_memory_error
 from .audio_files import checkpoint_audio
@@ -72,7 +71,12 @@ class QwenEngine:
         if request.get("checkpoint"):
             checkpoint_audio(output)
 
+def decode_audio(source, directory):
+    from .asr_memory import decode_audio as decoder
+    return decoder(source, directory)
+
 def transcribe(request):
+    from .asr_memory import DiskFeatures
     from faster_whisper import WhisperModel
     threads = max(1, int(os.getenv("SAL0_THREADS", "4")))
     root = Path(request.get("work_dir", Path(request["output"]).parent / "asr-work"))
@@ -109,7 +113,9 @@ def error_reply(exc, request, retryable=False):
     value = {"error": str(exc)}
     memory_error = isinstance(exc, MemoryUnavailable) or is_memory_error(exc)
     if memory_error:
-        value.update(kind="memory", required=getattr(exc, "required", MEMORY_GIB[(request["engine"], request.get("dtype", "float32"))]), available=getattr(exc, "available", memory_available()/1024**3))
+        from .catalog import CATALOG
+        dtype = request.get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
+        value.update(kind="memory", required=getattr(exc, "required", MEMORY_GIB[(request["engine"], dtype)]), available=getattr(exc, "available", memory_available()/1024**3))
     elif retryable and isinstance(exc, (RuntimeError, InterruptedError, TimeoutError)):
         value["kind"] = "interrupted"
     reply(value)
@@ -129,6 +135,12 @@ def main():
                 if request["engine"] == "chatterbox-pt-br":
                     from .chatterbox_engine import ChatterboxEngine
                     engine = ChatterboxEngine(request)
+                elif request["engine"] == "omnivoice":
+                    from .omnivoice_engine import OmniVoiceEngine
+                    engine = OmniVoiceEngine(request)
+                elif request["engine"] == "voxcpm2":
+                    from .voxcpm_engine import VoxCPMEngine
+                    engine = VoxCPMEngine(request)
                 else:
                     engine = QwenEngine(request)
         except Exception as exc:

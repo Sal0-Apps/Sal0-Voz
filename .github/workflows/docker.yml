@@ -53,7 +53,7 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: |
-            ghcr.io/sal0-apps/sal0-voz:0.3.5
+            ghcr.io/sal0-apps/sal0-voz:0.3.6
             ghcr.io/sal0-apps/sal0-voz:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -65,6 +65,7 @@ jobs:
             sleep 2
           done
           docker exec sal0-smoke python -m scripts.smoke
+          docker exec sal0-smoke python -m scripts.check_engines
           docker exec sal0-smoke python -c "from pathlib import Path; status=Path('/proc/1/status').read_text(); assert any(x.startswith('Uid:\t1000') for x in status.splitlines()), status"
           docker stop sal0-smoke
       - name: Diagnostico em caso de falha
@@ -72,8 +73,8 @@ jobs:
         run: docker logs sal0-smoke || true
       - name: Publicar imagem versionada
         run: |
-          docker push ghcr.io/sal0-apps/sal0-voz:0.3.5
+          docker push ghcr.io/sal0-apps/sal0-voz:0.3.6
           docker push ghcr.io/sal0-apps/sal0-voz:latest
-          docker tag ghcr.io/sal0-apps/sal0-voz:0.3.5 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
+          docker tag ghcr.io/sal0-apps/sal0-voz:0.3.6 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
           docker push ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
 

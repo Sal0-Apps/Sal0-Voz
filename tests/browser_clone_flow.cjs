@@ -17,6 +17,8 @@ const assert = require('node:assert/strict');
       { id: 'qwen-1.7b', name: 'Maior fidelidade', kind: 'tts', clone: true, reference_text: true, available: true, source: 'bundled' },
       { id: 'qwen-0.6b', name: 'Mais leve', kind: 'tts', clone: true, reference_text: true, available: false },
       { id: 'chatterbox-pt-br', name: 'Expressiva · Chatterbox V3 pt-BR', kind: 'tts', clone: true, reference_text: false, expressiveness: true, available: false, download_gib: 3.0 },
+      { id: 'omnivoice', name: 'Fidelidade e expressão · OmniVoice 0.6B', kind: 'tts', clone: true, reference_text: true, available: false, download_gib: 3.1 },
+      { id: 'voxcpm2', name: 'Clonagem e emoções · VoxCPM2 2B', kind: 'tts', clone: true, reference_text: true, style_control: true, available: false, download_gib: 4.8 },
       { id: 'whisper-large-v3-turbo', name: 'Faster-Whisper large-v3-turbo', kind: 'asr', available: true, source: 'bundled' },
       { id: 'whisper-medium', name: 'Whisper medium', kind: 'asr', available: false },
     ].map(model => ({ license: 'Test fixture', notice: 'Modelo local', ...model }));
@@ -40,7 +42,7 @@ const assert = require('node:assert/strict');
       if (pathname === '/api/models') return json(models);
       if (pathname === '/api/reactions') return json(JSON.parse(fs.readFileSync(path.join(__dirname, '../app/assets/reactions/catalog.json'), 'utf8')));
       if (pathname === '/api/models/prepare') return json({ status: 'queued' });
-      if (['/api/models/qwen-0.6b/download','/api/models/chatterbox-pt-br/download'].includes(pathname)) {
+      if (['/api/models/qwen-0.6b/download','/api/models/chatterbox-pt-br/download','/api/models/omnivoice/download','/api/models/voxcpm2/download'].includes(pathname)) {
         downloads++;
         models.find(model => model.id === pathname.split('/')[3]).download = { status: 'queued', progress: 0 };
         return json({ status: 'queued' });
@@ -190,6 +192,22 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(()=>document.querySelector('#save-state').textContent==='Projeto salvo no servidor');
     assert.equal(projects.at(-1).engine,'chatterbox-pt-br');
     assert.equal(projects.at(-1).expressiveness,0.9);
+    for(const engine of ['omnivoice','voxcpm2']){
+      await page.locator('#engine').selectOption(engine);
+      assert.equal(await page.locator('#download-selected-model').isVisible(),true);
+      await page.locator('#download-selected-model').click();
+      await page.waitForFunction(()=>!document.querySelector('#download-selected-model').disabled);
+      assert.equal(downloads,engine==='omnivoice'?3:4);
+      assert.equal(await page.locator('#expression-settings').isVisible(),false);
+      assert.equal(await page.locator('#voice-style-settings').isVisible(),engine==='voxcpm2');
+      await page.locator('#character').selectOption('voice-1');
+      assert.equal(await page.locator('#engine').inputValue(),engine);
+    }
+    await page.locator('#voice-style').selectOption('happy');
+    await page.locator('#save-project').click();
+    await page.waitForFunction(()=>document.querySelector('#save-state').textContent==='Projeto salvo no servidor');
+    assert.equal(projects.at(-1).engine,'voxcpm2');
+    assert.equal(projects.at(-1).voice_style,'happy');
     await page.locator('#script-import').setInputFiles({name:'texto.txt',mimeType:'text/plain',buffer:Buffer.from('Texto importado intacto.')});
     await page.waitForFunction(()=>document.querySelector('#script').value==='Texto importado intacto.');
     assert.equal(await page.locator('[data-mode="tts"]').evaluate(x=>x.classList.contains('selected')),true);

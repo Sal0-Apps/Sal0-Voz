@@ -1,8 +1,10 @@
 """Choose a complete CPU clone profile according to currently available RAM."""
 from .resources import memory_available, cgroup_memory
-from .catalog import is_clone
+from .catalog import CATALOG, is_clone
 
 MEMORY_GIB = {
+    ("omnivoice", "float32"): 5.5,
+    ("voxcpm2", "float16"): 7.5,
     ("chatterbox-pt-br", "float32"): 6.5,
     ("qwen-1.7b", "float32"): 9.5,
     ("qwen-1.7b", "bfloat16"): 6.0,
@@ -32,7 +34,7 @@ def choose_profile(project, available=None, locked=False, memory_limit=None):
     if locked:
         options = [(project["engine"], project.get("dtype", "float32"))]
     else:
-        options = [(requested, "float32")]
+        options = [(requested, CATALOG[requested].get("dtype", "float32"))]
         if project.get("adaptive_memory", True) and (requested, "bfloat16") in MEMORY_GIB:
             options.append((requested, "bfloat16"))
     for index, (engine, dtype) in enumerate(options):
@@ -46,8 +48,8 @@ def choose_profile(project, available=None, locked=False, memory_limit=None):
         if not locked and project.get("adaptive_memory", True) and memory_limit and required + 0.25 > memory_limit/1024**3 * 0.90:
             continue
         if available_gib >= required + 0.25:
-            name = "Chatterbox V3 pt-BR" if engine == "chatterbox-pt-br" else "Qwen 1.7B" if engine == "qwen-1.7b" else "Qwen 0.6B"
-            name += " · econômico" if dtype == "bfloat16" else " · float32"
+            name = {"omnivoice": "OmniVoice 0.6B", "voxcpm2": "VoxCPM2 2B", "chatterbox-pt-br": "Chatterbox V3 pt-BR", "qwen-1.7b": "Qwen 1.7B", "qwen-0.6b": "Qwen 0.6B"}[engine]
+            name += " · econômico" if dtype == "bfloat16" else " · F16 GGML" if dtype == "float16" else " · float32"
             return {"engine": engine, "dtype": dtype, "memory_gib": required,
-                    "name": name, "adapted": engine != requested or dtype != "float32"}
+                    "name": name, "adapted": engine != requested or dtype != CATALOG[requested].get("dtype", "float32")}
     raise MemoryUnavailable(MEMORY_GIB[options[-1]] + 0.25, available_gib)
