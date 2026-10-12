@@ -150,6 +150,38 @@ def test_worker_skips_waiting_model_and_runs_ready_job(data, monkeypatch):
     assert s.get("job", waiting["id"])["snapshot"]["model"]["revision"] == "downloaded"
 
 
+@pytest.mark.parametrize("weights_present", [False, True])
+def test_old_queued_job_rechecks_model_files(data, tmp_path, monkeypatch, weights_present):
+    import app.worker as module
+    monkeypatch.setenv("SAL0_BUNDLED_MODELS", str(tmp_path / "empty-image"))
+    monkeypatch.setenv("SAL0_ENGINES", str(tmp_path / "empty-runtimes"))
+    if weights_present:
+        folder = data / "models" / "qwen-0.6b"
+        folder.mkdir()
+        (folder / "weights.bin").write_bytes(b"persisted substitute")
+        s.atomic_json(folder / "manifest.json", {
+            "revision": CATALOG["qwen-0.6b"]["revision"], "files": {"weights.bin": s.digest(folder / "weights.bin")},
+            "file_sizes": {"weights.bin": (folder / "weights.bin").stat().st_size},
+        })
+    manager = ModelManager()
+    manager._record("qwen-0.6b", status="completed", progress=100)
+    monkeypatch.setattr(module, "model_manager", manager)
+    monkeypatch.setattr(module, "choose_profile", lambda *args, **kwargs: None)
+    worker = module.Worker()
+    pending = s.put("job", {"status": "queued", "snapshot": {"mode": "tts", "engine": "qwen-0.6b"}})
+    monkeypatch.setattr(worker.wake, "wait", lambda _: worker.stop_event.set())
+    monkeypatch.setattr(worker, "execute", lambda _: pytest.fail("Wait until the weights are downloaded"))
+    worker.loop()
+    job = s.get("job", pending["id"])
+    if weights_present:
+        assert job["status"] == "failed" and "ambiente do modelo" in job["error"]
+        assert manager.status("qwen-0.6b")["status"] == "completed"
+    else:
+        assert job["status"] == "queued" and job["waiting_models"] == ["qwen-0.6b"]
+        assert manager.status("qwen-0.6b")["status"] == "queued"
+        assert manager.status("qwen-0.6b")["automatic"] is True
+
+
 def test_other_user_cannot_reference_admin_media(owner):
     media = s.put("media", {"audio": True, "owner_username": "admin"})
     owner.post("/api/users", json={"username": "maria", "password": "test-password"})

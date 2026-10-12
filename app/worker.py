@@ -178,7 +178,7 @@ class Worker:
                                 if engine == "diagnostic":
                                     raise
                                 download = model_manager.status(engine) or {}
-                                if download.get("status") == "completed":
+                                if download.get("status") == "completed" and model_files(engine)[0] is not None:
                                     raise ValueError("Os arquivos chegaram, mas o ambiente do modelo não está pronto. Atualize a imagem do aplicativo.")
                                 if download.get("status") not in {"queued", "downloading", "failed", "cancelled"}:
                                     model_manager.request(engine, accept_license=True, automatic=True)
