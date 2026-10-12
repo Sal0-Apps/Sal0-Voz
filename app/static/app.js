@@ -5,7 +5,8 @@ const isClone = ident => !!state.models.find(model=>model.id===ident)?.clone;
 const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], reactions:[], characterReactions:{}, configured:false, user:{}, uploads:0, submitting:false, jobsLimit:50, mediaLimit:100, charactersLimit:100};
 const selections = {media:new Set(), characters:new Set(), results:new Set()};
 let deletePlan;
-let events, toastTimer, saveTimer, recorder, modelTimer;
+let toastTimer, saveTimer, recorder, modelTimer, startPromise, polling=false, needsAuthCheck=false, retryDelay=3000, restorePending=true, draftPending=false;
+const pendingSections=new Set(["characters","media","projects","reactions","models","jobs","health"]);
 let saveChain=Promise.resolve();
 const escapeHTML = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const bytes = n => (n/1024**3).toFixed(1)+" GiB";
@@ -13,11 +14,11 @@ function toast(text){ $("toast").textContent=text; $("toast").hidden=false; clea
 function showDetails(title,text){$("log-dialog").querySelector("h2").textContent=title;$("job-log").textContent=text;$("log-dialog").showModal();}
 async function api(path, options={}){
   const headers=options.body instanceof FormData ? {} : {"Content-Type":"application/json"};
-  const response=await fetch("/api"+path,{...options,headers:{...headers,...options.headers}});
+  const response=await fetch("/api"+path,{...options,cache:"no-store",signal:options.signal||(!(options.body instanceof FormData)?AbortSignal.timeout(20000):undefined),headers:{...headers,...options.headers}});
   if(!response.ok){
-    if(response.status===401 && !path.startsWith("/auth/")){ await start(); }
+    if(response.status===401 && !path.startsWith("/auth/")){needsAuthCheck=true;schedulePolling(0);}
     const data=await response.json().catch(()=>({detail:"Falha de conexão."}));
-    throw Error(typeof data.detail==="string"?data.detail:JSON.stringify(data.detail));
+    const error=Error(typeof data.detail==="string"?data.detail:JSON.stringify(data.detail));error.status=response.status;throw error;
   }
   return response.json();
 }
@@ -61,6 +62,7 @@ function payload(){
   return {name:$("project-name").value.trim()||"Projeto sem título",audio_name:$("audio-name").value.trim(),adaptive_memory:$("adaptive-memory").checked,expressiveness:Number($("expressiveness").value),voice_style:$("voice-style").value,mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
 }
 function saveDraft(){
+  draftPending=true;
   $("char-count").textContent=$("script").value.length.toLocaleString("pt-BR")+" caracteres";
   $("save-state").textContent="Salvando no servidor…";
   clearTimeout(saveTimer);
@@ -75,9 +77,14 @@ function saveProject(message=true){
 }
 async function persistProject(message=true){
   clearTimeout(saveTimer);
-  const project=await api(state.projectId?"/projects/"+state.projectId:"/projects",{method:state.projectId?"PUT":"POST",body:JSON.stringify(payload())});
+  const body=JSON.stringify(payload());
+  let project;
+  try{project=await api(state.projectId?"/projects/"+state.projectId:"/projects",{method:state.projectId?"PUT":"POST",body});}
+  catch(error){draftPending=!error.status||error.status>=500||[401,408,429].includes(error.status);$("save-state").textContent=draftPending?"Rascunho aguardando conexão com o servidor":error.message;throw error;}
   state.projectId=project.id;$("save-state").textContent="Projeto salvo no servidor";
-  state.projects=await api("/projects");renderProjects();
+  draftPending=JSON.stringify(payload())!==body;
+  try{state.projects=await api("/projects");renderProjects();}
+  catch{pendingSections.add("projects");schedulePolling(3000);}
   if(message)toast("Projeto salvo.");
   return project;
 }
@@ -95,8 +102,9 @@ $("project-form").addEventListener("submit",safe(async event=>{
   finally{state.submitting=false;updateGenerateState();}
 }));
 function updateGenerateState(){
-  $("generate").disabled=state.submitting||state.uploads>0;
-  $("generate").textContent=state.submitting?"Enviando para o servidor…":state.uploads?"Enviando arquivo…":{tts:"✦ Gerar áudio",asr:"≡ Gerar legendas",dub:"▷ Gerar vídeo dublado"}[state.mode];
+  const catalogReady=state.models.some(m=>m.id===(state.mode==="asr"?$("asr-engine").value:$("engine").value));
+  $("generate").disabled=state.submitting||state.uploads>0||!catalogReady;
+  $("generate").textContent=state.submitting?"Enviando para o servidor…":state.uploads?"Enviando arquivo…":!catalogReady?"Aguardando os modelos…":{tts:"✦ Gerar áudio",asr:"≡ Gerar legendas",dub:"▷ Gerar vídeo dublado"}[state.mode];
   document.querySelectorAll("[data-mode]").forEach(b=>b.disabled=state.submitting);
 }
 $("validate-script").addEventListener("click",safe(async()=>{const result=await post("/script/validate",payload());toast(result.segments.length+" trechos válidos. Pausas e metadados não serão falados.");}));
@@ -106,7 +114,7 @@ function modelNotice(){
   const model=state.models.find(x=>x.id===ident);
   const download=model?.download;
   $("model-notice").textContent=model?((model.available?"":download?.status==="downloading"?"Baixando no servidor. ":download?.status==="queued"?"Aguardando download no servidor. ":"Não instalado. ")+model.notice):"";
-  $("download-selected-model").hidden=!model||model.available||ident==="diagnostic"||["queued","downloading"].includes(download?.status);
+  $("download-selected-model").hidden=!model||model.available||ident==="diagnostic"||["queued","downloading"].includes(download?.status)||!!download?.retry_at;
   $("download-selected-model").textContent="Baixar "+(model?.download_gib?"· cerca de "+model.download_gib+" GiB ":"")+"no servidor";
   $("expression-settings").hidden=state.mode==="asr"||!model?.expressiveness;
   $("voice-style-settings").hidden=state.mode==="asr"||!model?.style_control;
@@ -139,18 +147,20 @@ function refreshSelectors(){
   renderSelectedVoice();updateSourceStatus();
 }
 async function loadModels(){
+  const models=await api("/models");
   const selectedEngine=$("engine").value||defaultClone;
   const selectedAsr=$("asr-engine").value||defaultAsr;
-  state.models=await api("/models");
+  state.models=models;
   fillOptions($("engine"),state.models.filter(x=>x.kind==="tts"),null,x=>x.name+(x.available?"":" · não instalado"));
   fillOptions($("asr-engine"),state.models.filter(x=>x.kind==="asr"),null,x=>x.name+(x.available?"":" · não instalado"));
   $("engine").value=selectedEngine;
   $("asr-engine").value=selectedAsr;
-  modelNotice();renderPreparation();
+  modelNotice();renderPreparation();updateGenerateState();
   if(!$("view-settings").hidden)renderModelList();
 }
 async function loadProject(p){
   clearTimeout(saveTimer);await saveChain.catch(()=>{});state.projectId=p.id||null;state.cues=p.cues||[];
+  draftPending=false;
   $("reference-upload").value="";$("quick-transcript").value="";$("reference-status").textContent="";
   for(const [key,id] of Object.entries({name:"project-name",text:"script",language:"language",engine:"engine",asr_engine:"asr-engine",character_id:"character",media_id:"source-media",background_id:"background-media",rate:"rate",format:"format"})){
     if(p[key]!==undefined)$(id).value=p[key]??"";
@@ -268,13 +278,13 @@ function renderResults(){
   renderSelection("results");
 }
 function renderModelList(){
-  const active=state.models.filter(m=>["queued","downloading"].includes(m.download?.status)).length;
+  const active=state.models.filter(m=>["queued","downloading"].includes(m.download?.status)||m.download?.retry_at).length;
   $("model-auto-status").textContent=active?active+" modelo(s) sendo preparados no servidor. Você pode usar o estúdio enquanto aguarda.":"Os modelos são baixados após a instalação e ficam salvos na pasta de dados. Atualizar o app reutiliza os downloads concluídos; a geração funciona sem internet.";
   $("model-list").innerHTML=state.models.map(m=>{
-    const d=m.download||{},busy=["queued","downloading"].includes(d.status);
+    const d=m.download||{},busy=["queued","downloading"].includes(d.status)||!!d.retry_at;
     const action=m.available||m.id==="diagnostic"?"":busy?'<button class="quiet" data-model-cancel="'+m.id+'">Pausar download</button>':'<button class="secondary" data-model-download="'+m.id+'">'+(d.status==="failed"||d.status==="cancelled"?'Tentar novamente':'Preparar este modelo')+'</button>';
     const label=m.available?(m.source==="bundled"?"Incluído no app":"Pronto"):d.retry_at?"Nova tentativa agendada":d.status==="failed"?"Precisa de atenção":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Não instalado";
-    return '<div class="model-row"><span class="badge">'+label+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Preparação pendente")+'</p>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(d.stage||'')+' · '+(d.progress||0)+'%</p>':'')+(d.error?'<details class="download-error"><summary>Ver o erro da preparação</summary><pre>'+escapeHTML(d.error)+'</pre></details>':'')+'<div class="item-actions">'+action+'</div></div>';
+    return '<div class="model-row"><span class="badge">'+label+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Preparação pendente")+'</p>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(downloadText(d))+'</p>':'')+(d.error?'<details class="download-error"><summary>Ver o erro da preparação</summary><pre>'+escapeHTML(d.error)+'</pre></details>':'')+'<div class="item-actions">'+action+'</div></div>';
   }).join("");
   document.querySelectorAll("[data-model-download]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelDownload+"/download",{accept_license:true});toast("O servidor vai preparar o modelo. Os trabalhos aguardando continuam automaticamente.");await loadModels();await loadDiagnostics();}));
   document.querySelectorAll("[data-model-cancel]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelCancel+"/cancel");await loadModels();await loadDiagnostics();}));
@@ -294,7 +304,7 @@ $("queue-close").onclick=()=>$("queue-panel").hidden=true;
 $("close-log").onclick=()=>$("log-dialog").close();
 $("theme").onclick=()=>{document.body.classList.toggle("light");localStorage.setItem("sal0-theme",document.body.classList.contains("light")?"light":"dark");};
 if(localStorage.getItem("sal0-theme")==="light")document.body.classList.add("light");
-$("logout").onclick=safe(async()=>{await post("/auth/logout");events?.close();await start();});
+$("logout").onclick=safe(async()=>{await post("/auth/logout");await start();});
 for(const [id,kind,key,render] of [["more-projects","projects","projects",renderProjects]]){
   $(id).onclick=safe(async()=>{const next=await api("/"+kind+"?offset="+state[key].length);state[key].push(...next);render();if(!next.length)toast("Todos os registros foram carregados.");});
 }
@@ -314,31 +324,72 @@ $("auth-form").addEventListener("submit",async e=>{
   try{await post(state.configured?"/auth/login":"/auth/setup",{username:$("username").value.trim()||"admin",password:$("password").value});$("password").value="";await start();}
   catch(e){$("auth-error").textContent=e.message;}finally{$("auth-submit").disabled=false;}
 });
-async function start(){
+function connectionState(errors=[]){
+  $("connection-notice").hidden=!errors.length;
+  $("retry-connection").hidden=!errors.length;
+  if(errors.length)$("connection-text").textContent="Parte do estúdio não respondeu. Tentando novamente. Seu texto continua nesta página e os trabalhos ficam no servidor.";
+}
+function schedulePolling(delay=5000){
+  clearTimeout(modelTimer);
+  modelTimer=setTimeout(pollStudio,delay);
+}
+async function loadStudioSections(sections){
+  const loaders={
+    characters:async()=>{state.characters=await fetchRecords("characters",state.charactersLimit);renderCharacters();refreshSelectors();},
+    media:async()=>{state.media=await fetchRecords("media",state.mediaLimit);renderMedia();refreshSelectors();},
+    projects:async()=>{state.projects=await api("/projects");renderProjects();},
+    reactions:async()=>{state.reactions=await api("/reactions");renderReactionOptions();},
+    models:loadModels,jobs:loadJobs,health:loadWorkerStatus,diagnostics:loadDiagnostics,
+  };
+  const names=[...new Set(sections)],results=await Promise.allSettled(names.map(name=>loaders[name]()));
+  const errors=[];
+  results.forEach((result,index)=>{if(result.status==="fulfilled")pendingSections.delete(names[index]);else{pendingSections.add(names[index]);errors.push(result.reason);}});
+  if(restorePending&&!["models","characters","media","projects"].some(name=>pendingSections.has(name))){
+    restorePending=false;
+    if(!state.projectId&&state.projects.length&&!$("script").value&&!$("reference-upload").files.length)await loadProject(state.projects[0]);
+  }
+  updateVoiceChoice();renderCurrentResult();connectionState(errors);
+  return errors;
+}
+async function pollStudio(){
+  if(polling||startPromise){schedulePolling(1000);return;}
+  polling=true;
   try{
-  events?.close();
-  clearInterval(modelTimer);
+    if(needsAuthCheck){await start();return;}
+    if($("app").hidden)return;
+    const sections=[...pendingSections,"models","jobs","health"];
+    if(!$("view-settings").hidden)sections.push("diagnostics");
+    const errors=await loadStudioSections(sections);
+    if(!errors.length&&draftPending&&state.projectId&&!state.submitting&&!state.uploads)await saveProject(false);
+    retryDelay=errors.length?Math.min(30000,retryDelay*2):3000;
+    schedulePolling(document.hidden?30000:errors.length?retryDelay:5000);
+  }catch(error){connectionState([error]);needsAuthCheck=true;schedulePolling(3000);}
+  finally{polling=false;}
+}
+async function start(){
+  if(startPromise)return startPromise;
+  startPromise=startStudio();
+  try{return await startPromise;}finally{startPromise=null;}
+}
+async function startStudio(){
+  clearTimeout(modelTimer);
+  try{
   const auth=await api("/auth/status");state.configured=auth.configured;
+  needsAuthCheck=false;
   $("auth").hidden=auth.authenticated;$("app").hidden=!auth.authenticated;
   state.user={username:auth.username||"admin",role:auth.role||"admin"};
   $("auth-description").textContent=auth.configured?"Bem-vindo de volta ao seu estúdio.":"Crie o primeiro usuário administrador para abrir seu estúdio local.";
   $("auth-submit").textContent=auth.configured?"Entrar no estúdio":"Criar meu estúdio";
-  if(!auth.authenticated){clearTimeout(saveTimer);state.projectId=null;state.jobs=[];Object.values(selections).forEach(s=>s.clear());$("delete-dialog").close();return;}
-  [state.characters,state.media,state.projects,state.reactions]=await Promise.all([fetchRecords("characters",state.charactersLimit),fetchRecords("media",state.mediaLimit),api("/projects"),api("/reactions")]);
-  renderReactionOptions();
-  await loadModels();refreshSelectors();renderCharacters();renderProjects();renderMedia();await loadJobs();
-  if(!state.projectId && state.projects.length)await loadProject(state.projects[0]);
-  updateVoiceChoice();
-  modelTimer=setInterval(()=>{Promise.all([loadModels(),loadJobs(),loadWorkerStatus()]).then(()=>{renderCurrentResult();if(!$("view-settings").hidden)loadDiagnostics();}).catch(()=>{});},5000);
-  await loadWorkerStatus();
-  events=new EventSource("/api/events/stream");events.onmessage=e=>{
-    const incoming=JSON.parse(e.data),ids=new Set(incoming.map(j=>j.id)),boundary=incoming.at(-1)?.updated;
-    state.jobs=incoming.length<50?incoming:[...incoming,...state.jobs.filter(j=>!ids.has(j.id)&&j.updated<=boundary)].slice(0,state.jobsLimit);renderJobs();
-  };
-  $("retry-connection").hidden=true;
-  }catch(error){$("preparation-text").textContent="Não foi possível carregar o estúdio. Tente conectar novamente; os dados ficam no servidor.";$("retry-connection").hidden=false;throw error;}
+  if(!auth.authenticated){clearTimeout(saveTimer);state.projectId=null;state.jobs=[];restorePending=true;Object.values(selections).forEach(s=>s.clear());$("delete-dialog").close();connectionState();return;}
+  const errors=await loadStudioSections(["characters","media","projects","reactions","models","jobs","health"]);
+  retryDelay=3000;schedulePolling(errors.length?3000:5000);
+  }catch(error){needsAuthCheck=true;connectionState([error]);schedulePolling(3000);throw error;}
 }
-$("retry-connection").onclick=safe(async()=>{await start();toast("Conexão restabelecida. Seus projetos e trabalhos foram carregados.");});
+$("retry-connection").onclick=safe(async()=>{await start();if(!pendingSections.size)toast("Conexão restabelecida. Seus projetos e trabalhos foram carregados.");});
+window.addEventListener("online",()=>schedulePolling(0));
+window.addEventListener("pageshow",()=>schedulePolling(0));
+window.addEventListener("pagehide",()=>clearTimeout(modelTimer));
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)schedulePolling(0);});
 safe(start)();
 
 
@@ -420,15 +471,19 @@ function selectedModels(){
   if(model?.reference_text)ids.push(defaultAsr);
   return state.models.filter(m=>ids.includes(m.id));
 }
+function downloadText(d){
+  const amount=n=>n>=1024**3?bytes(n):(Math.max(0,n||0)/1024**2).toFixed(1)+" MiB";
+  return (d.stage||"")+(d.total_bytes?" · "+amount(d.downloaded_bytes)+" de "+amount(d.total_bytes):"")+" · "+(d.progress||0)+"%";
+}
 function renderPreparation(){
   const needed=selectedModels(),missing=needed.filter(m=>!m.available);
-  const active=missing.filter(m=>["queued","downloading"].includes(m.download?.status));
+  const active=missing.filter(m=>["queued","downloading"].includes(m.download?.status)||m.download?.retry_at);
   const progress=$("preparation-progress");
   progress.hidden=!active.length;
   const downloading=active.find(m=>m.download.status==="downloading");
   if(downloading?.download.total_bytes)progress.value=downloading.download.progress||0;else progress.removeAttribute("value");
   $("retry-preparation").hidden=!missing.some(m=>m.id!=="diagnostic"&&!['queued','downloading'].includes(m.download?.status));
-  $("preparation-text").textContent=!needed.length?"Conectando ao servidor…":!missing.length?"Pronto para começar. Envie sua gravação e seu texto; a preparação da voz será automática.":active.length?"Preparando no servidor: "+active.map(m=>m.name+" — "+(m.download.status==="queued"?"aguardando":(m.download.progress||0)+"%")).join(" · ")+". Você já pode enviar o texto; ele começa assim que o modelo ficar pronto.":"Um modelo precisa ser preparado. Use Retomar preparação; seu texto e a fila ficam salvos.";
+  $("preparation-text").textContent=!needed.length?"Conectando ao servidor…":!missing.length?"Pronto para começar. Envie sua gravação e seu texto; a preparação da voz será automática.":active.length?"Preparando no servidor: "+active.map(m=>m.name+" — "+(m.download.retry_at?"nova tentativa agendada":m.download.status==="queued"?"aguardando":downloadText(m.download))).join(" · ")+". Você já pode enviar o texto; ele começa assim que o modelo ficar pronto.":"Um modelo precisa ser preparado. Use Retomar preparação; seu texto e a fila ficam salvos.";
 }
 $("retry-preparation").onclick=safe(async()=>{
   $("retry-preparation").disabled=true;
@@ -483,7 +538,7 @@ $("reaction-upload").onchange=safe(async e=>{
 });
 
 async function loadWorkerStatus(){
-  const response=await fetch("/health",{cache:"no-store"});
+  const response=await fetch("/health",{cache:"no-store",signal:AbortSignal.timeout(20000)});
   if(!response.ok)throw Error("Servidor indisponível.");
   const status=await response.json();
   $("worker-warning").hidden=!!status.worker;

@@ -4,7 +4,7 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.3.6 — OmniVoice e VoxCPM2 disponíveis como downloads opcionais, com clonagem em CPU.** Mantém a imagem sem pesos, os modelos na pasta de dados, o uso de disco para reduzir RAM e a retomada automática. Configuração para quatro núcleos/16 GB de RAM, com limite de 10 GiB do container. A fidelidade, a expressão e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
+**Versão 0.3.7 — recuperação de downloads e conexão, mantendo OmniVoice e VoxCPM2 como opções de clonagem em CPU.** A tela preserva a fila quando uma consulta falha e reconecta automaticamente. Downloads sem avanço renovam a conexão e mantêm arquivos parciais. Mantém a imagem sem pesos, os modelos na pasta de dados, o uso de disco para reduzir RAM e a retomada automática. Configuração para quatro núcleos/16 GB de RAM, com limite de 10 GiB do container. A fidelidade, a expressão e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
 
 ## Instalar no ZimaOS
 
@@ -16,7 +16,7 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 6. Clique em **Gerar voz**. O app prepara a referência automaticamente, usa o modelo escolhido e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro texto** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Gerar legendas**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.6` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.7` e o SHA do commit para rollback.
 
 **Os pesos são baixados pelo próprio aplicativo depois que ele inicia**, em segundo plano. Qwen3-TTS 1.7B Base e Faster-Whisper large-v3-turbo são preparados automaticamente em `/data/models`, com revisões fixas e hashes verificados. A interface e o healthcheck funcionam enquanto o download acontece; trabalhos que precisam desses modelos aguardam na fila. O progresso aparece em **Ajustes → Modelos do aplicativo**. As dependências de CPU continuam na imagem, sem precisar instalar CUDA.
 

@@ -33,7 +33,7 @@
     <div class="sidebar-bottom">
       <div class="local-status"><i></i> Processamento local</div><small>CPU · uma tarefa por vez</small>
       <div class="sidebar-actions"><button id="theme" class="quiet">◐ Tema</button><button id="logout" class="quiet">Sair</button></div>
-      <small>Sal0 Voz <span id="version">0.3.2</span></small>
+      <small>Sal0 Voz <span id="version">0.3.7</span></small>
     </div>
   </aside>
   <main>
@@ -46,6 +46,7 @@
         <button class="mode" data-mode="dub"><span class="mode-icon">▷</span><strong>Dublar arquivo</strong><small>Áudio ou vídeo com uma nova voz</small></button>
       </div>
       <div id="worker-warning" class="notice" role="alert" hidden></div>
+      <div id="connection-notice" class="notice" role="status" hidden><span id="connection-text"></span></div>
       <div id="preparation" class="notice" role="status"><span id="preparation-text">Conectando ao seu servidor…</span><progress id="preparation-progress" max="100" hidden></progress><button type="button" id="retry-preparation" class="secondary" hidden>Retomar preparação</button><button type="button" id="retry-connection" class="secondary" hidden>Tentar conectar novamente</button></div>
       <p id="running-notice" class="notice" hidden></p>
       <form id="project-form">

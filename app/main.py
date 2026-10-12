@@ -17,6 +17,7 @@ import psutil
 from fastapi import FastAPI, Request, UploadFile, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from . import __version__, storage as s
 from .catalog import CATALOG, installed, require, models_needed, DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL, DEFAULT_MODELS, is_clone
@@ -59,7 +60,7 @@ async def guard(request, call_next):
     if not public:
         token = request.cookies.get("sal0_session", "")
         try:
-            session = s.get("session", hashlib.sha256(token.encode()).hexdigest())
+            session = await run_in_threadpool(s.get, "session", hashlib.sha256(token.encode()).hexdigest())
             if session["expires"] < time.time():
                 raise KeyError()
         except KeyError:
@@ -82,7 +83,7 @@ async def not_found(request, exc):
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 @app.get("/health")
 def health():
@@ -668,23 +669,11 @@ def export_cues(ident: str, extension: str, request: Request):
     return Response(subtitles(project["cues"], extension=="vtt"), media_type="text/plain; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="legendas.{extension}"'})
 
 @app.get("/api/events/stream")
-async def events(request: Request):
-    import asyncio
+def events(request: Request):
+    """Finite snapshot for older clients; never reserve a browser HTTP socket."""
+    from fastapi.responses import Response
     owner = current_user(request)
-    async def stream():
-        previous = ""
-        while not await request.is_disconnected():
-            try:
-                current_user(request)
-            except HTTPException:
-                return
-            jobs = s.catalog_page("job", owner, limit=50)
-            data = json.dumps(jobs, ensure_ascii=False)
-            if data != previous:
-                yield "data: " + data + "\n\n"
-                previous = data
-            else:
-                yield ": keepalive\n\n"
-            await asyncio.sleep(2)
-    return StreamingResponse(stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+    data = json.dumps(s.catalog_page("job", owner, limit=50), ensure_ascii=False)
+    return Response("retry: 5000\ndata: " + data + "\n\n", media_type="text/event-stream",
+                    headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"})
 

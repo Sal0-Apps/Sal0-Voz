@@ -59,7 +59,7 @@ def model_files(ident):
         folder = root / ident
         try:
             saved = json.loads((folder / "manifest.json").read_text())
-            if (not isinstance(saved.get("revision"), str) or not saved["revision"]
+            if (not isinstance(saved, dict) or not isinstance(saved.get("revision"), str) or not saved["revision"]
                     or not isinstance(saved["files"], dict) or not saved["files"]):
                 continue
             sizes = saved.get("file_sizes", {})

@@ -8,6 +8,14 @@ import time
 from . import storage as s
 from .catalog import CATALOG, installed, DEFAULT_MODELS
 DEFAULT_AUTO_MODELS = DEFAULT_MODELS
+
+
+class DownloadFailure(RuntimeError):
+    def __init__(self, message, transient=False):
+        super().__init__(message)
+        self.transient = transient
+
+
 class ModelManager:
     def __init__(self):
         self.stop_event=threading.Event(); self.wake=threading.Event(); self.lock=threading.RLock(); self.thread=None; self.processes={}
@@ -57,35 +65,55 @@ class ModelManager:
     def cancel(self,ident):
         with self.lock:
             current=self.status(ident)
-            if not current or current.get("status") not in {"queued","downloading"}: return current or {"id":ident,"status":"idle"}
-            result = self._record(ident,status="cancelled",stage="Cancelado",error=None,finished=time.time())
+            if not current or (current.get("status") not in {"queued","downloading"} and not current.get("retry_at")): return current or {"id":ident,"status":"idle"}
+            result = self._record(ident,status="cancelled",stage="Pausado",error=None,retry_at=None,finished=time.time())
             process=self.processes.get(ident)
             if process and process.poll() is None: process.terminate()
             return result
 
     def _run(self,ident,args,log_path):
-        env=os.environ.copy(); env.update(SAL0_DATA=str(s.DATA), HF_HUB_OFFLINE="0",TRANSFORMERS_OFFLINE="0",HF_HUB_DISABLE_TELEMETRY="1", HF_HUB_DISABLE_XET="1", HF_HUB_ETAG_TIMEOUT="30", HF_HUB_DOWNLOAD_TIMEOUT="60")
+        env=os.environ.copy(); env.update(SAL0_DATA=str(s.DATA), HF_HUB_OFFLINE="0",TRANSFORMERS_OFFLINE="0",HF_HUB_DISABLE_TELEMETRY="1", HF_HUB_DISABLE_XET="1", HF_HUB_DISABLE_PROGRESS_BARS="1", HF_HUB_ETAG_TIMEOUT="30", HF_HUB_DOWNLOAD_TIMEOUT="30")
         log_path.parent.mkdir(parents=True,exist_ok=True)
+        stalled = False
+        timeout = 120 if args[3] == "plan" else max(30, float(os.getenv("SAL0_DOWNLOAD_STALL_SECONDS", "180")))
+        last_activity = time.monotonic()
+        previous = None
         with log_path.open("ab") as stream:
+            log_start = stream.tell()
             process=subprocess.Popen(args,stdout=stream,stderr=subprocess.STDOUT,env=env); self.processes[ident]=process
-            while process.poll() is None and not self.stop_event.is_set():
-                if self.status(ident).get("status") == "cancelled":
-                    process.terminate()
-                    break
-                self._progress(ident)
-                self.stop_event.wait(1)
-            if process.poll() is None: process.terminate()
             try:
-                code=process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill(); code=process.wait()
-            self.processes.pop(ident,None)
+                while process.poll() is None and not self.stop_event.is_set():
+                    if self.status(ident).get("status") == "cancelled":
+                        process.terminate()
+                        break
+                    activity = self._progress(ident)
+                    if activity != previous:
+                        previous, last_activity = activity, time.monotonic()
+                    if time.monotonic() - last_activity >= timeout:
+                        stalled = True
+                        process.terminate()
+                        break
+                    self.stop_event.wait(1)
+                if process.poll() is None: process.terminate()
+                try:
+                    code=process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill(); code=process.wait()
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try: process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill(); process.wait()
+                self.processes.pop(ident,None)
         self._check(ident)
+        if stalled:
+            raise DownloadFailure("O download ficou sem avanço. Os arquivos parciais foram preservados; a conexão será renovada automaticamente.", transient=True)
         if code:
             with log_path.open("rb") as stream:
-                stream.seek(max(0, log_path.stat().st_size-4000))
+                stream.seek(max(log_start, log_path.stat().st_size-4000))
                 detail = stream.read().decode("utf-8", errors="replace")
-            raise RuntimeError(detail or "O processo de download falhou.")
+            raise DownloadFailure(detail or "O processo de download falhou.", transient=code == 75)
     def _progress(self, ident):
         folder = s.DATA / "models" / ident
         try:
@@ -93,13 +121,24 @@ class ModelManager:
             total = plan["bytes"]
             downloaded = sum((folder / f).stat().st_size for f in plan["files"] if (folder / f).is_file())
             downloaded += sum(f.stat().st_size for f in folder.rglob("*.incomplete"))
+            try:
+                detail = json.loads((folder / "download-progress.json").read_text())
+                if not isinstance(detail, dict):
+                    detail = {}
+            except (OSError, ValueError, TypeError):
+                detail = {}
+            phase = detail.get("phase", "downloading")
+            relative = detail.get("current_file", "")
+            stage = "Verificando o arquivo " + relative if phase == "verifying" else "Baixando " + relative if relative else "Baixando e verificando arquivos no servidor"
             with self.lock:
                 if self.status(ident).get("status") == "downloading":
-                    self._record(ident, downloaded_bytes=downloaded, total_bytes=total,
-                                 progress=min(99, round(downloaded / max(1,total)*100)),
-                                 stage="Baixando e verificando arquivos no servidor")
-        except (OSError, ValueError, KeyError):
+                    self._record(ident, downloaded_bytes=min(total, downloaded), total_bytes=total,
+                                 progress=min(99, round(downloaded / max(1,total)*100, 1)),
+                                 stage=stage, phase=phase, current_file=relative)
+            return downloaded, phase, relative, detail.get("checked_bytes"), detail.get("heartbeat") if phase == "verifying" else None
+        except (OSError, ValueError, KeyError, TypeError):
             pass
+        return None
 
     def _check(self, ident):
         if self.stop_event.is_set() or self.status(ident).get("status") == "cancelled":
@@ -107,6 +146,7 @@ class ModelManager:
 
     def _download(self,ident):
         folder=s.DATA/"models"/ident; folder.mkdir(parents=True,exist_ok=True); log=folder/"download.log"; plan=folder/"download-plan.json"
+        (folder / "download-progress.json").unlink(missing_ok=True)
         with self.lock:
             self._check(ident)
             self._record(ident,status="downloading",stage="Consultando revisão e tamanho",progress=0,started=time.time(),error=None,retry_at=None,attempt=(self.status(ident) or {}).get("attempt",0)+1)
@@ -131,7 +171,10 @@ class ModelManager:
             records=s.listing("model_download",limit=-1)
             for row in records:
                 if row.get("status")=="failed" and row.get("retry_at") and row["retry_at"] <= time.time():
-                    self._record(row["id"],status="queued",stage="Retomando download automaticamente",retry_at=None)
+                    with self.lock:
+                        current = self.status(row["id"])
+                        if current and current.get("status") == "failed" and current.get("retry_at") and current["retry_at"] <= time.time():
+                            self._record(row["id"],status="queued",stage="Retomando download automaticamente",retry_at=None)
             queued=[x for x in s.listing("model_download",limit=-1) if x.get("status")=="queued"]
             if not queued: self.wake.wait(2); self.wake.clear(); continue
             ident=sorted(queued,key=lambda x:x.get("updated",0))[0]["id"]
@@ -146,8 +189,8 @@ class ModelManager:
             except Exception as exc:
                 current=self.status(ident) or {}
                 if current.get("status")!="cancelled":
-                    retry=current.get("automatic") and current.get("attempt",1)<3
-                    self._record(ident,status="failed",stage="Conexão interrompida; uma nova tentativa será feita" if retry else "Não foi possível preparar o modelo. Tente novamente.",error=str(exc)[-4000:],finished=time.time(),retry_at=time.time()+30*2**max(0,current.get("attempt",1)-1) if retry else None)
+                    retry = getattr(exc, "transient", False) or (current.get("automatic") and current.get("attempt",1)<3)
+                    self._record(ident,status="failed",stage="Conexão interrompida; uma nova tentativa será feita" if retry else "Não foi possível preparar o modelo. Tente novamente.",error=str(exc)[-4000:],finished=time.time(),retry_at=time.time()+min(300,30*2**min(4,max(0,current.get("attempt",1)-1))) if retry else None)
     def snapshot(self):
         result=[]
         for item in installed():

@@ -22,7 +22,7 @@ ENGINE = "chatterbox-pt-br"
 
 def fake_source():
     calls, contents = [], {}
-    def info(repo, revision, files_metadata):
+    def info(repo, revision, files_metadata, timeout):
         calls.append((repo, revision))
         spec = next(x for x in [CATALOG[ENGINE], *CATALOG[ENGINE]["companions"]] if x["repo"] == repo)
         names = [*spec["files"], "unused-old-decoder.pt"]
@@ -48,16 +48,15 @@ def test_optional_download_selects_only_ptbr_v3_and_pinned_companions(data, monk
     folder.mkdir()
     s.atomic_json(folder / "download-plan.json", plan)
     downloads = []
-    def snapshot_download(repo_id, revision, local_dir, allow_patterns, max_workers):
-        downloads.append((repo_id, revision, allow_patterns))
-        for name in allow_patterns:
-            (Path(local_dir) / name).write_bytes(contents[repo_id, name])
-    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(HfApi=lambda: api, snapshot_download=snapshot_download))
+    def hf_hub_download(repo_id, revision, local_dir, filename, headers):
+        downloads.append((repo_id, revision, filename))
+        (Path(local_dir) / filename).write_bytes(contents[repo_id, filename])
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(HfApi=lambda: api, hf_hub_download=hf_hub_download, constants=SimpleNamespace()))
     monkeypatch.setattr(sys, "argv", ["models", "install", ENGINE, "--accept-license"])
     module.main()
     installed, manifest, source = model_files(ENGINE)
     assert installed == folder and source == "downloaded"
-    assert len(downloads) == 2
+    assert len(downloads) == 5 and len({repo for repo, _, _ in downloads}) == 2
     assert manifest["sources"] == plan["sources"]
     assert all(s.digest(folder / name) == sha for name, sha in manifest["files"].items())
     assert not (folder / "unused-old-decoder.pt").exists()

@@ -31,7 +31,7 @@ def test_optional_pinned_download_is_complete_and_resumable(data, monkeypatch, e
     siblings = [SimpleNamespace(rfilename=name, size=len(value),
                                 lfs=SimpleNamespace(sha256=hashlib.sha256(value).hexdigest()))
                 for name, value in {**values, "unused-checkpoint.bin": b"unused"}.items()]
-    def info(repo, revision, files_metadata):
+    def info(repo, revision, files_metadata, timeout):
         assert repo == meta["repo"] and revision == meta["revision"] and files_metadata
         return SimpleNamespace(sha=revision, siblings=siblings)
     api = SimpleNamespace(model_info=info)
@@ -44,17 +44,18 @@ def test_optional_pinned_download_is_complete_and_resumable(data, monkeypatch, e
     existing = folder / "README.md"
     existing.write_bytes(values["README.md"])
     downloads = []
-    def snapshot_download(repo_id, revision, local_dir, allow_patterns, max_workers):
-        downloads.append((repo_id, revision))
+    def hf_hub_download(repo_id, revision, local_dir, filename, headers):
+        downloads.append((repo_id, revision, filename))
         assert existing.read_bytes() == values["README.md"]
-        for name in allow_patterns:
-            target = Path(local_dir) / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(values[name])
-    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(HfApi=lambda: api, snapshot_download=snapshot_download))
+        assert headers["Cache-Control"] == "no-cache"
+        target = Path(local_dir) / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(values[filename])
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(HfApi=lambda: api, hf_hub_download=hf_hub_download, constants=SimpleNamespace()))
     monkeypatch.setattr(sys, "argv", ["models", "install", engine, "--accept-license"])
     module.main()
-    assert downloads == [(meta["repo"], meta["revision"])]
+    assert {name for _, _, name in downloads} == set(meta["files"]) - {"README.md"}
+    assert all((repo, rev) == (meta["repo"], meta["revision"]) for repo, rev, _ in downloads)
     installed, manifest, source = model_files(engine)
     assert installed == folder and source == "downloaded"
     assert all(s.digest(folder / name) == sha for name, sha in manifest["files"].items())

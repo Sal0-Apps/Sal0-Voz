@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.6
+# Manual — Sal0 Voz 0.3.7
 
 ## Primeira instalação
 
@@ -16,7 +16,7 @@ A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e 
 
 ## OmniVoice e VoxCPM2 opcionais
 
-1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.3.6** em Ajustes. Atualizar somente a página não instala os motores novos.
+1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.3.7** em Ajustes. Atualizar somente a página não instala os motores novos.
 2. Abra **Ajustes → Modelos do aplicativo → Preparar este modelo**, ou escolha o modelo no passo 3 e clique em **Baixar no servidor**.
 3. **Fidelidade e expressão · OmniVoice 0.6B** baixa cerca de 3,1 GiB, incluindo seu codec. Usa float32 em CPU, 32 passos completos e segue a interpretação da referência. Prefira 3 a 10 segundos de fala limpa. Uma gravação maior com transcrição vazia é recortada e transcrita automaticamente. Com transcrição manual, use uma gravação de até 10 segundos e o texto exato dela.
 4. **Clonagem e emoções · VoxCPM2 2B** baixa cerca de 4,8 GiB. Usa os dois componentes F16 completos no motor de CPU, áudio e transcrição da referência e 10 passos de difusão. A montagem preserva os 48 kHz do modelo. Escolha **Como interpretar a fala** para orientar a emoção ou o estilo. A intensidade pode variar entre gravações.
@@ -61,6 +61,14 @@ docker compose up -d
 No ZimaOS, use a atualização/recriação do aplicativo mantendo o volume de dados. Não basta reiniciar o mesmo container: ele precisa ser recriado com a imagem nova. Os modelos completos em `/data/models` não são baixados novamente ao atualizar. Na primeira atualização de uma imagem que incluía pesos, os modelos que só existiam em `/opt/sal0-models/models` precisam ser baixados uma vez para o volume. As dependências dos motores permanecem na imagem, em camadas anteriores ao código e à versão para permitir reutilização nas atualizações.
 
 `SAL0_AUTO_DOWNLOAD_MODELS=0` desativa a preparação automática na inicialização; o download manual e o necessário para um trabalho enviado continuam disponíveis. `SAL0_AUTO_MODELS` permite escolher os modelos a preparar na inicialização, com identificadores separados por vírgula. O padrão é `qwen-1.7b,whisper-large-v3-turbo`.
+
+## Downloads e recuperação da conexão
+
+A preparação transfere um arquivo por vez, com blocos de 256 KiB. O painel mostra o arquivo atual, bytes recebidos, percentual e a fase de conferência dos hashes. Um arquivo completo e verificado é reutilizado, e arquivos parciais do gerenciador Hugging Face são retomados no mesmo volume.
+
+Quando um download fica três minutos sem avanço, o processo é encerrado e a conexão é renovada após um intervalo. Falhas temporárias de rede também agendam nova tentativa, inclusive para downloads iniciados manualmente. O intervalo cresce até cinco minutos. A conferência de hashes informa seu próprio progresso e não é confundida com transferência parada. Use **Pausar download** para suspender também uma nova tentativa já agendada. Arquivos e planos permanecem na pasta de dados.
+
+A tela consulta fila e modelos sem manter conexões abertas por aba. Consultas têm limite de tempo e recuperação automática; uma falha no catálogo não impede mostrar os trabalhos. O rascunho aberto é preservado. Alterações pendentes em um projeto já salvo são reenviadas após reconectar; envios de novos trabalhos não são repetidos automaticamente. A página verifica a conexão ao voltar para o primeiro plano ou recuperar a rede. O botão **Tentar conectar novamente** continua disponível.
 
 ## Instalar modelos explicitamente (opcional)
 
