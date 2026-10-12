@@ -167,6 +167,9 @@ def test_video_is_dubbed_without_srt_and_keeps_all_transcribed_text(owner,data,m
     assert calls[-1]['reference_text'] == 'Texto da referência.'
     info = probe(s.safe_path(result['outputs'][0]['path']))
     assert info['video'] and info['audio'] and abs(info['duration']-4) < .15
+    fitted = sorted((data/'jobs'/job['id']).glob('fitted-0-*.wav'))[-1]
+    with wave.open(str(fitted)) as wav:
+        assert wav.getnframes()/wav.getframerate() <= 1
     assert result['outputs'][0]['name'] == 'Minha voz 1.mp4'
     previous = len(calls);worker.execute(s.get('job',job['id']))
     assert len(calls) == previous

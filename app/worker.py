@@ -350,13 +350,23 @@ class Worker:
                 if ratio > 1.1 and not project.get("automatic_dub"):
                     raise ValueError(f"Trecho {index+1} excede a janela em mais de 10%. Edite o texto ou os tempos e gere uma nova versão; nenhuma palavra foi cortada.")
                 if ratio > 1:
-                    fitted = folder / f"fitted-{index}.wav"
-                    factors = []
-                    while ratio > 2:
-                        factors.append("atempo=2"); ratio /= 2
-                    factors.append(f"atempo={ratio}")
-                    self.run(ident, ffargs("-i", target, "-af", ",".join(factors), "-c:a", "pcm_s16le", fitted))
-                    target = fitted
+                    # FFmpeg may add a few samples during tempo adjustment.
+                    # Measure the result so contiguous cues never drift later.
+                    for attempt in range(3):
+                        fitted = folder / f"fitted-{index}-{attempt}.wav"
+                        factor = ratio*1.01
+                        factors = []
+                        while factor > 2:
+                            factors.append("atempo=2"); factor /= 2
+                        factors.append(f"atempo={factor}")
+                        self.run(ident, ffargs("-i", target, "-af", ",".join(factors), "-c:a", "pcm_s16le", fitted))
+                        target = fitted
+                        with wave.open(str(target), "rb") as wav:
+                            ratio = wav.getnframes()*1000/wav.getframerate()/window
+                        if ratio <= 1:
+                            break
+                    else:
+                        raise ValueError(f"Trecho {index+1} não coube no intervalo. Revise os tempos; nenhuma palavra foi cortada.")
                 parts.append((target, group["start_ms"]))
                 cues.append({"start_ms": group["start_ms"], "end_ms": group["end_ms"], "text": " ".join(group["text"])})
             self.timeline(parts, joined, round(project["media"]["duration"]*24000), ident)
