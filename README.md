@@ -12,8 +12,8 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 2. Confira a pasta de dados: o exemplo usa `/DATA/AppData/sal0-voz`.
 3. Inicie e abra **http://IP-DO-ZIMAOS:7886**.
 4. Crie sua senha local.
-5. Em **Criar voz**, envie uma gravação limpa, escolha o idioma da gravação e escreva o novo texto.
-6. Clique em **Gerar voz**. O app prepara e transcreve a referência automaticamente, usa a clonagem completa do Qwen e mostra o resultado na mesma tela.
+5. Em **Criar voz**, escolha ou envie a voz, escreva o novo texto e selecione o modelo.
+6. Clique em **Gerar voz**. O app prepara a referência automaticamente, usa o modelo escolhido e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro texto** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Gerar legendas**.
 
 A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.6` e o SHA do commit para rollback.
@@ -56,8 +56,8 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - VoiceScript: personagem, idioma, pausa exata, ritmo, volume e reações. Texto dividido por pontuação, com frases longas subdivididas; mesmo modelo durante todo o áudio e um processo de voz ativo por vez.
 - Fila SQLite, um executor pesado por vez, pausa, cancelamento da árvore de processos e retomada automática após falta de RAM/interrupção, por checkpoint validado com SHA-256. Intervalo crescente entre tentativas; pausa e cancelamento manuais são respeitados.
 - TTS de diagnóstico real em pt-BR/en-US com eSpeak NG.
-- Adaptadores locais Qwen3-TTS 1.7B/0.6B Base e Chatterbox V3 pt-BR (clonagem), e Faster-Whisper large-v3-turbo/medium/large-v3 CPU INT8.
-- Referência mono a 24 kHz, transcrição automática em cache, áudio junto com texto na clonagem completa. Qwen carrega uma vez na execução normal e encerra após a última fala; numa retomada, recarrega e reutiliza os trechos salvos.
+- Adaptadores locais OmniVoice 0.6B, VoxCPM2 2B, Qwen3-TTS 1.7B/0.6B Base e Chatterbox V3 pt-BR (clonagem), e Faster-Whisper large-v3-turbo/medium/large-v3 CPU INT8.
+- Referência mono no formato de cada motor, transcrição automática em cache quando necessária, áudio junto com texto na clonagem completa. Qwen carrega uma vez na execução normal e encerra após a última fala; numa retomada, recarrega e reutiliza os trechos salvos.
 - Whisper encerra antes da clonagem; áudio longo e espectrograma usam disco com cálculo em blocos. Prompts completos de vozes persistem no trabalho, com apenas a voz atual em RAM. Montagem e envio ao Telegram também usam blocos.
 - WAV, FLAC, MP3, Opus, SRT/VTT; legendas de TTS com tempos por trecho, sujeitas a revisão.
 - Dublagem direta do vídeo, com transcrição Turbo automática e ajuste de ritmo para manter os tempos. SRT revisado continua opcional; nesse modo, excesso de duração acima de 10% exige revisão.
@@ -72,7 +72,7 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - Benchmark dos modelos no AMD A10-9700E/16 GB e avaliação auditiva pt-BR/inglês.
 - Validação da clonagem real com referências do proprietário.
 - Avaliação auditiva de OmniVoice e VoxCPM2 e seus picos de RAM no A10.
-- Conversão direta de voz, tradução automática, separação/diarização, emoções específicas por instrução, reações geradas pelo modelo, voice design e treinamento.
+- Conversão direta de voz, tradução automática, separação/diarização, controle de emoções por instrução nos demais motores, reações geradas pelo modelo, voice design e treinamento.
 - Alinhamento por palavra, editor gráfico de forma de onda, comparação de tomadas e testes extensivos de vídeo longo.
 - Homologação no ZimaOS e teste com rede externa bloqueada no servidor real.
 

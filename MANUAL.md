@@ -12,7 +12,7 @@ A tela inicial usa **Clonar uma voz**, no perfil **Maior fidelidade · Qwen 1.7B
 
 A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e `whisper-large-v3-turbo` são preparados automaticamente em segundo plano, em `/data/models`, com revisões fixas e verificação dos arquivos. O navegador recebe somente o status. Você já pode criar a senha, enviar arquivos e preparar textos enquanto espera. A geração aguarda o modelo necessário ficar pronto; não bloqueia a abertura do aplicativo. Em **Ajustes → Modelos do aplicativo**, confira a fila, o progresso e os controles de preparação.
 
-`qwen-0.6b`, Chatterbox e os Whisper opcionais são baixados quando você os prepara ou envia um trabalho que precisa deles. Arquivos completos são reutilizados e downloads interrompidos preservam os arquivos parciais para retomada. A preparação precisa de internet; a inferência usa arquivos locais mesmo com `HF_HUB_OFFLINE=1` e `TRANSFORMERS_OFFLINE=1` no Compose.
+`qwen-0.6b`, OmniVoice, VoxCPM2, Chatterbox e os Whisper opcionais são baixados quando você os prepara ou envia um trabalho que precisa deles. Arquivos completos são reutilizados e downloads interrompidos preservam os arquivos parciais para retomada. A preparação precisa de internet; a inferência usa arquivos locais mesmo com `HF_HUB_OFFLINE=1` e `TRANSFORMERS_OFFLINE=1` no Compose.
 
 ## OmniVoice e VoxCPM2 opcionais
 
@@ -48,7 +48,7 @@ Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat I
 - **Clonar uma voz:** envie uma gravação, informe o idioma dela, escreva o texto e clique em Gerar voz. O app salva a voz e prepara a transcrição automaticamente. O idioma do texto pode ser diferente do da gravação.
 - **Gerar legendas:** envie áudio ou vídeo na própria tela, escolha o idioma e gere.
 - O rascunho é salvo automaticamente no servidor e o projeto mais recente é reaberto ao entrar. O resultado aparece na tela Criar e na Biblioteca.
-- Qwen 1.7B e large-v3-turbo são preparados após iniciar o app; Qwen 0.6B e Chatterbox ficam disponíveis como downloads opcionais. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
+- Qwen 1.7B e large-v3-turbo são preparados após iniciar o app; Qwen 0.6B, OmniVoice, VoxCPM2 e Chatterbox ficam disponíveis como downloads opcionais. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
 - Uma tarefa enviada antes do modelo ficar pronto permanece na fila. Em caso de falha de rede ou espaço, Ajustes mostra o erro; retome o download e o trabalho.
 
 ## Atualizar usando latest
@@ -80,7 +80,7 @@ docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/s
 docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models install qwen-0.6b --accept-license
 ```
 
-Troque o identificador por `whisper-medium`, `whisper-large-v3` ou `chatterbox-pt-br` para preparar outros modelos. O comando plan consulta a fonte, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
+Troque o identificador por `omnivoice`, `voxcpm2`, `whisper-medium`, `whisper-large-v3` ou `chatterbox-pt-br` para preparar outros modelos. O comando plan consulta a fonte, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
 
 Os ambientes Python já vêm na imagem. Todos os pesos são baixados pelo servidor após a instalação, sem passar pelo navegador. Um modelo instalado não é sobrescrito automaticamente. Trocar uma cópia persistente exige preservar os pesos antigos e atualizar a instalação explicitamente.
 
@@ -132,10 +132,10 @@ Importe um SRT para editar início, fim, texto e personagem. A API permite baixa
 
 ## Dublagem
 
-1. Envie o vídeo diretamente em Criar voz → Dublar vídeo. O SRT é opcional.
-2. Selecione o vídeo, a voz salva e o idioma da fala original. Sem SRT, o app transcreve o áudio com Faster-Whisper large-v3-turbo e dubla o texto detectado. Não traduz o vídeo. Com SRT, usa o texto/tempos revisados e permite personagem por fala.
-3. Para manter música e efeitos, importe uma faixa de ambiente já separada.
-4. Gere e ouça o resultado.
+1. Abra Criar voz → Dublar vídeo e escolha ou envie a voz.
+2. Envie o vídeo ou áudio original e escolha o idioma da fala. O SRT é opcional. Sem SRT, o app transcreve com Faster-Whisper large-v3-turbo e dubla o texto detectado. Não traduz a mídia. Com SRT, usa o texto/tempos revisados e permite personagem por fala.
+3. Selecione o modelo de clonagem. Para manter música e efeitos, importe uma faixa de ambiente já separada.
+4. Gere o vídeo e ouça o resultado.
 
 Sem ambiente separado, a faixa original de áudio é substituída. Não há separação automática nesta versão. As falas ficam ancoradas aos tempos detectados ou do SRT; não são concatenadas de forma a deslocar falas posteriores. Sobreposições exigem revisão. H.264/yuv420p é copiado sem reencodar. Outros formatos reconhecidos são convertidos automaticamente para MP4 H.264/AAC. Lip sync visual não está incluído.
 
@@ -147,7 +147,7 @@ Uma tarefa pesada por vez, incluindo exportação. Fechar o navegador não encer
 
 Reiniciar o container recupera trabalhos interrompidos. Exportações parciais são refeitas. Erros preservam entradas e referências. O diagnóstico do trabalho mostra o log local, acessível somente ao proprietário.
 
-O Compose personalizado entregue separadamente usa até **10 GiB e quatro CPUs**, preservando a pasta de dados do servidor. Os templates genéricos do repositório continuam como estavam. Com a opção Permitir modo econômico do mesmo modelo marcada, o app tenta o modelo escolhido em float32 e depois em bfloat16. O modelo permanece igual em todas as frases; não troca automaticamente Qwen 1.7B por 0.6B. As margens são 9,5 GiB para 1.7B float32, 6,0 GiB para 1.7B econômico, 5,5 GiB para 0.6B float32 e 3,25 GiB para 0.6B econômico, mais reserva de 0,25 GiB antes de iniciar. Bfloat16 pode ser mais lento em CPUs antigas. Todas as opções usam clonagem completa, atenção eager e CPU. Whisper termina antes de carregar Qwen.
+O Compose personalizado entregue separadamente usa até **10 GiB e quatro CPUs**, preservando a pasta de dados do servidor. Os templates genéricos do repositório continuam como estavam. Nos perfis Qwen, com a opção Permitir modo econômico do mesmo modelo marcada, o app tenta o modelo escolhido em float32 e depois em bfloat16. O modelo permanece igual em todas as frases; não troca automaticamente Qwen 1.7B por 0.6B. As margens são 9,5 GiB para 1.7B float32, 6,0 GiB para 1.7B econômico, 5,5 GiB para 0.6B float32 e 3,25 GiB para 0.6B econômico, mais reserva de 0,25 GiB antes de iniciar. Bfloat16 pode ser mais lento em CPUs antigas. Os perfis Qwen usam clonagem completa, atenção eager e CPU. Whisper termina antes de carregar o modelo de clonagem. OmniVoice, VoxCPM2 e Chatterbox mantêm sua precisão fixa, descrita nas seções desses modelos.
 
 Se o processo reportar falta de RAM ou o container registrar OOM, o trabalho volta à fila. Antes da primeira fala confirmada, tenta o modo econômico do mesmo modelo; após confirmar fala, mantém o perfil e aguarda memória para evitar mudar a voz no meio do áudio. Desmarque o modo econômico se preferir aguardar o modelo escolhido em float32. Erros antigos podem ser retomados pelo botão Tentar novamente. O diagnóstico separa memória total do host, livre no host, limite do container e disponível para o app; 10 GB decimais equivalem a cerca de 9,31 GiB. Nenhuma margem garante execução com outros aplicativos consumindo RAM durante o trabalho.
 
@@ -182,9 +182,9 @@ docker pull ghcr.io/sal0-apps/sal0-voz:latest
 docker save ghcr.io/sal0-apps/sal0-voz:latest -o sal0-voz-latest.tar
 ```
 
-Leve a imagem e o Compose ao servidor. Use `docker load -i sal0-voz-latest.tar` e inicie: Qwen 1.7B, 0.6B e large-v3-turbo já estão na imagem. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
+Com o app conectado, prepare os modelos desejados em Ajustes, aguarde os downloads completos e pare o container. Copie a pasta `models/` do volume separadamente, pois `docker save` não inclui os pesos. Leve a imagem, os modelos e o Compose ao servidor. Use `docker load -i sal0-voz-latest.tar`, coloque os modelos na pasta de dados com permissão para UID 1000 e inicie. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
 
-As flags offline impedem downloads pelas bibliotecas compatíveis; **não são um firewall**. A telemetria de Hugging Face, Gradio e ONNX Runtime é desativada no motor. O workflow executa o teste de modelos reais com `--network none`; a homologação no servidor deve manter acesso LAN e bloquear saída externa.
+As flags offline impedem downloads pelas bibliotecas compatíveis; **não são um firewall**. A telemetria de Hugging Face, Gradio e ONNX Runtime é desativada no motor. O workflow verifica a inicialização e os ambientes de CPU com `--network none`, sem carregar modelos neurais; a homologação no servidor deve manter acesso LAN e bloquear saída externa.
 
 ## Diagnóstico da máquina alvo
 
@@ -200,7 +200,7 @@ Faça backup, pare o app, atualize a tag `latest` e recrie; para rollback, use u
 
 ## Limites desta entrega
 
-Conversão direta, tradução automática, separação/diarização, emoção automática, treinamento, VoxCPM2 e Chatterbox ainda não foram integrados. Qwen/Whisper estão disponíveis como adaptadores reais, mas dependem dos pesos e validação de CPU. Não foi feita comparação auditiva ElevenLabs nem homologação no servidor do usuário. Consulte VALIDACAO.md.
+Conversão direta, tradução automática, separação/diarização, emoção automática e treinamento ainda não foram integrados. OmniVoice, VoxCPM2, Chatterbox, Qwen e Whisper estão disponíveis como adaptadores reais e dependem dos pesos preparados. A avaliação de qualidade e consumo real dos novos modelos será feita pelo proprietário. Não foi feita comparação auditiva ElevenLabs nem homologação no servidor do usuário. Consulte VALIDACAO.md.
 
 
 ## Reações e nomes dos áudios
