@@ -106,12 +106,14 @@ def test_memory_policy_adapts_and_never_retries_an_oom_profile():
     assert choose_profile(project, available=10*1024**3)['engine'] == 'qwen-1.7b'
     assert choose_profile(project, available=10_000_000_000)['engine'] == 'qwen-1.7b'
     assert choose_profile(project, available=10_000_000_000)['dtype'] == 'bfloat16'
-    assert choose_profile(project, available=4*1024**3)['dtype'] == 'bfloat16'
+    assert choose_profile({**project,'engine':'qwen-0.6b'}, available=4*1024**3)['dtype'] == 'bfloat16'
+    with pytest.raises(MemoryUnavailable): choose_profile(project, available=4*1024**3)
     assert choose_profile({**project,'memory_failed_profiles':['qwen-1.7b/float32']},available=12*1024**3)['dtype'] == 'bfloat16'
     assert choose_profile({**project,'mode':'asr'}, available=2*1024**3) is None
     with pytest.raises(MemoryUnavailable): choose_profile(project,available=3*1024**3)
     with pytest.raises(MemoryUnavailable): choose_profile({**project,'adaptive_memory':False},available=4*1024**3)
     with pytest.raises(MemoryUnavailable): choose_profile(project,available=4*1024**3,locked=True)
+    assert choose_profile({**project,'engine':'qwen-0.6b'},available=12*1024**3)['engine']=='qwen-0.6b'
 
 def test_queue_recovers_from_memory_failure_with_same_model_economically(data,monkeypatch):
     import app.worker as module
@@ -153,17 +155,52 @@ def test_video_is_dubbed_without_srt_and_keeps_all_transcribed_text(owner,data,m
         calls.append(request)
         if request['engine'].startswith('whisper'):
             Path = type(source)
-            Path(request['output']).write_text(json.dumps([{'start_ms':1000,'end_ms':2000,'text':'Todo o texto [literal].'}]))
+            Path(request['output']).write_text(json.dumps([{'start_ms':1000,'end_ms':2000,'text':'Todo o texto [literal]. Outra frase!'}]))
         else:
             type(source)(request['output']).write_bytes(audio_bytes(3))
     monkeypatch.setattr(worker,'engine',engine)
     worker.update(job['id'],status='running');worker.execute(job)
     result = s.get('job',job['id'])
-    assert result['cues'][0]['text'] == 'Todo o texto [literal].'
-    assert calls[0]['engine'] == 'whisper-large-v3-turbo' and calls[-1]['text'] == 'Todo o texto [literal].'
+    assert result['cues'][0]['text'] == 'Todo o texto [literal]. Outra frase!'
+    assert calls[0]['engine'] == 'whisper-large-v3-turbo'
+    assert [x['text'] for x in calls if x['engine']=='qwen-1.7b']==['Todo o texto [literal]. ','Outra frase!']
     assert calls[-1]['reference_text'] == 'Texto da referência.'
     info = probe(s.safe_path(result['outputs'][0]['path']))
     assert info['video'] and info['audio'] and abs(info['duration']-4) < .15
     assert result['outputs'][0]['name'] == 'Minha voz 1.mp4'
     previous = len(calls);worker.execute(s.get('job',job['id']))
     assert len(calls) == previous
+
+def test_sentences_keep_one_voice_model_and_one_process(owner,data,monkeypatch):
+    import app.main as main
+    import app.worker as module
+    monkeypatch.setattr(main,'require',lambda *args:{'id':args[0],'revision':'fixed'})
+    monkeypatch.setattr(module,'require',lambda *args:{'id':args[0],'revision':'fixed'})
+    ref=owner.post('/api/media',files={'file':('ref.wav',audio_bytes())}).json()
+    voice=owner.post('/api/characters',json={'name':'Minha voz','reference_id':ref['id'],'reference_text':'Minha gravação.'}).json()
+    project=owner.post('/api/projects',json={'name':'Frases','text':'Primeira! Segunda? Terceira.','engine':'qwen-1.7b','character_id':voice['id']}).json()
+    job=s.get('job',owner.post('/api/projects/'+project['id']+'/generate').json()['id'])
+    sessions=[];requests=[]
+    class Session:
+        def __init__(self,*args):sessions.append(self);self.closed=False
+        def generate(self,request):
+            requests.append(request);type(data)(request['output']).write_bytes(audio_bytes(1))
+        def close(self):self.closed=True
+    monkeypatch.setattr(module,'EngineSession',Session)
+    worker=Worker();worker.update(job['id'],status='running');worker.execute(job)
+    assert len(sessions)==1 and sessions[0].closed
+    assert [x['text'] for x in requests]==['Primeira! ','Segunda? ','Terceira.']
+    assert all(x['engine']=='qwen-1.7b' for x in requests)
+    result=s.get('job',job['id'])
+    assert len(result['cues'])==3 and abs(probe(s.safe_path(result['outputs'][0]['path']))['duration']-3)<.01
+
+def test_manual_dubbing_cue_can_have_multiple_sentences(owner,monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main,'require',lambda *args:{'id':args[0]})
+    media=s.put('media',{'audio':True,'video':True,'duration':5,'path':'media/source.mp4','owner_username':'admin'})
+    project=owner.post('/api/projects',json={'name':'Cena','mode':'dub','engine':'diagnostic','media_id':media['id'],'cues':[{'start_ms':0,'end_ms':4000,'text':'Olá! Tudo bem?'}]}).json()
+    response=owner.post('/api/projects/'+project['id']+'/generate')
+    assert response.status_code==200,response.text
+    segments=s.get('job',response.json()['id'])['snapshot']['segments']
+    assert [x['text'] for x in segments]==['Olá! ','Tudo bem?']
+    assert all(x['cue_index']==0 and x['start_ms']==0 and x['end_ms']==4000 for x in segments)

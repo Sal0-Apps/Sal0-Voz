@@ -80,14 +80,14 @@ jobs:
           done
           docker exec sal0-model-smoke python -m scripts.smoke_models
           docker stop sal0-model-smoke
-      - name: Validar adaptação com quatro CPUs, 4 GiB e AVX2 offline
+      - name: Validar modelo 0.6B fixo com quatro CPUs, 4 GiB e AVX2 offline
         run: |
           docker run -d --name sal0-low-memory --cpus 4 --memory 4g --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 -e ATEN_CPU_CAPABILITY=avx2 -e ONEDNN_MAX_CPU_ISA=AVX2 ghcr.io/sal0-apps/sal0-voz:latest
           for i in $(seq 1 30); do
             if docker exec sal0-low-memory python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
             sleep 2
           done
-          docker exec -e SAL0_SMOKE_CLONE_ENGINE=qwen-1.7b -e SAL0_SMOKE_EXPECT_DTYPE=bfloat16 sal0-low-memory python -m scripts.smoke_models
+          docker exec -e SAL0_SMOKE_CLONE_ENGINE=qwen-0.6b -e SAL0_SMOKE_EXPECT_DTYPE=bfloat16 sal0-low-memory python -m scripts.smoke_models
           docker stop sal0-low-memory
       - name: Validar Qwen 1.7B econômico com 8 GiB offline
         run: |

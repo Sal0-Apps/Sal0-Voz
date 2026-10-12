@@ -103,6 +103,20 @@ def error_reply(exc, request):
         value.update(kind="memory", required=getattr(exc, "required", MEMORY_GIB[(request["engine"], request.get("dtype", "float32"))]), available=getattr(exc, "available", memory_available()/1024**3))
     reply(value)
 
+def release_temporary_memory():
+    # Keep model/prompt tensors alive, release completed utterance buffers.
+    import gc
+    gc.collect()
+    if sys.platform.startswith("linux"):
+        import ctypes
+        try:
+            trim = ctypes.CDLL(None).malloc_trim
+            trim.argtypes = [ctypes.c_size_t]
+            trim.restype = ctypes.c_int
+            trim(0)
+        except (AttributeError, OSError):
+            pass
+
 def main():
     from onnxruntime import disable_telemetry_events
     disable_telemetry_events()
@@ -128,6 +142,7 @@ def main():
                 item = json.loads(line)
                 with contextlib.redirect_stdout(sys.stderr):
                     engine.generate(item)
+                release_temporary_memory()
                 reply({"ok": True})
             except Exception as exc:
                 import traceback

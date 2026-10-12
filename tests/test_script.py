@@ -8,6 +8,17 @@ def test_long_text_preserves_all_characters():
     assert all(len(x) <= 351 for x in parts)
     assert len(text) > 100000
 
+def test_each_sentence_is_generated_separately_with_punctuation_intact():
+    text = 'Olá! Como você está? Tudo bem. Mais uma frase; depois: fim…\nOutra linha.'
+    parts = list(split_text(text))
+    assert parts == ['Olá! ', 'Como você está? ', 'Tudo bem. ', 'Mais uma frase; ', 'depois: ', 'fim…\n', 'Outra linha.']
+    assert ''.join(parts) == text
+    assert [x['text'] for x in compile_script(text)] == parts
+
+def test_numbers_and_titles_do_not_break_mid_expression():
+    text = 'Dr. Silva pagou 3.14 reais. São 12:30 agora!'
+    assert list(split_text(text)) == ['Dr. Silva pagou 3.14 reais. ', 'São 12:30 agora!']
+
 def test_controls_do_not_become_spoken_text():
     result = compile_script("[personagem=luna][idioma=pt-BR][ritmo=1.05]Olá![/ritmo][pausa=450ms]Fim.")
     assert result[0]["rate"] == 1.05

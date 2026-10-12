@@ -507,11 +507,9 @@ def snapshot(project, owner=None):
                 raise ValueError("Falas sobrepostas ou além do vídeo precisam de revisão manual.")
             previous_end = cue["end_ms"]
         value["segments"] = []
-        for cue in cues:
+        for cue_index, cue in enumerate(cues):
             parsed = compile_script(cue["text"], project["language"], cue.get("character_id") or project["character_id"], project["rate"])
-            if len(parsed) != 1 or parsed[0].get("pause_ms"):
-                raise ValueError("Divida as falas longas em mais de uma legenda antes de dublar.")
-            value["segments"].append({**parsed[0], "start_ms": cue["start_ms"], "end_ms": cue["end_ms"]})
+            value["segments"].extend({**part, "cue_index": cue_index, "start_ms": cue["start_ms"], "end_ms": cue["end_ms"]} for part in parsed)
         if project["background_id"]:
             value["background"] = owned("media", project["background_id"])
             if not value["background"].get("audio") or value["background"].get("video"):

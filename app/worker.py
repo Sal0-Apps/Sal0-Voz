@@ -284,6 +284,7 @@ class Worker:
         parts = []
         cues = []
         cursor = 0
+        timed_groups = {}
         segments = project["segments"]
         for index, segment in enumerate(segments):
             self.check(ident)
@@ -326,21 +327,11 @@ class Worker:
             with wave.open(str(target), "rb") as wav:
                 duration_ms = round(wav.getnframes()*1000/wav.getframerate())
             if project["mode"] == "dub":
-                start, end = segment["start_ms"], segment["end_ms"]
-                window = end-start
-                ratio = duration_ms/window
-                if ratio > 1.1 and not project.get("automatic_dub"):
-                    raise ValueError(f"Trecho {index+1} excede a janela em mais de 10%. Edite o texto ou os tempos e gere uma nova versão; nenhuma palavra foi cortada.")
-                if duration_ms > window:
-                    fitted = folder / f"fitted-{index}.wav"
-                    factors = []
-                    while ratio > 2:
-                        factors.append("atempo=2"); ratio /= 2
-                    factors.append(f"atempo={ratio}")
-                    self.run(ident, ffargs("-i", target, "-af", ",".join(factors), "-c:a", "pcm_s16le", fitted))
-                    target = fitted
-                cues.append({"start_ms": start, "end_ms": end, "text": caption(segment)})
-                parts.append((target, start))
+                key = segment.get("cue_index", index)
+                group = timed_groups.setdefault(key, {"start_ms": segment["start_ms"], "end_ms": segment["end_ms"], "paths": [], "text": []})
+                group["paths"].append(target)
+                if caption(segment):
+                    group["text"].append(caption(segment))
             else:
                 parts.append(target)
                 if caption(segment):
@@ -349,15 +340,28 @@ class Worker:
         self.update(ident, progress=90, stage="Montando exportação")
         joined = folder / "joined.wav"
         if project["mode"] == "dub":
+            for index, group in enumerate(timed_groups.values()):
+                target = folder / f"cue-{index:06d}.wav"
+                self.concatenate(group["paths"], target, ident)
+                with wave.open(str(target), "rb") as wav:
+                    duration_ms = wav.getnframes()*1000/wav.getframerate()
+                window = group["end_ms"]-group["start_ms"]
+                ratio = duration_ms/window
+                if ratio > 1.1 and not project.get("automatic_dub"):
+                    raise ValueError(f"Trecho {index+1} excede a janela em mais de 10%. Edite o texto ou os tempos e gere uma nova versão; nenhuma palavra foi cortada.")
+                if ratio > 1:
+                    fitted = folder / f"fitted-{index}.wav"
+                    factors = []
+                    while ratio > 2:
+                        factors.append("atempo=2"); ratio /= 2
+                    factors.append(f"atempo={ratio}")
+                    self.run(ident, ffargs("-i", target, "-af", ",".join(factors), "-c:a", "pcm_s16le", fitted))
+                    target = fitted
+                parts.append((target, group["start_ms"]))
+                cues.append({"start_ms": group["start_ms"], "end_ms": group["end_ms"], "text": " ".join(group["text"])})
             self.timeline(parts, joined, round(project["media"]["duration"]*24000), ident)
         else:
-            with wave.open(str(joined), "wb") as out:
-                out.setnchannels(1); out.setsampwidth(2); out.setframerate(24000)
-                for path in parts:
-                    self.check(ident)
-                    with wave.open(str(path), "rb") as inp:
-                        while block := inp.readframes(24000):
-                            out.writeframesraw(block)
+            self.concatenate(parts, joined, ident)
         extension = "mp4" if project["mode"] == "dub" else project.get("format", "wav")
         output = s.DATA / "exports" / f"{ident}.{extension}"
         temporary = output.with_name(ident + ".partial." + extension)
@@ -394,31 +398,36 @@ class Worker:
         if not cues:
             raise ValueError("Não encontrei fala no vídeo. Confira o áudio e o idioma escolhido.")
         segments, previous_end = [], 0
-        for cue in cues:
+        for cue_index, cue in enumerate(cues):
             start = max(previous_end, int(cue["start_ms"]))
             end = min(round(project["media"]["duration"]*1000), int(cue["end_ms"]))
-            if end <= start or not cue["text"].strip():
+            if not cue["text"].strip():
                 continue
+            if end <= start:
+                raise ValueError("A transcrição contém fala sem intervalo utilizável. Revise os tempos das legendas antes de dublar.")
             # Transcribed brackets are literal speech, never script controls.
             source = cue["text"].replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
             parsed = compile_script(source, project["language"], project.get("character_id"), project.get("rate", 1))
-            length = sum(len(x["text"]) for x in parsed)
-            cursor, used = start, 0
             for item in parsed:
-                used += len(item["text"])
-                finish = start + round((end-start)*used/length)
-                if finish <= cursor:
-                    raise ValueError("O vídeo contém fala rápida demais para dividir neste intervalo. Revise as legendas geradas.")
-                segment = {**item, "start_ms": cursor, "end_ms": finish}
+                segment = {**item, "cue_index": cue_index, "start_ms": start, "end_ms": end}
                 if project.get("default_character"):
                     segment["character"] = dict(project["default_character"])
-                segments.append(segment); cursor = finish
+                segments.append(segment)
             previous_end = end
         if not segments:
             raise ValueError("Não encontrei trechos de fala utilizáveis no vídeo.")
         project["segments"] = segments
-        project["cues"] = [{"start_ms": x["start_ms"], "end_ms": x["end_ms"], "text": x["text"].strip()} for x in segments]
-        self.update(ident, snapshot=project)
+        project["cues"] = cues
+        self.update(ident, snapshot=project, cues=cues)
+
+    def concatenate(self, paths, output, ident):
+        with wave.open(str(output), "wb") as out:
+            out.setnchannels(1); out.setsampwidth(2); out.setframerate(24000)
+            for path in paths:
+                self.check(ident)
+                with wave.open(str(path), "rb") as inp:
+                    while block := inp.readframes(24000):
+                        out.writeframesraw(block)
 
     def timeline(self, parts, output, frames, ident):
         # Disk-based timeline, constant memory. Overlap is rejected during submission.

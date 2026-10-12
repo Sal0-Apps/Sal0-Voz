@@ -115,9 +115,9 @@ Uma tarefa pesada por vez, incluindo exportação. Fechar o navegador não encer
 
 Reiniciar o container recupera trabalhos interrompidos. Exportações parciais são refeitas. Erros preservam entradas e referências. O diagnóstico do trabalho mostra o log local, acessível somente ao proprietário.
 
-O Compose permite até **12 GiB e quatro CPUs**, para um servidor de 16 GB. Com a opção Adaptar à RAM livre marcada, o app tenta o modelo escolhido em float32 e depois em bfloat16; para Qwen 1.7B, também tenta Qwen 0.6B. As margens são 9,5 GiB para 1.7B float32, 6,0 GiB para 1.7B econômico, 5,5 GiB para 0.6B float32 e 3,25 GiB para 0.6B econômico, mais reserva de 0,25 GiB antes de iniciar. Bfloat16 pode ser mais lento em CPUs antigas. Todas as opções usam clonagem completa, atenção eager e CPU. Whisper termina antes de carregar Qwen.
+O Compose permite até **12 GiB e quatro CPUs**, para um servidor de 16 GB. Com a opção Permitir modo econômico do mesmo modelo marcada, o app tenta o modelo escolhido em float32 e depois em bfloat16. O modelo permanece igual em todas as frases; não troca automaticamente Qwen 1.7B por 0.6B. As margens são 9,5 GiB para 1.7B float32, 6,0 GiB para 1.7B econômico, 5,5 GiB para 0.6B float32 e 3,25 GiB para 0.6B econômico, mais reserva de 0,25 GiB antes de iniciar. Bfloat16 pode ser mais lento em CPUs antigas. Todas as opções usam clonagem completa, atenção eager e CPU. Whisper termina antes de carregar Qwen.
 
-Se o processo reportar falta de RAM ou o container registrar OOM, o trabalho volta à fila. Antes da primeira fala confirmada, tenta um perfil menor; após confirmar fala, mantém o perfil e aguarda memória para evitar mudar a voz no meio do áudio. Desmarque a adaptação se preferir aguardar o modelo escolhido em float32. Erros antigos podem ser retomados pelo botão Tentar novamente. O diagnóstico separa memória total do host, livre no host, limite do container e disponível para o app; 10 GB decimais equivalem a cerca de 9,31 GiB. Nenhuma margem garante execução com outros aplicativos consumindo RAM durante o trabalho.
+Se o processo reportar falta de RAM ou o container registrar OOM, o trabalho volta à fila. Antes da primeira fala confirmada, tenta o modo econômico do mesmo modelo; após confirmar fala, mantém o perfil e aguarda memória para evitar mudar a voz no meio do áudio. Desmarque o modo econômico se preferir aguardar o modelo escolhido em float32. Erros antigos podem ser retomados pelo botão Tentar novamente. O diagnóstico separa memória total do host, livre no host, limite do container e disponível para o app; 10 GB decimais equivalem a cerca de 9,31 GiB. Nenhuma margem garante execução com outros aplicativos consumindo RAM durante o trabalho.
 
 O aviso de flash-attn não exige instalação em CPU. A execução usa atenção PyTorch; NNPACK é desativado por compatibilidade, e pad_token_id é informado explicitamente. Erros reais permanecem no diagnóstico.
 
@@ -188,3 +188,11 @@ Preencha Nome do áudio para escolher o nome de download. Vazio usa o nome da vo
 ## Aplicativo Android
 
 Baixe [Sal0 Voz Android](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.3.1) e configure o endereço local do servidor. Endereço externo e SSID são opcionais. Uploads e downloads usam o servidor; fechar o APK não cancela trabalhos. Consulte [instruções do cliente](android/README.md).
+
+## Geração por frases e memória
+
+O texto é dividido em `.`, `!`, `?`, `;`, `:`, reticências e quebras de linha. A pontuação e as palavras são preservadas; números decimais e títulos comuns não são divididos no meio. Frases longas continuam subdivididas por palavras em blocos de até cerca de 350 caracteres.
+
+Cada frase é gerada e salva em disco antes da próxima. O modelo é carregado uma vez e mantém a mesma voz e precisão em todo o trabalho. Buffers temporários são liberados após cada geração; os WAVs são unidos por leitura de um segundo por vez. Na dublagem, frases da mesma legenda são agrupadas antes do ajuste aos tempos do vídeo.
+
+Dividir o texto reduz memória temporária de inferência, mas não reduz o espaço necessário para manter os pesos do modelo. Se Qwen 1.7B ainda não couber, a fila aguarda RAM. Para escolher 0.6B, altere explicitamente o perfil antes de gerar um novo trabalho.

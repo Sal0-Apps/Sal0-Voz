@@ -4,9 +4,25 @@ from .reactions import reaction
 
 
 def split_text(text, maximum=350):
-    # Prefer sentence/word boundaries, retaining every character (including spaces).
+    """Generate sentences separately, preserving punctuation and all whitespace."""
+    # Decimal numbers stay intact. Common titles/initials are not sentence ends.
+    pattern = r'[!?…。！？]+["\'»”’)\]]*\s*|[.;:]["\'»”’)\]]*(?:\s+|$)|\n+'
+    cursor = 0
+    for match in re.finditer(pattern, text):
+        boundary = text[max(cursor, match.start()-32):match.end()].rstrip()
+        if match.end() < len(text) and re.search(r'(?i)\b(?:sr|sra|dr|dra|prof|profa|mr|mrs|ms|vs|etc)\.$', boundary):
+            continue
+        if match.end() < len(text) and re.search(r'\b[A-Z]\.$', boundary):
+            continue
+        yield from bounded_text(text[cursor:match.end()], maximum)
+        cursor = match.end()
+    yield from bounded_text(text[cursor:], maximum)
+
+def bounded_text(text, maximum):
+    # A sentence without punctuation is still bounded, without cutting words
+    # unless a single word is longer than the engine's chunk limit.
     while len(text) > maximum:
-        candidates = list(re.finditer(r"[.!?;]\s+|\s+", text[:maximum + 1]))
+        candidates = list(re.finditer(r"\s+", text[:maximum + 1]))
         cut = candidates[-1].end() if candidates else maximum
         yield text[:cut]
         text = text[cut:]

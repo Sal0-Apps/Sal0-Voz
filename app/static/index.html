@@ -67,8 +67,8 @@
             <label>Idioma do texto<select id="language"><option value="pt-BR">Português brasileiro</option><option value="en-US">English</option></select></label>
             <details class="voice-options"><summary>Qualidade e opções do áudio</summary>
               <label id="engine-label">Perfil da voz<select id="engine"><option value="qwen-1.7b" selected>Maior fidelidade · Qwen 1.7B</option></select></label>
-              <label class="check"><input id="adaptive-memory" type="checkbox" checked> Adaptar à RAM livre automaticamente</label>
-              <p class="hint">Prioriza o perfil escolhido. Se faltar RAM, tenta o mesmo modelo em modo econômico e depois Qwen 0.6B. Desmarque para aguardar memória para o perfil escolhido em float32.</p>
+              <label class="check"><input id="adaptive-memory" type="checkbox" checked> Permitir modo econômico do mesmo modelo</label>
+              <p class="hint">Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória. Desmarque para usar sempre float32.</p>
               <label id="asr-label" hidden>Modelo de transcrição<select id="asr-engine"><option value="whisper-large-v3-turbo">Faster-Whisper large-v3-turbo · INT8</option></select></label>
               <label id="rate-label">Ritmo <output id="rate-value">1.00×</output><input id="rate" type="range" min="0.8" max="1.2" step="0.01" value="1"></label>
               <label id="format-label">Formato<select id="format"><option value="wav">WAV · sem compressão</option><option value="flac">FLAC · sem perdas</option><option value="mp3">MP3 · compartilhar</option><option value="opus">Opus · compacto</option></select></label>
@@ -87,7 +87,7 @@
             <div id="script-fields">
               <div class="editor-tabs"><button type="button" class="tab active" data-editor="simple">Rápido</button><button type="button" class="tab" data-editor="detailed">Detalhado</button></div>
               <textarea id="script" rows="12" placeholder="Escreva aqui o novo texto que sua voz vai falar…" spellcheck="true"></textarea>
-              <div class="editor-footer"><span id="char-count">0 caracteres</span><span>Textos longos são divididos em trechos</span></div>
+              <div class="editor-footer"><span id="char-count">0 caracteres</span><span>Geração por frases, com o mesmo modelo</span></div>
               <div id="direction-tools" hidden>
                 <div class="tag-buttons"><button type="button" data-insert="[pausa=450ms]">+ Pausa</button><button type="button" data-insert="[ritmo=0.95]texto[/ritmo]">+ Ritmo</button><button type="button" data-insert="[volume=-3]texto[/volume]">+ Volume</button><button type="button" id="validate-script">Validar roteiro</button></div>
                 <label>Reações e sons<select id="reaction-choice"></select></label>
@@ -153,7 +153,7 @@
       </details>
       <details class="card settings-section"><summary>Como obter uma boa clonagem<span>Gravação, memória e revisão</span></summary>
         <p>Use uma gravação limpa, sem música, de 6 a 30 segundos. O app transcreve a referência e usa o áudio junto com o texto para reproduzir a voz. Confira a transcrição em Minhas vozes.</p>
-        <p>Maior fidelidade usa o Qwen 1.7B em float32 e pede cerca de 9,5 GiB livres para carregar. O app adapta o perfil à RAM livre, primeiro com o mesmo modelo em modo econômico e depois com Qwen 0.6B. Todas as opções usam a transcrição completa da referência e uma tarefa por vez.</p>
+        <p>Maior fidelidade usa o Qwen 1.7B em float32 e pede cerca de 9,5 GiB livres para carregar. O app adapta o perfil à RAM livre, usando o modo econômico do mesmo modelo se necessário. Todas as opções usam a transcrição completa da referência e uma tarefa por vez.</p>
         <p>O Compose foi ajustado para 4 núcleos e até 12 GB de RAM. O servidor de 16 GB precisa de memória livre; outros aplicativos podem limitar a geração. A fidelidade e o tempo real devem ser avaliados com sua própria gravação.</p>
         <p class="hint">A dublagem transcreve o vídeo automaticamente; você também pode usar um SRT revisado. Conversão direta de voz, treinamento e controle nativo de emoções ainda não estão disponíveis.</p>
       </details>

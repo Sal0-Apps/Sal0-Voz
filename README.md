@@ -20,9 +20,9 @@ A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow *
 
 **Qwen3-TTS 1.7B/0.6B Base e Faster-Whisper large-v3-turbo já vêm na imagem**, com revisões fixas e hashes verificados na construção. Ficam em `/opt/sal0-models/models`, fora de `/data`, para que o volume de uma instalação nova ou antiga não esconda os pesos. O Whisper transcreve a referência e as legendas em CPU INT8; o Qwen reproduz a voz em CPU float32 ou bfloat16. Não é necessário instalar CUDA ou baixar os modelos separadamente.
 
-O perfil **Mais leve · Qwen 0.6B** também vem incluído e é usado automaticamente quando a RAM livre limita o modelo maior. A fila preserva o texto durante downloads interrompidos e permite retomar a preparação. `whisper-medium` e `whisper-large-v3` continuam como opções para projetos existentes. Se o pacote GHCR estiver privado, o administrador deve torná-lo público para permitir download anônimo pelo ZimaOS.
+O perfil **Mais leve · Qwen 0.6B** também vem incluído e pode ser escolhido se você preferir um modelo menor. A fila preserva o texto durante downloads interrompidos e permite retomar a preparação. `whisper-medium` e `whisper-large-v3` continuam como opções para projetos existentes. Se o pacote GHCR estiver privado, o administrador deve torná-lo público para permitir download anônimo pelo ZimaOS.
 
-O Compose permite quatro CPUs e até 12 GiB de RAM, deixando parte dos 16 GB para o sistema. A escolha automática tenta Qwen 1.7B float32, 1.7B econômico, 0.6B float32 e 0.6B econômico, com margens de 9,5/6,0/5,5/3,25 GiB mais reserva para iniciar o processo. Se ocorrer falta de RAM antes de confirmar uma fala, tenta o próximo perfil. Depois de confirmar fala, mantém o perfil para preservar a voz. O painel mostra memória efetiva para o app, incluindo o limite do container. São margens de preparação, sujeitas ao consumo real. A geração em CPU pode levar vários minutos; o navegador pode ser fechado enquanto o servidor trabalha.
+O Compose permite quatro CPUs e até 12 GiB de RAM, deixando parte dos 16 GB para o sistema. O modelo escolhido é mantido em todo o áudio. Antes da primeira frase, o app pode usar o modo econômico do mesmo modelo, com margens de 9,5/6,0 GiB para 1.7B float32/bfloat16 e 5,5/3,25 GiB para 0.6B, mais reserva para iniciar o processo. Se ocorrer falta de RAM antes de confirmar uma fala, tenta a precisão econômica do mesmo modelo. Depois de confirmar fala, mantém modelo e precisão. Se o modelo escolhido não couber, aguarda RAM; não troca automaticamente 1.7B por 0.6B. O painel mostra memória efetiva para o app, incluindo o limite do container. São margens de preparação, sujeitas ao consumo real. A geração em CPU pode levar vários minutos; o navegador pode ser fechado enquanto o servidor trabalha.
 
 ## O que está implementado
 
@@ -32,7 +32,7 @@ O Compose permite quatro CPUs e até 12 GiB de RAM, deixando parte dos 16 GB par
 - Upload na Biblioteca e em Minhas vozes; formatos de áudio/vídeo reconhecidos por FFmpeg são validados pelo conteúdo e convertidos automaticamente para a referência. Arquivos originais são preservados.
 - Personagens com versões imutáveis; trabalhos preservam uma cópia do personagem usado.
 - Editor com autosave, projetos e histórico de revisões.
-- VoiceScript básico: personagem, idioma, pausa exata, ritmo e volume.
+- VoiceScript: personagem, idioma, pausa exata, ritmo, volume e reações. Texto dividido por pontuação, com frases longas subdivididas; modelo e processo únicos por trabalho.
 - Fila SQLite, um executor pesado por vez, pausa, cancelamento da árvore de processos e retomada por checkpoint validado com SHA-256.
 - TTS de diagnóstico real em pt-BR/en-US com eSpeak NG.
 - Adaptadores locais Qwen3-TTS 1.7B/0.6B Base (clonagem) e Faster-Whisper large-v3-turbo/medium/large-v3 CPU INT8.

@@ -29,19 +29,16 @@ def choose_profile(project, available=None, locked=False):
     else:
         options = [(requested, "float32")]
         if project.get("adaptive_memory", True):
-            if requested == "qwen-1.7b":
-                options.append(("qwen-1.7b", "bfloat16"))
-                options.append(("qwen-0.6b", "float32"))
-            options.append(("qwen-0.6b", "bfloat16"))
+            options.append((requested, "bfloat16"))
     for index, (engine, dtype) in enumerate(options):
         if not locked and index < len(options)-1 and f"{engine}/{dtype}" in project.get("memory_failed_profiles", []):
             continue
         if (engine, dtype) not in MEMORY_GIB:
             raise ValueError("Perfil de voz incompatível com CPU.")
         required = MEMORY_GIB[engine, dtype]
-        if available_gib >= required + (0.25 if not locked else 0):
+        if available_gib >= required + 0.25:
             name = "Qwen 1.7B" if engine == "qwen-1.7b" else "Qwen 0.6B"
             name += " · econômico" if dtype == "bfloat16" else " · float32"
             return {"engine": engine, "dtype": dtype, "memory_gib": required,
                     "name": name, "adapted": engine != requested or dtype != "float32"}
-    raise MemoryUnavailable(MEMORY_GIB[options[-1]], available_gib)
+    raise MemoryUnavailable(MEMORY_GIB[options[-1]] + 0.25, available_gib)
