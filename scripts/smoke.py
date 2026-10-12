@@ -15,6 +15,9 @@ def run(base="http://127.0.0.1:7860"):
     assert request("/health")["status"]=="ok"
     assert not request("/api/auth/status")["configured"], "Use somente um volume vazio de teste"
     request("/api/auth/setup", {"password":secrets.token_urlsafe(20)})
+    for collection in ("characters", "media", "projects", "jobs", "reactions", "models"):
+        assert isinstance(request("/api/"+collection), list), collection
+    assert len(request("/api/reactions")) == 33
     for language,text in [("pt-BR","Esta voz foi gerada localmente."),("en-US","This voice was generated locally.")]:
         project=request("/api/projects", {"name":"Docker smoke "+language,"mode":"tts","engine":"diagnostic","language":language,"text":text,"format":"wav"})
         job=request("/api/projects/"+project["id"]+"/generate", {})

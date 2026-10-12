@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.1
+# Manual — Sal0 Voz 0.3.2
 
 ## Primeira instalação
 
@@ -115,7 +115,7 @@ Uma tarefa pesada por vez, incluindo exportação. Fechar o navegador não encer
 
 Reiniciar o container recupera trabalhos interrompidos. Exportações parciais são refeitas. Erros preservam entradas e referências. O diagnóstico do trabalho mostra o log local, acessível somente ao proprietário.
 
-O Compose permite até **12 GiB e quatro CPUs**, para um servidor de 16 GB. Com a opção Permitir modo econômico do mesmo modelo marcada, o app tenta o modelo escolhido em float32 e depois em bfloat16. O modelo permanece igual em todas as frases; não troca automaticamente Qwen 1.7B por 0.6B. As margens são 9,5 GiB para 1.7B float32, 6,0 GiB para 1.7B econômico, 5,5 GiB para 0.6B float32 e 3,25 GiB para 0.6B econômico, mais reserva de 0,25 GiB antes de iniciar. Bfloat16 pode ser mais lento em CPUs antigas. Todas as opções usam clonagem completa, atenção eager e CPU. Whisper termina antes de carregar Qwen.
+O Compose permite até **10 GiB e quatro CPUs**, para um servidor de 16 GB. Com a opção Permitir modo econômico do mesmo modelo marcada, o app tenta o modelo escolhido em float32 e depois em bfloat16. O modelo permanece igual em todas as frases; não troca automaticamente Qwen 1.7B por 0.6B. As margens são 9,5 GiB para 1.7B float32, 6,0 GiB para 1.7B econômico, 5,5 GiB para 0.6B float32 e 3,25 GiB para 0.6B econômico, mais reserva de 0,25 GiB antes de iniciar. Bfloat16 pode ser mais lento em CPUs antigas. Todas as opções usam clonagem completa, atenção eager e CPU. Whisper termina antes de carregar Qwen.
 
 Se o processo reportar falta de RAM ou o container registrar OOM, o trabalho volta à fila. Antes da primeira fala confirmada, tenta o modo econômico do mesmo modelo; após confirmar fala, mantém o perfil e aguarda memória para evitar mudar a voz no meio do áudio. Desmarque o modo econômico se preferir aguardar o modelo escolhido em float32. Erros antigos podem ser retomados pelo botão Tentar novamente. O diagnóstico separa memória total do host, livre no host, limite do container e disponível para o app; 10 GB decimais equivalem a cerca de 9,31 GiB. Nenhuma margem garante execução com outros aplicativos consumindo RAM durante o trabalho.
 
@@ -196,3 +196,18 @@ O texto é dividido em `.`, `!`, `?`, `;`, `:`, reticências e quebras de linha.
 Cada frase é gerada e salva em disco antes da próxima. O modelo é carregado uma vez e mantém a mesma voz e precisão em todo o trabalho. Buffers temporários são liberados após cada geração; os WAVs são unidos por leitura de um segundo por vez. Na dublagem, frases da mesma legenda são agrupadas antes do ajuste aos tempos do vídeo.
 
 Dividir o texto reduz memória temporária de inferência, mas não reduz o espaço necessário para manter os pesos do modelo. Se Qwen 1.7B ainda não couber, a fila aguarda RAM. Para escolher 0.6B, altere explicitamente o perfil antes de gerar um novo trabalho.
+
+## Fluxo simplificado e exclusão de vários itens
+
+1. Escolha uma voz salva; para uma nova voz, abra Usar uma nova gravação e envie a referência.
+2. Para criar áudio, digite o texto ou importe TXT/SRT. Para dublar, envie áudio/vídeo ou escolha da biblioteca. O áudio original é transcrito automaticamente, sem SRT obrigatório.
+3. Escolha o modelo, visível na tela. Ajustes de memória, ritmo e formato ficam recolhidos. Com o limite de 10 GiB, o padrão usa o modo econômico de Qwen 1.7B antes de começar; mantém o modelo durante todo o trabalho.
+4. Gere. O nome do arquivo é opcional; fica nas opções finais.
+
+Dublar vídeo preserva a imagem e substitui a faixa de voz. Dublar áudio gera um MP4 com fundo simples. Revisar falas, importar SRT e adicionar ambiente são opções avançadas, recolhidas por padrão. Escolher outro arquivo limpa as falas revisadas do anterior.
+
+Marque as caixas em Minhas vozes ou Biblioteca e clique em Excluir selecionados. Selecionar todos marca apenas os itens carregados; Carregar mais permite ampliar a seleção. O app confirma a lista antes de excluir. Arquivos usados por vozes salvas ou trabalhos retomáveis são preservados, com indicação de como liberar. Um trabalho em execução deve ser cancelado e encerrado antes de excluir seus resultados.
+
+Excluir uma voz mantém o arquivo original e as vozes usadas nos trabalhos já enviados. Excluir resultados remove as exportações e o progresso, preservando o projeto e os originais. Seleções removidas são limpas dos projetos; o texto continua salvo.
+
+O aviso Not Found ao recarregar foi corrigido na 0.3.2. Atualizar a página restaura os projetos e trabalhos gravados em /data. Se uma conexão falhar, use Tentar conectar novamente. Ao atualizar o container, mantenha o mesmo volume de dados.

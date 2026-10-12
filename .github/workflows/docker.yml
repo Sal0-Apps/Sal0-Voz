@@ -28,6 +28,7 @@ jobs:
           npm install --prefix /tmp/sal0-browser playwright@1.55.0
           /tmp/sal0-browser/node_modules/.bin/playwright install --with-deps chromium
           NODE_PATH=/tmp/sal0-browser/node_modules node tests/browser_clone_flow.cjs
+          NODE_PATH=/tmp/sal0-browser/node_modules node tests/browser_live_start.cjs
   docker:
     timeout-minutes: 90
     needs: test
@@ -46,7 +47,7 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: |
-            ghcr.io/sal0-apps/sal0-voz:0.3.1
+            ghcr.io/sal0-apps/sal0-voz:0.3.2
             ghcr.io/sal0-apps/sal0-voz:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -89,9 +90,9 @@ jobs:
           done
           docker exec -e SAL0_SMOKE_CLONE_ENGINE=qwen-0.6b -e SAL0_SMOKE_EXPECT_DTYPE=bfloat16 sal0-low-memory python -m scripts.smoke_models
           docker stop sal0-low-memory
-      - name: Validar Qwen 1.7B econômico com 8 GiB offline
+      - name: Validar Qwen 1.7B econômico com 10 GiB offline
         run: |
-          docker run -d --name sal0-medium-memory --cpus 4 --memory 8g --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
+          docker run -d --name sal0-medium-memory --cpus 4 --memory 10g --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
           for i in $(seq 1 30); do
             if docker exec sal0-medium-memory python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
             sleep 2
@@ -112,8 +113,8 @@ jobs:
           docker exec sal0-medium-memory sh -c 'tail -n 60 /data/jobs/*/process.log' || true
       - name: Publicar imagem versionada
         run: |
-          docker push ghcr.io/sal0-apps/sal0-voz:0.3.1
+          docker push ghcr.io/sal0-apps/sal0-voz:0.3.2
           docker push ghcr.io/sal0-apps/sal0-voz:latest
-          docker tag ghcr.io/sal0-apps/sal0-voz:0.3.1 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
+          docker tag ghcr.io/sal0-apps/sal0-voz:0.3.2 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
           docker push ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
 

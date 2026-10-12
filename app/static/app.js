@@ -1,7 +1,9 @@
 const $ = (id) => document.getElementById(id);
 const defaultClone = "qwen-1.7b";
 const defaultAsr = "whisper-large-v3-turbo";
-const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], reactions:[], characterReactions:{}, configured:false, user:{}};
+const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], reactions:[], characterReactions:{}, configured:false, user:{}, uploads:0, submitting:false, jobsLimit:50, mediaLimit:100, charactersLimit:100};
+const selections = {media:new Set(), characters:new Set(), results:new Set()};
+let deletePlan;
 let events, toastTimer, saveTimer, recorder, modelTimer;
 let saveChain=Promise.resolve();
 const escapeHTML = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -31,15 +33,21 @@ document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",(
 function setMode(mode){
   if(mode==="convert"){toast("Conversão direta de voz aguarda integração e validação em CPU. Não será substituída por transcrição + TTS.");return;}
   state.mode=mode;
+  $("voice-step").hidden=mode==="asr";
   $("voice-choice").parentElement.hidden=mode==="asr";
   updateVoiceChoice();
   document.querySelectorAll("[data-mode]").forEach(x=>x.classList.toggle("selected",x.dataset.mode===mode));
   $("script-fields").hidden=mode!=="tts"; $("source-fields").hidden=mode==="tts"; $("dub-fields").hidden=mode!=="dub";
   $("engine-label").hidden=mode==="asr"; $("asr-label").hidden=mode!=="asr"; $("rate-label").hidden=mode==="asr"; $("format-label").hidden=mode!=="tts";
-  $("editor-title").textContent={tts:"2. Escreva seu texto",asr:"Envie o áudio ou vídeo",dub:"Vídeo para dublar"}[mode];
-  $("voice-title").textContent=mode==="asr"?"Opções de transcrição":"1. Escolha sua voz";
-  $("generate").textContent={tts:"✦ Gerar voz",asr:"≡ Gerar legendas",dub:"▷ Gerar dublagem"}[mode];
-  updateVoiceChoice();modelNotice();
+  $("memory-label").hidden=mode==="asr";$("memory-hint").hidden=mode==="asr";
+  $("script-import-label").hidden=mode!=="tts";
+  $("editor-title").textContent={tts:"2. Digite ou envie o texto",asr:"1. Envie o áudio ou vídeo",dub:"2. Escolha o áudio ou vídeo para dublar"}[mode];
+  $("model-title").textContent=mode==="asr"?"2. Escolha o modelo":"3. Escolha o modelo";
+  $("generate-title").textContent={tts:"4. Gere o áudio",asr:"3. Gere as legendas",dub:"4. Gere o vídeo dublado"}[mode];
+  $("create-title").textContent={tts:"Dê voz ao seu texto.",asr:"Transforme fala em legendas.",dub:"Duble com a voz escolhida."}[mode];
+  $("create-description").textContent={tts:"Escolha a voz, escreva ou importe o texto, escolha o modelo e gere.",asr:"Envie o arquivo, escolha o modelo e gere as legendas.",dub:"Escolha a voz, envie áudio ou vídeo, escolha o modelo e gere o vídeo dublado."}[mode];
+  $("language-label").firstChild.textContent=mode==="tts"?"Idioma do texto":"Idioma da fala original";
+  updateVoiceChoice();modelNotice();updateSourceStatus();updateGenerateState();renderPreparation();
 }
 document.querySelectorAll("[data-mode]").forEach(x=>x.addEventListener("click",()=>setMode(x.dataset.mode)));
 document.querySelectorAll("[data-editor]").forEach(x=>x.addEventListener("click",()=>{
@@ -74,15 +82,22 @@ async function persistProject(message=true){
 }
 $("save-project").addEventListener("click",safe(()=>saveProject()));
 $("project-form").addEventListener("submit",safe(async event=>{
-  event.preventDefault();$("generate").disabled=true;
-  const label=$("generate").textContent;
+  event.preventDefault();if(state.submitting||state.uploads)return;
+  if(state.mode==="tts"&&!$("script").value.trim()){$("script").focus();throw Error("No passo 2, digite o texto ou importe um arquivo.");}
+  if(state.mode!=="tts"&&!$("source-media").value){$("source-upload").focus();throw Error("Escolha o áudio ou vídeo no passo "+(state.mode==="asr"?1:2)+".");}
+  state.submitting=true;updateGenerateState();
   try{
-    $("generate").textContent="Enviando para o servidor…";
     if(state.mode!=="asr" && $("engine").value.startsWith("qwen-") && $("reference-upload").files[0])await saveQuickReference();
     const project=await saveProject(false);await post("/projects/"+project.id+"/generate");
     toast("Trabalho na fila. Você pode fechar esta aba ou preparar outro texto.");await loadJobs();
-  }finally{$("generate").disabled=false;$("generate").textContent=label;}
+  }catch(error){if(/referência|Selecione uma voz/.test(error.message)&&state.mode!=="asr"){$("character").focus();}throw error;}
+  finally{state.submitting=false;updateGenerateState();}
 }));
+function updateGenerateState(){
+  $("generate").disabled=state.submitting||state.uploads>0;
+  $("generate").textContent=state.submitting?"Enviando para o servidor…":state.uploads?"Enviando arquivo…":{tts:"✦ Gerar áudio",asr:"≡ Gerar legendas",dub:"▷ Gerar vídeo dublado"}[state.mode];
+  document.querySelectorAll("[data-mode]").forEach(b=>b.disabled=state.submitting);
+}
 $("validate-script").addEventListener("click",safe(async()=>{const result=await post("/script/validate",payload());toast(result.segments.length+" trechos válidos. Pausas e metadados não serão falados.");}));
 $("rate").addEventListener("input",()=>{$("rate-value").textContent=Number($("rate").value).toFixed(2)+"×";});
 function modelNotice(){
@@ -101,10 +116,11 @@ function fillOptions(element,items,placeholder,label){
 }
 function refreshSelectors(){
   fillOptions($("character"),state.characters,"Selecione uma voz salva",x=>x.name+" · v"+x.version);
-  fillOptions($("source-media"),state.media.filter(x=>x.type==="media"),"Selecione na biblioteca",x=>x.name);
+  fillOptions($("source-media"),state.media.filter(x=>x.audio),"Selecione na biblioteca",x=>x.name);
   fillOptions($("character-reference"),state.media.filter(x=>x.audio),"Selecione áudio ou vídeo",x=>x.name+(x.video?" · áudio do vídeo":""));
   fillOptions($("background-media"),state.media.filter(x=>x.audio&&!x.video),"Sem ambiente separado",x=>x.name);
   fillOptions($("reaction-media"),state.media.filter(x=>x.audio),"Selecione áudio ou vídeo",x=>x.name);
+  renderSelectedVoice();updateSourceStatus();
 }
 async function loadModels(){
   const selectedEngine=$("engine").value||defaultClone;
@@ -124,6 +140,7 @@ async function loadProject(p){
     if(p[key]!==undefined)$(id).value=p[key]??"";
   }
   $("audio-name").value=p.audio_name||"";$("adaptive-memory").checked=p.adaptive_memory!==false;
+  state.sourceId=$("source-media").value;$("source-upload").value="";
   $("voice-choice").value=$("engine").value==="diagnostic"?"simple":"clone";
   if($("engine").value.startsWith("qwen-"))state.cloneEngine=$("engine").value;
   setMode(p.mode||"tts");renderCues();$("rate-value").textContent=Number($("rate").value).toFixed(2)+"×";
@@ -136,7 +153,9 @@ function renderProjects(){
   document.querySelectorAll("[data-duplicate]").forEach(b=>b.onclick=()=>{const p={...state.projects.find(p=>p.id===b.dataset.duplicate),id:null};p.name+=" · cópia";loadProject(p);});
 }
 function renderCharacters(){
-  $("character-list").innerHTML=state.characters.length?state.characters.map(c=>'<article class="card item-card"><div class="avatar">'+escapeHTML(c.name.slice(0,2).toUpperCase())+'</div><h3>'+escapeHTML(c.name)+'</h3><span class="badge">Versão '+c.version+' · '+escapeHTML(c.language)+'</span><p>'+escapeHTML(c.description||"Sem descrição")+'</p>'+(c.reference_id?'<audio controls preload="none" src="/api/characters/'+c.id+'/reference-file"></audio>':'<p class="hint">Adicione uma referência para clonagem.</p>')+'<button class="secondary" data-character="'+c.id+'">Editar voz</button><button type="button" class="text-button" data-reference-text="'+c.id+'">Conferir transcrição</button></article>').join(""):'<div class="empty">Envie um áudio ou vídeo no formulário para salvar sua primeira voz.</div>';
+  $("character-list").innerHTML=state.characters.length?state.characters.map(c=>'<article class="card item-card" data-item-id="'+c.id+'">'+selectionHTML("characters",c)+'<div class="avatar">'+escapeHTML(c.name.slice(0,2).toUpperCase())+'</div><h3>'+escapeHTML(c.name)+'</h3><span class="badge">Versão '+c.version+' · '+escapeHTML(c.language)+'</span><p>'+escapeHTML(c.description||"Sem descrição")+'</p>'+(c.reference_id?'<audio controls preload="none" src="/api/characters/'+c.id+'/reference-file"></audio>':'<p class="hint">Adicione uma referência para clonagem.</p>')+'<div class="item-actions"><button class="primary" data-use-voice="'+c.id+'">Usar voz</button><button class="secondary" data-character="'+c.id+'">Editar</button>'+deleteHTML("characters",c)+'</div><button type="button" class="text-button" data-reference-text="'+c.id+'">Conferir transcrição</button></article>').join(""):'<div class="empty">Adicione uma gravação para salvar sua primeira voz.</div>';
+  renderSelection("characters");
+  document.querySelectorAll("[data-use-voice]").forEach(b=>b.onclick=()=>{if(state.mode==="asr")setMode("tts");$("character").value=b.dataset.useVoice;chooseSavedVoice();view("create");$("voice-step").scrollIntoView({behavior:"smooth",block:"start"});});
   document.querySelectorAll("[data-reference-text]").forEach(b=>b.onclick=safe(async()=>{
     const result=await api("/characters/"+b.dataset.referenceText+"/reference-text");
     showDetails("Transcrição da voz",result.text?(result.automatic?"Transcrição automática da referência (confira as palavras):\n\n":"Texto informado na referência:\n\n")+result.text:"A referência será preparada na primeira geração. Você também pode informar a transcrição ao editar esta voz.");
@@ -145,8 +164,10 @@ function renderCharacters(){
     const c=state.characters.find(x=>x.id===b.dataset.character);state.characterId=c.id;$("character-form-title").textContent="Editar personagem · v"+c.version;
     for(const [key,id] of Object.entries({name:"character-name",description:"character-description",origin:"character-origin",language:"character-language",reference_id:"character-reference",reference_text:"reference-text"}))$(id).value=c[key]||"";
     state.characterReactions={...(c.reactions||{})};renderCharacterReactions();$("reaction-upload-status").textContent="";
+    $("character-form").scrollIntoView({behavior:"smooth",block:"start"});
   });
 }
+$("add-voice").onclick=()=>{$("new-character").click();$("character-form").scrollIntoView({behavior:"smooth",block:"start"});$("character-name").focus({preventScroll:true});};
   $("new-character").onclick=()=>{state.characterId=null;state.characterReactions={};$("character-form").reset();renderCharacterReactions();$("reaction-upload-status").textContent="";$("character-form-title").textContent="Nova voz";$("character-upload-status").textContent="O áudio será extraído e convertido automaticamente, sem alterar o arquivo original.";};
 $("character-upload").onchange=safe(async e=>{
   const file=e.target.files[0];if(!file)return;
@@ -166,24 +187,30 @@ $("character-form").addEventListener("submit",safe(async e=>{
   state.characters=await api("/characters");renderCharacters();refreshSelectors();toast("Personagem salvo com versão preservada.");$("new-character").click();
 }));
 async function upload(file){
+  state.uploads++;updateGenerateState();
+  try{
   const form=new FormData();form.append("file",file);
   $("upload-progress").textContent="Importando "+file.name+"…";
   const result=await api("/media",{method:"POST",body:form});
   state.media.unshift(result);refreshSelectors();renderMedia();$("upload-progress").textContent="Importação concluída.";
   return result;
+  }finally{state.uploads--;updateGenerateState();}
 }
 $("media-import").addEventListener("change",safe(async e=>{for(const file of e.target.files)await upload(file);e.target.value="";}));
 $("script-import").addEventListener("change",safe(async e=>{
   if(!e.target.files[0])return;
   const m=await upload(e.target.files[0]);
-  if(m.cues){state.cues=m.cues;setMode("dub");renderCues();toast("SRT importado. Confira os tempos e atribua o elenco.");}
-  else{$("script").value=m.text;setMode("tts");}
+  if(m.type!=="script")throw Error("Escolha um arquivo de texto TXT ou SRT.");
+  $("script").value=m.cues?m.cues.map(c=>c.text).join("\n"):m.text;
+  $("script").dispatchEvent(new Event("input",{bubbles:true}));toast("Texto importado. Confira o conteúdo antes de gerar.");
   saveDraft();e.target.value="";
 }));
 function renderMedia(){
-  $("media-list").innerHTML=state.media.length?state.media.map(m=>'<article class="card item-card"><span class="badge">'+escapeHTML(m.video?"Vídeo":m.audio?"Áudio":"Roteiro")+'</span><h3 class="section-title">'+escapeHTML(m.name)+'</h3><p>'+(m.size/1024**2).toFixed(1)+' MB'+(m.duration?' · '+m.duration.toFixed(1)+' s':"")+'</p>'+(m.audio?(m.video?'<video':'<audio')+' controls preload="none" src="/api/media/'+m.id+'/file"></'+(m.video?"video":"audio")+'>':'')+'<div class="item-actions"><a href="/api/media/'+m.id+'/file" download>Baixar original</a></div></article>').join(""):'<div class="empty">Sua biblioteca está pronta para os primeiros arquivos.</div>';
+  $("media-list").innerHTML=state.media.length?state.media.map(m=>'<article class="card item-card" data-item-id="'+m.id+'">'+selectionHTML("media",m)+'<span class="badge">'+escapeHTML(m.video?"Vídeo":m.audio?"Áudio":"Roteiro")+'</span><h3 class="section-title">'+escapeHTML(m.name)+'</h3><p>'+((m.size||0)/1024**2).toFixed(1)+' MB'+(m.duration?' · '+m.duration.toFixed(1)+' s':"")+'</p>'+(m.audio?(m.video?'<video':'<audio')+' controls preload="none" src="/api/media/'+m.id+'/file"></'+(m.video?"video":"audio")+'>':'')+'<div class="item-actions"><a href="/api/media/'+m.id+'/file" download>Baixar original</a>'+deleteHTML("media",m)+'</div></article>').join(""):'<div class="empty">Sua biblioteca está pronta para os primeiros arquivos.</div>';
+  renderSelection("media");
 }
 function renderCues(){
+  $("dub-cue-status").hidden=!state.cues.length;$("dub-cue-status").textContent="Serão usadas "+state.cues.length+" falas revisadas. Abra as opções abaixo para conferir ou voltar à transcrição automática.";
   $("cue-editor").innerHTML=state.cues.map((c,i)=>'<div class="cue"><div class="cue-times"><label>Início (segundos)<input type="number" min="0" step="0.001" value="'+c.start_ms/1000+'" data-cue="'+i+'" data-key="start_ms"></label><label>Fim (segundos)<input type="number" min="0" step="0.001" value="'+c.end_ms/1000+'" data-cue="'+i+'" data-key="end_ms"></label><button type="button" data-remove-cue="'+i+'" aria-label="Remover fala '+(i+1)+'">×</button></div><label>Fala '+(i+1)+'<textarea rows="2" data-cue="'+i+'" data-key="text">'+escapeHTML(c.text)+'</textarea></label><label>Personagem<select data-cue="'+i+'" data-key="character_id"><option value="">Usar personagem principal</option>'+state.characters.map(x=>'<option value="'+x.id+'"'+(c.character_id===x.id?" selected":"")+'>'+escapeHTML(x.name)+'</option>').join("")+'</select></label></div>').join("");
   document.querySelectorAll("[data-cue]").forEach(x=>x.oninput=()=>{
     state.cues[Number(x.dataset.cue)][x.dataset.key]=x.dataset.key.endsWith("_ms")?Math.round(Number(x.value)*1000):x.value;saveDraft();
@@ -207,14 +234,20 @@ function renderJobs(){
   const other=state.jobs.some(j=>j.status==="running"&&j.project_id!==state.projectId);$("running-notice").hidden=!other;$("running-notice").textContent="Há um trabalho em andamento. Você pode preparar outro texto; ele entra na fila do servidor.";
   renderResults();renderCurrentResult();
 }
-async function loadJobs(){const jobs=await api("/jobs");if(JSON.stringify(jobs)!==JSON.stringify(state.jobs)){state.jobs=jobs;renderJobs();}}
+async function fetchRecords(kind,count){
+  const items=[];
+  while(items.length<count){const limit=Math.min(100,count-items.length),batch=await api("/"+kind+"?offset="+items.length+"&limit="+limit);items.push(...batch);if(batch.length<limit)break;}
+  return items;
+}
+async function loadJobs(){const jobs=await fetchRecords("jobs",state.jobsLimit);if(JSON.stringify(jobs)!==JSON.stringify(state.jobs)){state.jobs=jobs;renderJobs();}}
 function renderResults(){
-  const completed=state.jobs.filter(x=>x.status==="completed");
+  const completed=state.jobs.filter(x=>!["queued","running"].includes(x.status));
   const signature=JSON.stringify(completed);if($("result-list").dataset.rendered===signature)return;$("result-list").dataset.rendered=signature;
   $("result-list").innerHTML=completed.length?completed.map(j=>{
-    const playable=j.outputs.findIndex(x=>["audio","video"].includes(x.type));const type=playable>=0?j.outputs[playable].type:null;
-    return '<article class="card item-card"><h3>'+escapeHTML(j.name)+'</h3><span class="badge">Concluído · revisão recomendada</span>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+j.id+'/output/'+playable+'"></'+type+'>':"")+'<div class="item-actions">'+outputHTML(j)+'</div></article>';
+    const playable=(j.outputs||[]).findIndex(x=>["audio","video"].includes(x.type));const type=playable>=0?j.outputs[playable].type:null;
+    return '<article class="card item-card" data-item-id="'+j.id+'">'+selectionHTML("results",j)+'<h3>'+escapeHTML(j.name)+'</h3><span class="badge">'+escapeHTML(statuses[j.status])+'</span>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+j.id+'/output/'+playable+'"></'+type+'>':"")+(j.status!=="completed"?'<p class="hint">'+escapeHTML(j.stage)+'</p>':'')+'<div class="item-actions">'+outputHTML(j)+deleteHTML("results",j)+'</div></article>';
   }).join(""):'<div class="empty">Os resultados concluídos aparecem aqui.</div>';
+  renderSelection("results");
 }
 function renderModelList(){
   const active=state.models.filter(m=>["queued","downloading"].includes(m.download?.status)).length;
@@ -244,8 +277,11 @@ $("close-log").onclick=()=>$("log-dialog").close();
 $("theme").onclick=()=>{document.body.classList.toggle("light");localStorage.setItem("sal0-theme",document.body.classList.contains("light")?"light":"dark");};
 if(localStorage.getItem("sal0-theme")==="light")document.body.classList.add("light");
 $("logout").onclick=safe(async()=>{await post("/auth/logout");events?.close();await start();});
-for(const [id,kind,key,render] of [["more-projects","projects","projects",renderProjects],["more-media","media","media",renderMedia],["more-jobs","jobs","jobs",renderJobs]]){
+for(const [id,kind,key,render] of [["more-projects","projects","projects",renderProjects]]){
   $(id).onclick=safe(async()=>{const next=await api("/"+kind+"?offset="+state[key].length);state[key].push(...next);render();if(!next.length)toast("Todos os registros foram carregados.");});
+}
+for(const [id,kind,limit,render] of [["more-media","media","mediaLimit",renderMedia],["more-characters","characters","charactersLimit",renderCharacters],["more-jobs","jobs","jobsLimit",renderJobs],["more-results","jobs","jobsLimit",renderJobs]]){
+  $(id).onclick=safe(async()=>{state[limit]+=50;state[kind]=await fetchRecords(kind,state[limit]);render();refreshSelectors();});
 }
 $("record").onclick=safe(async()=>{
   if(recorder?.state==="recording"){recorder.stop();return;}
@@ -261,6 +297,7 @@ $("auth-form").addEventListener("submit",async e=>{
   catch(e){$("auth-error").textContent=e.message;}finally{$("auth-submit").disabled=false;}
 });
 async function start(){
+  try{
   events?.close();
   clearInterval(modelTimer);
   const auth=await api("/auth/status");state.configured=auth.configured;
@@ -268,16 +305,22 @@ async function start(){
   state.user={username:auth.username||"admin",role:auth.role||"admin"};
   $("auth-description").textContent=auth.configured?"Bem-vindo de volta ao seu estúdio.":"Crie o primeiro usuário administrador para abrir seu estúdio local.";
   $("auth-submit").textContent=auth.configured?"Entrar no estúdio":"Criar meu estúdio";
-  if(!auth.authenticated){clearTimeout(saveTimer);state.projectId=null;return;}
-  [state.characters,state.media,state.projects,state.reactions]=await Promise.all([api("/characters?limit=100"),api("/media?limit=100"),api("/projects"),api("/reactions")]);
+  if(!auth.authenticated){clearTimeout(saveTimer);state.projectId=null;state.jobs=[];Object.values(selections).forEach(s=>s.clear());$("delete-dialog").close();return;}
+  [state.characters,state.media,state.projects,state.reactions]=await Promise.all([fetchRecords("characters",state.charactersLimit),fetchRecords("media",state.mediaLimit),api("/projects"),api("/reactions")]);
   renderReactionOptions();
   await loadModels();refreshSelectors();renderCharacters();renderProjects();renderMedia();await loadJobs();
   if(!state.projectId && state.projects.length)await loadProject(state.projects[0]);
   updateVoiceChoice();
   modelTimer=setInterval(()=>{Promise.all([loadModels(),loadJobs(),loadWorkerStatus()]).then(()=>{renderCurrentResult();if(!$("view-settings").hidden)loadDiagnostics();}).catch(()=>{});},5000);
   await loadWorkerStatus();
-  events=new EventSource("/api/events/stream");events.onmessage=e=>{state.jobs=JSON.parse(e.data);renderJobs();};
+  events=new EventSource("/api/events/stream");events.onmessage=e=>{
+    const incoming=JSON.parse(e.data),ids=new Set(incoming.map(j=>j.id)),boundary=incoming.at(-1)?.updated;
+    state.jobs=incoming.length<50?incoming:[...incoming,...state.jobs.filter(j=>!ids.has(j.id)&&j.updated<=boundary)].slice(0,state.jobsLimit);renderJobs();
+  };
+  $("retry-connection").hidden=true;
+  }catch(error){$("preparation-text").textContent="Não foi possível carregar o estúdio. Tente conectar novamente; os dados ficam no servidor.";$("retry-connection").hidden=false;throw error;}
 }
+$("retry-connection").onclick=safe(async()=>{await start();toast("Conexão restabelecida. Seus projetos e trabalhos foram carregados.");});
 safe(start)();
 
 
@@ -297,16 +340,48 @@ function updateVoiceChoice(){
   $("quick-reference").hidden=!clone||state.mode==="asr";
   $("simple-hint").hidden=clone||state.mode==="asr";
   $("character").parentElement.hidden=!clone||state.mode==="asr";
-  $("engine-label").hidden=!clone||state.mode==="asr";
+  $("engine-label").hidden=state.mode==="asr";
+  if(!state.characters.length)$("new-voice-options").open=true;
+  renderSelectedVoice();
 }
+function renderSelectedVoice(){
+  const c=state.characters.find(x=>x.id===$("character").value),box=$("selected-voice"),player=$("selected-voice-audio");
+  box.hidden=!c||state.mode==="asr"||$("voice-choice").value!=="clone";
+  $("selected-voice-name").textContent=c?"Voz escolhida: "+c.name+" · versão "+c.version:"";
+  if(c?.reference_id){const src="/api/characters/"+c.id+"/reference-file";if(player.getAttribute("src")!==src)player.setAttribute("src",src);player.hidden=false;}
+  else{player.hidden=true;player.removeAttribute("src");}
+}
+function chooseSavedVoice(){
+  if($("character").value){$("reference-upload").value="";$("quick-transcript").value="";$("voice-choice").value="clone";if(!$("engine").value.startsWith("qwen-"))$("engine").value=state.cloneEngine||defaultClone;$("new-voice-options").open=false;}
+  updateVoiceChoice();modelNotice();renderPreparation();saveDraft();
+}
+$("character").onchange=chooseSavedVoice;
+$("reference-upload").onchange=()=>{if($("reference-upload").files.length){$("character").value="";$("reference-status").textContent="Nova gravação escolhida. A voz será salva e selecionada quando você gerar.";renderSelectedVoice();}};
 $("voice-choice").onchange=()=>{
   $("engine").value=$("voice-choice").value==="clone"?(state.cloneEngine||defaultClone):"diagnostic";
   updateVoiceChoice();modelNotice();renderPreparation();saveDraft();
 };
 $("source-upload").onchange=safe(async e=>{
   if(!e.target.files[0])return;
-  const m=await upload(e.target.files[0]);$("source-media").value=m.id;saveDraft();e.target.value="";
+  $("source-status").textContent="Enviando "+e.target.files[0].name+"…";
+  try{const m=await upload(e.target.files[0]);if(!m.audio)throw Error("Escolha um áudio ou vídeo com uma faixa de fala.");selectSource(m.id);}
+  catch(error){$("source-status").textContent=error.message;throw error;}
+  finally{e.target.value="";}
 });
+function selectSource(ident){
+  if(state.sourceId!==ident){state.cues=[];renderCues();}
+  $("source-media").value=ident;state.sourceId=ident;updateSourceStatus();saveDraft();
+}
+$("source-media").onchange=()=>selectSource($("source-media").value);
+function updateSourceStatus(){
+  const m=state.media.find(x=>x.id===$("source-media").value);
+  $("source-status").textContent=m?m.name+" · "+(m.video?"o vídeo mantém a imagem original":state.mode==="dub"?"o áudio será dublado em um vídeo com fundo simples":"áudio para transcrição"):"Escolha um arquivo para começar.";
+}
+$("dub-script-import").onchange=safe(async e=>{
+  try{if(!e.target.files[0])return;const m=await upload(e.target.files[0]);if(!m.cues?.length)throw Error("Escolha um SRT com falas e tempos válidos.");state.cues=m.cues;renderCues();saveDraft();toast("Falas revisadas importadas. Confira os tempos antes de gerar.");}
+  finally{e.target.value="";}
+});
+$("automatic-dub").onclick=()=>{state.cues=[];renderCues();saveDraft();toast("A fala original será transcrita automaticamente.");};
 async function saveQuickReference(){
   const file=$("reference-upload").files[0], transcript=$("quick-transcript").value.trim();
   if(!file)throw Error("Selecione um áudio de referência.");
@@ -316,7 +391,7 @@ async function saveQuickReference(){
     const c=await post("/characters",{name:file.name.slice(0,120),reference_id:m.id,reference_text:transcript,language:$("reference-language").value,origin:"own"});
     state.characters.unshift(c);refreshSelectors();renderCharacters();$("character").value=c.id;
     $("reference-upload").value="";$("quick-transcript").value="";
-    $("reference-status").textContent="Áudio salvo no servidor. Sua voz está selecionada.";saveDraft();
+    $("reference-status").textContent="Áudio salvo no servidor. Sua voz está selecionada.";$("new-voice-options").open=false;renderSelectedVoice();saveDraft();
   }finally{$("use-reference").disabled=false;}
 }
 $("use-reference").onclick=safe(saveQuickReference);
@@ -395,3 +470,53 @@ async function loadWorkerStatus(){
   $("worker-warning").textContent="O executor está parado. Os trabalhos não podem iniciar. Reinicie o aplicativo no servidor e consulte Ajustes se o aviso continuar.";
   $("version").textContent=status.version;
 }
+
+function selectionItems(kind){return kind==="results"?state.jobs.filter(j=>!["queued","running"].includes(j.status)):state[kind];}
+function selectionHTML(kind,item){return '<label class="selection-check"><input type="checkbox" data-select-kind="'+kind+'" data-select-id="'+item.id+'" aria-label="Selecionar '+escapeHTML(item.name)+'"'+(selections[kind].has(item.id)?' checked':'')+'> Selecionar</label>';}
+function deleteHTML(kind,item){return '<button type="button" class="text-button delete-one" data-delete-one="'+item.id+'" data-delete-kind="'+kind+'" aria-label="Excluir '+escapeHTML(item.name)+'">Excluir</button>';}
+function renderSelection(kind){
+  const valid=new Set(selectionItems(kind).map(x=>x.id));for(const id of selections[kind])if(!valid.has(id))selections[kind].delete(id);
+  const count=selections[kind].size,toolbar=document.querySelector('[data-selection-toolbar="'+kind+'"]');
+  toolbar.querySelector('[data-selection-count]').textContent=count?count+(kind==="characters"?' selecionada(s)':' selecionado(s)'):(kind==="characters"?'Nenhuma selecionada':'Nenhum selecionado');
+  const button=toolbar.querySelector('[data-delete-selected]');button.disabled=!count;button.textContent=(kind==="characters"?'Excluir selecionadas':'Excluir selecionados')+(count?' ('+count+')':'');
+  toolbar.querySelector('[data-clear-selection]').hidden=!count;toolbar.querySelector('[data-select-all]').disabled=!valid.size;
+  document.querySelectorAll('[data-select-kind="'+kind+'"]').forEach(x=>{x.checked=selections[kind].has(x.dataset.selectId);x.closest('article').classList.toggle('item-selected',x.checked);});
+}
+document.addEventListener("change",event=>{
+  const box=event.target.closest('[data-select-kind]');if(!box)return;const selected=selections[box.dataset.selectKind];if(box.checked)selected.add(box.dataset.selectId);else selected.delete(box.dataset.selectId);renderSelection(box.dataset.selectKind);
+});
+document.querySelectorAll('[data-select-all]').forEach(b=>b.onclick=()=>{selectionItems(b.dataset.selectAll).forEach(x=>selections[b.dataset.selectAll].add(x.id));renderSelection(b.dataset.selectAll);});
+document.querySelectorAll('[data-clear-selection]').forEach(b=>b.onclick=()=>{selections[b.dataset.clearSelection].clear();renderSelection(b.dataset.clearSelection);});
+document.querySelectorAll('[data-delete-selected]').forEach(b=>b.onclick=()=>openDelete(b.dataset.deleteSelected,[...selections[b.dataset.deleteSelected]]));
+document.addEventListener("click",event=>{const b=event.target.closest('[data-delete-one]');if(b)openDelete(b.dataset.deleteKind,[b.dataset.deleteOne]);});
+function openDelete(kind,ids){
+  if(!ids.length)return;deletePlan={kind,ids};const names=selectionItems(kind).filter(x=>ids.includes(x.id)).map(x=>x.name);
+  $("delete-title").textContent="Excluir "+ids.length+" "+({media:"arquivo(s)",characters:"voz(es)",results:"resultado(s)"}[kind])+"?";
+  $("delete-description").textContent={media:"Esta ação apaga os arquivos enviados. Arquivos usados por vozes ou trabalhos que podem ser retomados serão preservados, com o motivo indicado.",characters:"As vozes selecionadas serão removidas. As gravações continuam na biblioteca e os trabalhos já enviados mantêm a voz escolhida.",results:"Esta ação apaga os áudios, vídeos, legendas e o progresso dos trabalhos selecionados. Os projetos e os arquivos originais continuam salvos."}[kind];
+  $("delete-items").innerHTML=names.slice(0,10).map(n=>'<li>'+escapeHTML(n)+'</li>').join('')+(names.length>10?'<li>E mais '+(names.length-10)+' itens.</li>':'');
+  $("delete-error").hidden=true;$("delete-confirm").hidden=false;$("delete-confirm").disabled=false;$("delete-cancel").textContent="Voltar";$("delete-dialog").showModal();
+}
+$("delete-cancel").onclick=()=>$("delete-dialog").close();
+$("delete-dialog").addEventListener("cancel",event=>{if($("delete-confirm").disabled)event.preventDefault();});
+$("delete-confirm").onclick=safe(async()=>{
+  if(!deletePlan)return;const {kind,ids}=deletePlan;$("delete-confirm").disabled=true;$("delete-cancel").disabled=true;
+  const result={deleted:[],blocked:[],missing:[],cleanup_pending:false};
+  try{
+    if(saveTimer){clearTimeout(saveTimer);saveTimer=null;await saveProject(false);}else await saveChain.catch(()=>{});
+    for(let i=0;i<ids.length;i+=100){const batch=await post("/items/delete",{kind,ids:ids.slice(i,i+100)});for(const key of ['deleted','blocked','missing'])result[key].push(...batch[key]);result.cleanup_pending ||= batch.cleanup_pending;}
+    for(const id of [...result.deleted,...result.missing])selections[kind].delete(id);
+    if(kind==="characters"&&result.deleted.includes(state.characterId))$("new-character").click();
+    if(kind==="media")for(const [reaction,id] of Object.entries(state.characterReactions))if(result.deleted.includes(id))delete state.characterReactions[reaction];
+    [state.media,state.characters,state.projects]=await Promise.all([fetchRecords("media",state.mediaLimit),fetchRecords("characters",state.charactersLimit),api("/projects")]);
+    refreshSelectors();renderMedia();renderCharacters();renderCharacterReactions();renderProjects();await loadJobs();
+    if(kind==="results"){state.jobs=state.jobs.filter(j=>!result.deleted.includes(j.id));delete $("result-list").dataset.rendered;renderJobs();}
+    if(result.blocked.length||result.cleanup_pending){
+      $("delete-title").textContent=result.deleted.length?"Exclusão concluída com itens preservados":"Estes itens ainda estão em uso";
+      $("delete-description").textContent=result.deleted.length+" item(ns) excluído(s). Confira os motivos abaixo.";
+      $("delete-items").innerHTML=result.blocked.map(x=>'<li><strong>'+escapeHTML(x.name)+'</strong><br>'+escapeHTML(x.reason)+'</li>').join('');
+      if(result.cleanup_pending){$("delete-error").hidden=false;$("delete-error").textContent="Alguns arquivos ainda aguardam limpeza em disco. Ela será tentada novamente ao reiniciar o servidor.";}
+      $("delete-confirm").hidden=true;$("delete-cancel").textContent="Fechar";
+    }else{$("delete-dialog").close();toast(result.deleted.length+" item(ns) excluído(s).");}
+  }catch(error){$("delete-error").hidden=false;$("delete-error").textContent=error.message;throw error;}
+  finally{$("delete-confirm").disabled=false;$("delete-cancel").disabled=false;}
+});

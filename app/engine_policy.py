@@ -1,5 +1,5 @@
 """Choose a complete CPU clone profile according to currently available RAM."""
-from .resources import memory_available
+from .resources import memory_available, cgroup_memory
 
 MEMORY_GIB = {
     ("qwen-1.7b", "float32"): 9.5,
@@ -15,7 +15,7 @@ class MemoryUnavailable(ValueError):
                          f"este perfil precisa de cerca de {required:.2f} GiB. "
                          "Libere memória de outras tarefas. O trabalho continuará automaticamente.")
 
-def choose_profile(project, available=None, locked=False):
+def choose_profile(project, available=None, locked=False, memory_limit=None):
     if project.get("mode") == "asr" or ("segments" in project and not project.get("automatic_dub") and not any(
         x.get("pause_ms") is None and not x.get("reaction") for x in project["segments"]
     )):
@@ -23,6 +23,9 @@ def choose_profile(project, available=None, locked=False):
     requested = project.get("requested_engine", project.get("engine", "qwen-1.7b"))
     if not requested.startswith("qwen-"):
         return None
+    if available is None and memory_limit is None:
+        usage = cgroup_memory()
+        memory_limit = usage[0] if usage else None
     available_gib = (memory_available() if available is None else available) / 1024**3
     if locked:
         options = [(project["engine"], project.get("dtype", "float32"))]
@@ -36,6 +39,10 @@ def choose_profile(project, available=None, locked=False):
         if (engine, dtype) not in MEMORY_GIB:
             raise ValueError("Perfil de voz incompatível com CPU.")
         required = MEMORY_GIB[engine, dtype]
+        # Do not begin an adaptive profile that already consumes nearly the
+        # whole container. Leave room for decoding and longer utterances.
+        if not locked and project.get("adaptive_memory", True) and memory_limit and required + 0.25 > memory_limit/1024**3 * 0.90:
+            continue
         if available_gib >= required + 0.25:
             name = "Qwen 1.7B" if engine == "qwen-1.7b" else "Qwen 0.6B"
             name += " · econômico" if dtype == "bfloat16" else " · float32"

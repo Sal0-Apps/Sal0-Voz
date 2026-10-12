@@ -34,3 +34,29 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline
 @media(max-width:1100px){.studio-grid{grid-template-columns:minmax(260px,300px) minmax(0,1fr)}}
 @media(max-width:780px){.studio-grid{grid-template-columns:minmax(0,1fr)}.submission{display:block}.submission .generate{width:100%;margin-top:16px;min-width:0}.voice-card{display:block}.voice-card label{font-size:12px}.voice-card input,.voice-card select{font-size:16px}.mode-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.mode{padding:12px 9px}.mode small{font-size:10px}.mode-icon{height:30px}.card-title{flex-wrap:wrap}}
 @media(max-width:780px){.sidebar-bottom{display:block;border:0;margin:0;padding:0}.sidebar-bottom>.local-status,.sidebar-bottom>small{display:none}.sidebar-actions{margin:0;justify-content:flex-end}.sidebar-actions button{padding:6px 10px}.sidebar{flex-wrap:wrap}.sidebar nav{order:3;width:100%}}
+
+/* Four steps stay in reading order on desktop and on the phone. */
+.studio-grid{grid-template-columns:minmax(0,1fr);gap:18px;max-width:960px}
+.flow-step{scroll-margin-top:24px}.flow-step h2{font-size:19px;margin-bottom:16px}
+.voice-card{display:block}.voice-card label,.model-card label{font-size:12px}
+.voice-card input,.voice-card select,.model-card select{font-size:14px}
+.flow-step details{margin-top:16px}.flow-step details[open]>summary{margin-bottom:14px}
+.flow-step summary{padding:6px 0}.voice-options{border:0;padding-top:0}
+#selected-voice-audio{display:block;width:min(100%,480px);margin-top:10px}
+#source-status{overflow-wrap:anywhere}.submission{align-items:flex-start}
+.submission-fields{flex:1;min-width:0}.submission h2{margin-bottom:8px}
+.submission .generate{margin-top:3px}.submission details{max-width:500px}
+.check{display:flex;align-items:center;gap:10px}.check input{width:18px;height:18px;margin:0;flex-shrink:0}
+.selection-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:14px;position:sticky;top:8px;z-index:2}
+.selection-toolbar span{font-size:12px;color:var(--muted)}
+.selection-toolbar .danger{margin-left:auto}
+.selection-check{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:0 0 14px;font-size:12px;cursor:pointer}
+.selection-check input{width:19px;height:19px;margin:0;accent-color:var(--blue)}
+.item-selected{border-color:var(--blue);background:linear-gradient(135deg,#49aeef12,var(--panel))}
+.danger{border:1px solid #ff99994a;background:#ed6c6c12;color:#ffb9b9;font-weight:600;font-size:12px}
+.light .danger{color:#9b2525;background:#b527270a}.delete-one{color:#ee9c9c;margin-left:auto}
+.light .delete-one{color:#9b2525}#delete-dialog{max-width:min(560px,94vw);padding:24px}
+#delete-dialog ul{padding-left:22px;max-height:38vh;overflow:auto;overflow-wrap:anywhere}
+#delete-dialog li{margin-bottom:12px}#delete-error{color:#ffb9b9;font-size:13px}
+.saved-voices .card-title h2{margin:0}.library-section{margin-bottom:28px}
+@media(max-width:780px){.flow-step{padding:20px}.flow-step h2{font-size:18px}.flow-step input,.flow-step select,.flow-step textarea{font-size:16px}.submission{display:block}.submission .generate{width:100%;margin-top:20px}.selection-toolbar{gap:8px}.selection-toolbar .danger{margin-left:0;flex:1}.selection-toolbar span{flex:1}#delete-dialog .item-actions button{flex:1}.selection-check{min-height:32px}}

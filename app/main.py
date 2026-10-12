@@ -8,6 +8,7 @@ import secrets
 import shutil
 import threading
 import time
+from functools import wraps
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -34,6 +35,8 @@ STATIC = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app):
     s.init()
+    from .library import recover_removals
+    recover_removals()
     if os.getenv("SAL0_DISABLE_WORKER") != "1":
         model_manager.start()
     if os.getenv("SAL0_DISABLE_WORKER") != "1":
@@ -266,7 +269,6 @@ def visible(value, user):
     return user.get("role") == "admin" or value.get("owner_username") == user.get("username")
 
 
-@app.get("/api/{kind}")
 def list_records(kind: str, request: Request, offset: int = 0, limit: int = 50):
     if kind not in ("characters", "projects", "media", "jobs"):
         raise HTTPException(404)
@@ -275,6 +277,39 @@ def list_records(kind: str, request: Request, offset: int = 0, limit: int = 50):
     if kind == "jobs":
         return [{k: v for k, v in x.items() if k != "snapshot"} for x in values]
     return values
+
+@app.get("/api/characters")
+def list_characters(request: Request, offset: int = 0, limit: int = 50):
+    return list_records("characters", request, offset, limit)
+
+@app.get("/api/projects")
+def list_projects(request: Request, offset: int = 0, limit: int = 50):
+    return list_records("projects", request, offset, limit)
+
+@app.get("/api/media")
+def list_media(request: Request, offset: int = 0, limit: int = 50):
+    return list_records("media", request, offset, limit)
+
+@app.get("/api/jobs")
+def list_jobs(request: Request, offset: int = 0, limit: int = 50):
+    return list_records("jobs", request, offset, limit)
+
+class DeleteItems(BaseModel):
+    kind: str = Field(pattern=r"^(media|characters|results)$")
+    ids: list[str] = Field(min_length=1, max_length=100)
+
+@app.post("/api/items/delete")
+def delete_items(body: DeleteItems, request: Request):
+    from .library import remove_items
+    return remove_items(body.kind, body.ids, current_user(request), worker)
+
+def catalog_write(function):
+    """Reference writes and removal share the queue's catalog lock."""
+    @wraps(function)
+    def locked(*args, **kwargs):
+        with worker.lock:
+            return function(*args, **kwargs)
+    return locked
 
 @app.post("/api/media")
 def upload(file: UploadFile, request: Request):
@@ -322,6 +357,7 @@ class Character(BaseModel):
     reference_text: str = ""
     reactions: dict[str, str] = Field(default_factory=dict)
 
+@catalog_write
 def save_character(body, previous=None, owner=None):
     value = body.model_dump()
     if value["language"] not in ("pt-BR", "en-US") or value["origin"] not in ("own", "authorized", "licensed"):
@@ -350,6 +386,7 @@ def create_character(body: Character, request: Request):
     return save_character(body, owner=current_user(request))
 
 @app.put("/api/characters/{ident}")
+@catalog_write
 def update_character(ident: str, body: Character, request: Request):
     previous = s.get("character", ident)
     if not visible(previous, current_user(request)):
@@ -411,6 +448,7 @@ class Project(BaseModel):
     format: str = "wav"
     cues: list[dict] = Field(default_factory=list)
 
+@catalog_write
 def project_data(body, ident=None, owner=None):
     if body.mode not in ("tts", "asr", "dub"):
         raise ValueError("Modo indisponível nesta versão.")
@@ -492,15 +530,13 @@ def snapshot(project, owner=None):
         value["model"] = model_for_job(project["asr_engine"], "asr")
         return value
     if project["mode"] == "dub":
-        if not value["media"].get("video"):
-            raise ValueError("Selecione um vídeo para dublar.")
         cues = validate_cues(project["cues"])
         value["automatic_dub"] = not bool(cues)
         if not cues and project.get("character_id"):
             character = owned("character", project["character_id"])
             value["default_character"] = character["versions"][-1]
         if not cues and project["engine"].startswith("qwen-") and not value.get("default_character", {}).get("reference"):
-            raise ValueError("Selecione uma voz com gravação de referência para dublar o vídeo.")
+            raise ValueError("Selecione uma voz com gravação de referência para dublar o áudio ou vídeo.")
         previous_end = 0
         for cue in cues:
             if cue["start_ms"] < previous_end or cue["end_ms"] > value["media"]["duration"]*1000:
@@ -539,6 +575,7 @@ def snapshot(project, owner=None):
     return value
 
 @app.post("/api/projects/{ident}/generate")
+@catalog_write
 def generate(ident: str, request: Request):
     owner = current_user(request)
     project_record = s.get("project", ident)
@@ -633,7 +670,7 @@ async def events(request: Request):
                 current_user(request)
             except HTTPException:
                 return
-            jobs = [{k: v for k, v in x.items() if k != "snapshot"} for x in s.listing("job", limit=50) if visible(x, owner)]
+            jobs = [{k: v for k, v in x.items() if k != "snapshot"} for x in s.listing("job", limit=-1) if visible(x, owner)][:50]
             data = json.dumps(jobs, ensure_ascii=False)
             if data != previous:
                 yield "data: " + data + "\n\n"

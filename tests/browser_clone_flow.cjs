@@ -33,7 +33,7 @@ const assert = require('node:assert/strict');
         const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
         return route.fulfill({ body: fs.readFileSync(file), contentType: mime[path.extname(file)] || 'application/octet-stream' });
       }
-      if (pathname === '/health') return json({ worker: true, version: '0.3.0' });
+      if (pathname === '/health') return json({ worker: true, version: '0.3.2' });
       if (pathname === '/api/auth/status') return json({ configured: true, authenticated: true, username: 'admin', role: 'admin' });
       if (pathname === '/api/events/stream') return route.fulfill({ contentType: 'text/event-stream', body: '' });
       if (pathname === '/api/models') return json(models);
@@ -47,7 +47,8 @@ const assert = require('node:assert/strict');
       if (pathname === '/api/media') {
         if (method === 'POST') {
           const name = request.postDataBuffer().toString().match(/filename="([^"]+)"/)[1];
-          const item = { id: `ref-${media.length+1}`, name, type: 'media', audio: true, video: /\.(mkv|mp4)$/i.test(name), duration: 8 };
+          const script = /\.(txt|srt)$/i.test(name);
+          const item = { id: `ref-${media.length+1}`, name, type: script?'script':'media', text:script?'Texto importado intacto.':undefined, audio:!script, video: /\.(mkv|mp4)$/i.test(name), duration: 8 };
           media.push(item);
           return json(item);
         }
@@ -75,10 +76,15 @@ const assert = require('node:assert/strict');
         const id = pathname.split('/')[3];
         generated.push({ ...projects.find(project => project.id === id) });
         const job = { id: 'job-1', project_id: id, name: 'Clone em andamento', status: 'running', stage: 'Preparando a voz', progress: 0, started: Date.now() / 1000, outputs: [] };
-        jobs.push(job);
+        job.id='job-'+(jobs.length+1);job.updated=Date.now()/1000;jobs.push(job);
         return json(job);
       }
       if (pathname === '/api/jobs') return json(jobs);
+      if (pathname === '/api/items/delete') {
+        const {kind,ids}=request.postDataJSON(),items={media,characters,results:jobs}[kind];
+        const deleted=[];for(let i=items.length-1;i>=0;i--)if(ids.includes(items[i].id)){deleted.push(items[i].id);items.splice(i,1);}
+        return json({deleted,blocked:[],missing:[],cleanup_pending:false});
+      }
       if (pathname === '/api/diagnostics') return json({ version: '0.3.0', memory_available: 12 * 1024**3, disk_free: 20 * 1024**3, threads: 4 });
       if (pathname === '/api/telegram') return json({});
       if (pathname === '/api/users') return json([{ username: 'admin', role: 'admin' }]);
@@ -90,6 +96,8 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('#engine').inputValue(), 'qwen-1.7b');
     assert.equal(await page.locator('#asr-engine').inputValue(), 'whisper-large-v3-turbo');
     assert.equal(await page.locator('.voice-options').evaluate(element => element.open), false);
+    assert.equal(await page.locator('#engine').isVisible(), true);
+    assert.deepEqual(await page.locator('#project-form .flow-step').evaluateAll(items=>items.map(x=>x.id)),['voice-step','content-step','model-step','generate-step']);
     await page.locator('#reference-language').selectOption('en-US');
     await page.locator('#reference-upload').setInputFiles({ name: 'reference.wav', mimeType: 'audio/wav', buffer: Buffer.from('fixture audio') });
     await page.locator('#script').fill('O texto novo deve continuar intacto.');
@@ -119,6 +127,7 @@ const assert = require('node:assert/strict');
     await page.locator('#insert-reaction').click();
     assert.equal(await page.locator('#script').inputValue(), '[reacao=gemido]');
     assert.equal(await page.locator('#reaction-choice option').count(), 33);
+    await page.locator('#output-options > summary').click();
     await page.locator('#audio-name').fill('Cena de teste');
     await page.locator('#save-project').click();
     await page.waitForFunction(() => document.querySelector('#save-state').textContent === 'Projeto salvo no servidor');
@@ -138,11 +147,19 @@ const assert = require('node:assert/strict');
     assert.deepEqual(characters[1].reactions, {gemido:'ref-3'});
     await page.locator('nav [data-view="create"]').click();
     await page.locator('[data-mode="dub"]').click();
+    assert.equal(await page.locator('#dub-advanced').evaluate(x=>x.open),false);
+    assert.equal(await page.locator('#script-import-label').isVisible(),false);
+    await page.locator('#source-library > summary').click();
     await page.locator('#source-media').selectOption('ref-2');
     await page.locator('#generate').click();
     await page.waitForFunction(() => !document.querySelector('#generate').disabled);
     assert.equal(generated.at(-1).mode, 'dub');
     assert.deepEqual(generated.at(-1).cues, []);
+    assert.equal(await page.locator('#generate').innerText(),'▷ Gerar vídeo dublado');
+    await page.locator('#source-upload').setInputFiles({name:'audio-to-dub.wav',mimeType:'audio/wav',buffer:Buffer.from('fixture audio')});
+    await page.waitForFunction(()=>document.querySelector('#source-status').textContent.includes('fundo simples'));
+    await page.locator('#generate').click();await page.waitForFunction(()=>!document.querySelector('#generate').disabled);
+    assert.equal(generated.at(-1).media_id,'ref-4');
     for (const width of [1366, 390]) {
       await page.setViewportSize({ width, height: 900 });
       for (const view of ['create', 'characters', 'projects', 'library', 'settings']) {
@@ -155,14 +172,37 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('.settings-section').first().evaluate(element => element.open), false);
     await page.locator('nav [data-view="create"]').click();
     await page.locator('[data-mode="tts"]').click();
-    await page.locator('.voice-options > summary').click();
     await page.locator('#engine').selectOption('qwen-0.6b');
     await page.locator('#retry-preparation').click();
     await page.waitForFunction(() => document.querySelector('#preparation-text').textContent.includes('Preparando no servidor'));
     assert.equal(downloads, 1);
+    await page.locator('#script-import').setInputFiles({name:'texto.txt',mimeType:'text/plain',buffer:Buffer.from('Texto importado intacto.')});
+    await page.waitForFunction(()=>document.querySelector('#script').value==='Texto importado intacto.');
+    assert.equal(await page.locator('[data-mode="tts"]').evaluate(x=>x.classList.contains('selected')),true);
+    await page.locator('nav [data-view="characters"]').click();
+    await page.locator('[data-select-all="characters"]').click();
+    await page.locator('[data-delete-selected="characters"]').click();
+    assert.equal(await page.locator('#delete-dialog').isVisible(),true);
+    await page.locator('#delete-cancel').click();assert.equal(characters.length,2);
+    await page.locator('[data-delete-selected="characters"]').click();await page.locator('#delete-confirm').click();
+    await page.waitForFunction(()=>document.querySelectorAll('[data-character]').length===0);
+    assert.equal(characters.length,0);
+    await page.locator('nav [data-view="library"]').click();
+    await page.locator('[data-select-all="media"]').click();
+    await page.locator('[data-delete-selected="media"]').click();await page.locator('#delete-confirm').click();
+    await page.waitForFunction(()=>document.querySelectorAll('#media-list [data-select-id]').length===0);
+    assert.equal(media.length,0);
+    jobs.push({id:'completed-1',name:'Resultado 1',status:'completed',outputs:[],updated:Date.now()/1000},{id:'completed-2',name:'Resultado 2',status:'failed',stage:'Teste',outputs:[],updated:Date.now()/1000});
+    await page.waitForFunction(()=>document.querySelectorAll('#result-list [data-select-id]').length===2);
+    await page.locator('[data-select-all="results"]').click();
+    await page.waitForTimeout(5200);
+    assert.equal(await page.locator('#result-list [data-select-id]:checked').count(),2);
+    await page.locator('[data-delete-selected="results"]').click();await page.locator('#delete-confirm').click();
+    await page.waitForFunction(()=>document.querySelectorAll('#result-list [data-select-id]').length===0);
+    assert.equal(jobs.length,3);
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
-    console.log('PASS: Turbo defaults, upload of video references and own reactions, detailed reaction insertion, output name, video dubbing without SRT, polling, desktop and mobile views');
+    console.log('PASS: four creation steps, TXT import, audio/video dubbing without SRT, bulk selection and deletion, persistent selections during polling, desktop and mobile views');
   } finally {
     await browser.close();
   }

@@ -32,3 +32,9 @@ O workflow terminou com sucesso e publicou `ghcr.io/sal0-apps/sal0-voz:0.3.1`, `
 O [workflow Android 38195580727](https://github.com/Sal0-Apps/Sal0-Voz/actions/runs/38195580727) passou: APK compilado, três testes de roteamento e lint. [APK instalável e checksum](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.3.1) publicados. O APK publicado foi baixado e seu SHA-256 confirmado: `b4d5e9491770abcc7764f8c7ad4482a5db91bbf789bf34c0022fc4ae96874cb8`. O cliente precisa de teste físico no celular do proprietário.
 
 A precisão da clonagem, naturalidade das reações próprias, transcrição e tempo real dependem da gravação e do hardware. Testes em CI não substituem avaliação auditiva no AMD A10 do proprietário. Dublagem não inclui tradução, separação de música/efeitos ou lip sync visual.
+
+# Revisão 0.3.2
+
+A falha `Not Found` foi reproduzida pela API real: a rota genérica de listagem interceptava `/api/reactions`. A revisão usa rotas explícitas e adiciona testes de inicialização, persistência após recarga e reconexão no navegador.
+
+Testes locais novos cobrem exclusão em lote, proteção de referências e trabalhos ativos, isolamento entre usuários, remoção dos arquivos reais, restauração após falha de commit, retomada de exclusão interrompida, dublagem de áudio para MP4 com FFmpeg real e seleção do mesmo Qwen 1.7B econômico sob limite de 10 GiB. A imagem aguarda validação do CI e publicação.

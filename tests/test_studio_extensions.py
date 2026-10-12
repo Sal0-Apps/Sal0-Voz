@@ -119,6 +119,7 @@ def test_queue_recovers_from_memory_failure_with_same_model_economically(data,mo
     import app.worker as module
     import app.engine_policy as policy
     monkeypatch.setattr(policy,'memory_available',lambda:12*1024**3)
+    monkeypatch.setattr(policy,'cgroup_memory',lambda:(12*1024**3,0))
     monkeypatch.setattr(module,'require',lambda *args:{'id':args[0]})
     worker=Worker();attempts=[]
     job=s.put('job',{'status':'queued','snapshot':{'mode':'tts','engine':'qwen-1.7b','segments':[{'text':'Oi.'}]}})

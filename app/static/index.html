@@ -33,56 +33,47 @@
     <div class="sidebar-bottom">
       <div class="local-status"><i></i> Processamento local</div><small>CPU · uma tarefa por vez</small>
       <div class="sidebar-actions"><button id="theme" class="quiet">◐ Tema</button><button id="logout" class="quiet">Sair</button></div>
-      <small>Sal0 Voz <span id="version">0.3.1</span></small>
+      <small>Sal0 Voz <span id="version">0.3.2</span></small>
     </div>
   </aside>
   <main>
     <header class="topbar"><span id="breadcrumb">Estúdio / Criar voz</span><button id="queue-toggle" class="pill">☷ Fila <b id="queue-count">0</b></button></header>
     <section id="view-create" class="view">
-      <div class="page-heading"><div><div class="eyebrow">SUA VOZ, NO SEU SERVIDOR</div><h1>Dê voz ao seu texto<span>.</span></h1><p>Envie uma gravação, escreva o que quer ouvir e gere seu áudio.</p></div><span class="local-badge">Modelos locais · CPU</span></div>
+      <div class="page-heading"><div><div class="eyebrow">SUA VOZ, NO SEU SERVIDOR</div><h1 id="create-title">Dê voz ao seu texto<span>.</span></h1><p id="create-description">Escolha a voz, escreva ou importe o texto, escolha o modelo e gere.</p></div><span class="local-badge">Modelos locais · CPU</span></div>
       <div class="mode-grid" role="group" aria-label="Tipo de criação">
         <button class="mode selected" data-mode="tts"><span class="mode-icon">〰</span><strong>Clonar voz</strong><small>Sua voz falando um novo texto</small></button>
         <button class="mode" data-mode="asr"><span class="mode-icon">≡</span><strong>Gerar legendas</strong><small>Transcreva áudios e vídeos</small></button>
-        <button class="mode" data-mode="dub"><span class="mode-icon">▷</span><strong>Dublar vídeo</strong><small>Envie um vídeo e escolha a voz</small></button>
+        <button class="mode" data-mode="dub"><span class="mode-icon">▷</span><strong>Dublar arquivo</strong><small>Áudio ou vídeo com uma nova voz</small></button>
       </div>
       <div id="worker-warning" class="notice" role="alert" hidden></div>
-      <div id="preparation" class="notice" role="status"><span id="preparation-text">Conectando ao seu servidor…</span><progress id="preparation-progress" max="100" hidden></progress><button type="button" id="retry-preparation" class="secondary" hidden>Retomar preparação</button></div>
+      <div id="preparation" class="notice" role="status"><span id="preparation-text">Conectando ao seu servidor…</span><progress id="preparation-progress" max="100" hidden></progress><button type="button" id="retry-preparation" class="secondary" hidden>Retomar preparação</button><button type="button" id="retry-connection" class="secondary" hidden>Tentar conectar novamente</button></div>
       <p id="running-notice" class="notice" hidden></p>
       <form id="project-form">
         <div class="studio-grid">
-          <aside class="card voice-card">
-            <h2 id="voice-title">1. Escolha sua voz</h2>
-            <label>Tipo de voz<select id="voice-choice"><option value="clone" selected>Clonar uma voz</option><option value="simple">Voz simples · teste do aplicativo</option></select></label>
-            <p class="hint" id="simple-hint" hidden>A voz de teste é robótica e serve para conferir a saída de áudio.</p>
-            <div id="quick-reference">
+          <section class="card voice-card flow-step" id="voice-step">
+            <h2 id="voice-title">1. Escolha a voz</h2>
+            <label>Voz salva<select id="character"><option value="">Selecione sua voz</option></select></label>
+            <div id="selected-voice" hidden><p id="selected-voice-name" class="hint"></p><audio id="selected-voice-audio" controls preload="none"></audio></div>
+            <button type="button" data-view="characters" class="text-button">Gerenciar minhas vozes</button>
+            <details id="new-voice-options"><summary>+ Usar uma nova gravação ou voz de teste</summary>
+              <label>Tipo de voz<select id="voice-choice"><option value="clone" selected>Clonar uma voz</option><option value="simple">Voz simples · teste do aplicativo</option></select></label>
+              <p class="hint" id="simple-hint" hidden>A voz de teste é robótica e serve para conferir a saída de áudio.</p>
+              <div id="quick-reference">
               <label class="reference-picker">Envie áudio ou vídeo<input type="file" id="reference-upload"></label>
               <label>Idioma da gravação<select id="reference-language"><option value="pt-BR">Português brasileiro</option><option value="en-US">English</option></select></label>
               <p class="hint">Envie um áudio ou vídeo com fala clara. O app extrai e converte o áudio automaticamente. Prefira 6 a 30 segundos, de uma pessoa e sem música; arquivos longos usam os primeiros 30 segundos.</p>
               <details><summary>Conferir ou informar a transcrição</summary><label>Texto exato da gravação<textarea id="quick-transcript" rows="3" placeholder="Deixe vazio para o app transcrever. Com texto manual, use um áudio de até 30 segundos."></textarea></label></details>
               <button type="button" class="secondary" id="use-reference">Salvar voz para reutilizar</button>
               <p id="reference-status" class="hint" role="status">Você também pode enviar a gravação diretamente ao clicar em Gerar voz.</p>
-            </div>
-            <label>Ou use uma voz salva<select id="character"><option value="">Selecione sua voz</option></select></label>
-            <button type="button" data-view="characters" class="text-button">Gerenciar minhas vozes</button>
-            <label>Idioma do texto<select id="language"><option value="pt-BR">Português brasileiro</option><option value="en-US">English</option></select></label>
-            <details class="voice-options"><summary>Qualidade e opções do áudio</summary>
-              <label id="engine-label">Perfil da voz<select id="engine"><option value="qwen-1.7b" selected>Maior fidelidade · Qwen 1.7B</option></select></label>
-              <label class="check"><input id="adaptive-memory" type="checkbox" checked> Permitir modo econômico do mesmo modelo</label>
-              <p class="hint">Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória. Desmarque para usar sempre float32.</p>
-              <label id="asr-label" hidden>Modelo de transcrição<select id="asr-engine"><option value="whisper-large-v3-turbo">Faster-Whisper large-v3-turbo · INT8</option></select></label>
-              <label id="rate-label">Ritmo <output id="rate-value">1.00×</output><input id="rate" type="range" min="0.8" max="1.2" step="0.01" value="1"></label>
-              <label id="format-label">Formato<select id="format"><option value="wav">WAV · sem compressão</option><option value="flac">FLAC · sem perdas</option><option value="mp3">MP3 · compartilhar</option><option value="opus">Opus · compacto</option></select></label>
+              </div>
             </details>
-            <p id="model-notice" class="hint"></p>
-          </aside>
-          <section class="card script-card">
-            <div class="card-title"><h2 id="editor-title">2. Escreva seu texto</h2><label class="file-button">↑ Importar TXT / SRT<input type="file" id="script-import" accept=".txt,.srt" hidden></label></div>
-            <label class="sr-only" for="project-name">Nome do projeto</label><input id="project-name" class="title-input" placeholder="Nome do projeto" value="Minha primeira voz" required maxlength="160">
-            <label>Nome do áudio <span class="hint">(opcional)</span><input id="audio-name" maxlength="160" placeholder="Vazio: nome da voz + número"></label>
+          </section>
+          <section class="card script-card flow-step" id="content-step">
+            <div class="card-title"><h2 id="editor-title">2. Digite ou envie o texto</h2><label id="script-import-label" class="file-button secondary">↑ Importar TXT / SRT<input type="file" id="script-import" accept=".txt,.srt" hidden></label></div>
             <div id="source-fields" hidden>
-              <label>Mídia original<select id="source-media"><option value="">Selecione na biblioteca</option></select></label>
-              <label class="file-button secondary">↑ Enviar áudio ou vídeo<input type="file" id="source-upload" hidden></label>
-              <p class="hint">Envie um arquivo ou escolha um que já está no servidor.</p>
+              <label class="reference-picker">Escolher áudio ou vídeo<input type="file" id="source-upload"></label>
+              <p id="source-status" class="hint" role="status">Escolha um arquivo para começar.</p>
+              <details id="source-library"><summary>Ou usar um arquivo já enviado</summary><label>Arquivo da biblioteca<select id="source-media"><option value="">Selecione na biblioteca</option></select></label></details>
             </div>
             <div id="script-fields">
               <div class="editor-tabs"><button type="button" class="tab active" data-editor="simple">Rápido</button><button type="button" class="tab" data-editor="detailed">Detalhado</button></div>
@@ -97,13 +88,36 @@
               </div>
             </div>
             <div id="dub-fields" hidden>
-              <div class="notice">Envie um vídeo e escolha a voz. O app transcreve e dubla o áudio automaticamente no idioma escolhido, mantendo o vídeo. Um SRT é opcional para revisar o texto e os tempos. A faixa de voz original será substituída.</div>
-              <label>Ambiente separado (opcional)<select id="background-media"></select></label><div id="cue-editor"></div>
-              <button type="button" id="add-cue" class="secondary">+ Adicionar fala</button><button type="button" id="export-srt" class="secondary">Baixar SRT revisado</button>
+              <p class="hint">O app transcreve a fala original e troca pela voz escolhida. Não precisa enviar legendas. O vídeo mantém a imagem; arquivos de áudio geram um vídeo com fundo simples.</p>
+              <p id="dub-cue-status" class="hint" hidden></p>
+              <details id="dub-advanced"><summary>Revisar falas ou adicionar ambiente (opcional)</summary>
+                <label class="file-button secondary">↑ Usar um SRT revisado<input type="file" id="dub-script-import" accept=".srt" hidden></label>
+                <button type="button" id="automatic-dub" class="text-button">Usar transcrição automática</button>
+                <label>Ambiente separado (opcional)<select id="background-media"></select></label><div id="cue-editor"></div>
+                <button type="button" id="add-cue" class="secondary">+ Adicionar fala</button><button type="button" id="export-srt" class="secondary">Baixar SRT revisado</button>
+              </details>
             </div>
-            <div class="form-actions"><span id="save-state" class="hint">Salvamento automático no servidor</span><button type="button" id="save-project" class="secondary">Salvar projeto</button></div>
+            <label id="language-label">Idioma do texto<select id="language"><option value="pt-BR">Português brasileiro</option><option value="en-US">English</option></select></label>
           </section>
-          <div class="submission card"><div><strong>3. Gere e acompanhe</strong><p class="hint">A geração em CPU pode levar vários minutos. O trabalho continua com esta aba fechada.</p></div><button type="submit" class="primary generate" id="generate">✦ Gerar voz</button></div>
+          <section class="card model-card flow-step" id="model-step">
+            <h2 id="model-title">3. Escolha o modelo</h2>
+            <label id="engine-label">Modelo de voz<select id="engine"><option value="qwen-1.7b" selected>Maior fidelidade · Qwen 1.7B</option></select></label>
+            <label id="asr-label" hidden>Modelo de transcrição<select id="asr-engine"><option value="whisper-large-v3-turbo">Faster-Whisper large-v3-turbo · INT8</option></select></label>
+            <p id="model-notice" class="hint"></p>
+            <details class="voice-options"><summary>Ajustar memória, ritmo e formato (opcional)</summary>
+              <label class="check" id="memory-label"><input id="adaptive-memory" type="checkbox" checked> Permitir modo econômico do mesmo modelo</label>
+              <p class="hint" id="memory-hint">Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória.</p>
+              <label id="rate-label">Ritmo <output id="rate-value">1.00×</output><input id="rate" type="range" min="0.8" max="1.2" step="0.01" value="1"></label>
+              <label id="format-label">Formato<select id="format"><option value="wav">WAV · sem compressão</option><option value="flac">FLAC · sem perdas</option><option value="mp3">MP3 · compartilhar</option><option value="opus">Opus · compacto</option></select></label>
+            </details>
+          </section>
+          <section class="submission card flow-step" id="generate-step"><div class="submission-fields"><h2 id="generate-title">4. Gere o áudio</h2><p id="generate-hint" class="hint">O trabalho continua no servidor com esta aba fechada.</p>
+            <details id="output-options"><summary>Nome do arquivo e projeto (opcional)</summary>
+              <label>Nome do arquivo<input id="audio-name" maxlength="160" placeholder="Vazio: nome da voz + número"></label>
+              <label>Nome do projeto<input id="project-name" placeholder="Nome do projeto" value="Minha primeira voz" maxlength="160"></label>
+              <button type="button" id="save-project" class="secondary">Salvar projeto</button>
+            </details><p id="save-state" class="hint" role="status">Salvamento automático no servidor</p>
+          </div><button type="submit" class="primary generate" id="generate">✦ Gerar áudio</button></section>
         </div>
       </form>
       <section id="current-result" class="card" hidden aria-live="polite"></section>
@@ -112,6 +126,11 @@
     <section id="view-characters" class="view" hidden>
       <div class="page-heading"><div class="eyebrow">SUAS REFERÊNCIAS</div><h1>Minhas vozes<span>.</span></h1><p>Gravações salvas para usar em novos textos.</p></div>
       <div class="two-columns">
+        <div class="saved-voices">
+          <div class="card-title"><h2>Vozes salvas</h2><button type="button" id="add-voice" class="secondary">+ Adicionar voz</button></div>
+          <div class="selection-toolbar" data-selection-toolbar="characters"><button type="button" class="secondary" data-select-all="characters">Selecionar todas</button><span data-selection-count="characters" role="status">Nenhuma selecionada</span><button type="button" class="quiet" data-clear-selection="characters" hidden>Limpar seleção</button><button type="button" class="danger" data-delete-selected="characters" disabled>Excluir selecionadas</button></div>
+          <div id="character-list" class="stack"></div><button type="button" id="more-characters" class="secondary">Carregar mais vozes</button>
+        </div>
         <form id="character-form" class="card">
           <h2 id="character-form-title">Nova voz</h2><label>Nome<input id="character-name" required maxlength="120" placeholder="Ex.: Minha voz"></label>
           <label>Descrição<textarea id="character-description" rows="3" placeholder="Uma nota para identificar a gravação"></textarea></label>
@@ -125,7 +144,6 @@
           <p class="hint">Edições criam novas versões. Os trabalhos enviados preservam a versão que você escolheu.</p>
           <button class="primary" type="submit">Salvar voz</button><button class="secondary" id="new-character" type="button">Nova voz</button>
         </form>
-        <div id="character-list" class="stack"></div>
       </div>
     </section>
     <section id="view-projects" class="view" hidden>
@@ -134,15 +152,22 @@
     </section>
     <section id="view-library" class="view" hidden>
       <div class="page-heading"><div class="eyebrow">SEUS ARQUIVOS</div><h1>Biblioteca<span>.</span></h1><p>Áudios, vídeos, roteiros e referências locais.</p></div>
-      <div class="card upload-card"><div><h2>Importar arquivos</h2><p>Áudio, vídeo, TXT ou SRT</p></div><label class="primary file-button">↑ Selecionar arquivos<input type="file" id="media-import" multiple hidden accept=".wav,.flac,.mp3,.m4a,.ogg,.opus,.mp4,.mkv,.webm,.mov,.txt,.srt"></label><button id="record" class="secondary">● Gravar microfone</button><audio id="record-preview" controls hidden></audio></div>
-      <p id="upload-progress" class="hint" role="status"></p><div id="media-list" class="item-grid"></div><button class="secondary" id="more-media">Carregar mais</button>
-      <h2 class="section-title">Resultados</h2><div id="result-list" class="item-grid"></div>
+      <div class="card upload-card"><div><h2>Importar arquivos</h2><p>Áudio, vídeo, TXT ou SRT</p></div><label class="primary file-button">↑ Selecionar arquivos<input type="file" id="media-import" multiple hidden></label><button id="record" class="secondary">● Gravar microfone</button><audio id="record-preview" controls hidden></audio></div>
+      <p id="upload-progress" class="hint" role="status"></p>
+      <div class="library-section"><h2 class="section-title">Arquivos enviados</h2>
+        <div class="selection-toolbar" data-selection-toolbar="media"><button type="button" class="secondary" data-select-all="media">Selecionar todos</button><span data-selection-count="media" role="status">Nenhum selecionado</span><button type="button" class="quiet" data-clear-selection="media" hidden>Limpar seleção</button><button type="button" class="danger" data-delete-selected="media" disabled>Excluir selecionados</button></div>
+        <div id="media-list" class="item-grid"></div><button class="secondary" id="more-media">Carregar mais arquivos</button>
+      </div>
+      <div class="library-section"><h2 class="section-title">Resultados e trabalhos encerrados</h2>
+        <div class="selection-toolbar" data-selection-toolbar="results"><button type="button" class="secondary" data-select-all="results">Selecionar todos</button><span data-selection-count="results" role="status">Nenhum selecionado</span><button type="button" class="quiet" data-clear-selection="results" hidden>Limpar seleção</button><button type="button" class="danger" data-delete-selected="results" disabled>Excluir selecionados</button></div>
+        <div id="result-list" class="item-grid"></div><button type="button" id="more-results" class="secondary">Carregar mais resultados</button>
+      </div>
     </section>
     <section id="view-settings" class="view" hidden>
       <div class="page-heading"><div class="eyebrow">SEU SERVIDOR</div><h1>Ajustes<span>.</span></h1><p>Modelos, notificações e diagnóstico.</p></div>
       <div id="diagnostics" class="stats-grid"></div>
       <details class="card settings-section"><summary>Modelos do aplicativo<span>Preparação e downloads opcionais</span></summary>
-        <p>O perfil Maior fidelidade e o Faster-Whisper large-v3-turbo vêm na imagem. A opção Mais leve é baixada uma vez para o seu servidor quando você a escolhe. Os modelos não passam pelo celular.</p>
+        <p>Qwen 1.7B, Qwen 0.6B e Faster-Whisper large-v3-turbo vêm na imagem. Os modelos não passam pelo celular.</p>
         <p id="model-auto-status" class="hint"></p><div id="model-list" class="stack"></div><button id="refresh-models" class="secondary">Atualizar diagnóstico</button>
       </details>
       <details class="card settings-section"><summary>Telegram<span>Status e arquivos no seu bot</span></summary>
@@ -154,7 +179,7 @@
       <details class="card settings-section"><summary>Como obter uma boa clonagem<span>Gravação, memória e revisão</span></summary>
         <p>Use uma gravação limpa, sem música, de 6 a 30 segundos. O app transcreve a referência e usa o áudio junto com o texto para reproduzir a voz. Confira a transcrição em Minhas vozes.</p>
         <p>Maior fidelidade usa o Qwen 1.7B em float32 e pede cerca de 9,5 GiB livres para carregar. O app adapta o perfil à RAM livre, usando o modo econômico do mesmo modelo se necessário. Todas as opções usam a transcrição completa da referência e uma tarefa por vez.</p>
-        <p>O Compose foi ajustado para 4 núcleos e até 12 GB de RAM. O servidor de 16 GB precisa de memória livre; outros aplicativos podem limitar a geração. A fidelidade e o tempo real devem ser avaliados com sua própria gravação.</p>
+        <p>O Compose foi ajustado para 4 núcleos e até 10 GiB de RAM. O servidor de 16 GB precisa de memória livre; outros aplicativos podem limitar a geração. A fidelidade e o tempo real devem ser avaliados com sua própria gravação.</p>
         <p class="hint">A dublagem transcreve o vídeo automaticamente; você também pode usar um SRT revisado. Conversão direta de voz, treinamento e controle nativo de emoções ainda não estão disponíveis.</p>
       </details>
     </section>
@@ -163,4 +188,5 @@
 </div>
 <div id="toast" role="status" hidden></div>
 <dialog id="log-dialog"><h2>Diagnóstico do trabalho</h2><pre id="job-log"></pre><button id="close-log" class="secondary">Fechar</button></dialog>
+<dialog id="delete-dialog" aria-labelledby="delete-title"><h2 id="delete-title">Excluir itens selecionados?</h2><p id="delete-description"></p><ul id="delete-items"></ul><p id="delete-error" role="alert" hidden></p><div class="item-actions"><button type="button" id="delete-cancel" class="secondary" autofocus>Voltar</button><button type="button" id="delete-confirm" class="danger">Excluir definitivamente</button></div></dialog>
 </body></html>

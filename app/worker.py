@@ -31,6 +31,7 @@ class Worker:
         self.lock = threading.RLock()
         self.thread = None
         self.clone_session = None
+        self.active_job_id = None
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -158,6 +159,7 @@ class Worker:
                         self.update(candidate["id"], status="failed", stage="Não foi possível preparar este trabalho: " + str(exc), error=str(exc))
                 if job:
                     self.update(job["id"], status="running", stage="Preparando", waiting_models=[], started=time.time())
+                    self.active_job_id = job["id"]
             if not job:
                 self.wake.wait(2); self.wake.clear(); continue
             ident = job["id"]
@@ -185,6 +187,9 @@ class Worker:
             except Exception as exc:
                 failed = self.update(ident, status="failed", stage=str(exc), error=str(exc))
                 notify_job(failed)
+            finally:
+                with self.lock:
+                    self.active_job_id = None
 
     def engine(self, ident, request, folder):
         if request["engine"].startswith("qwen-"):
@@ -337,6 +342,9 @@ class Worker:
                 if caption(segment):
                     cues.append({"start_ms": cursor, "end_ms": cursor+duration_ms, "text": caption(segment)})
                 cursor += duration_ms
+        if self.clone_session:
+            self.clone_session.close()
+            self.clone_session = None
         self.update(ident, progress=90, stage="Montando exportação")
         joined = folder / "joined.wav"
         if project["mode"] == "dub":
@@ -377,7 +385,8 @@ class Worker:
         temporary = output.with_name(ident + ".partial." + extension)
         if project["mode"] == "dub":
             source = s.safe_path(project["media"]["path"])
-            args = ffargs("-i", source, "-i", joined)
+            has_video = project["media"].get("video")
+            args = ffargs("-i", source, "-i", joined) if has_video else ffargs("-f", "lavfi", "-i", "color=c=0x0b1521:s=1280x720:r=25", "-i", joined)
             if project.get("background"):
                 args += ["-i", str(s.safe_path(project["background"]["path"])), "-filter_complex", "[1:a]volume=1[v];[2:a]volume=0.7[b];[v][b]amix=inputs=2:duration=first:normalize=0[a]", "-map", "0:v:0", "-map", "[a]"]
             else:
@@ -387,7 +396,7 @@ class Worker:
                 args += ["-c:v", "copy"]
             else:
                 args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-threads", os.getenv("SAL0_THREADS", "4")]
-            args += ["-c:a", "aac", "-movflags", "+faststart", str(temporary)]
+            args += ["-c:a", "aac", "-t", str(project["media"]["duration"]), "-movflags", "+faststart", str(temporary)]
         else:
             codec = {"wav": "pcm_s24le", "flac": "flac", "mp3": "libmp3lame", "opus": "libopus"}[extension]
             args = ffargs("-i", joined, "-c:a", codec, temporary)
@@ -396,11 +405,11 @@ class Worker:
         self.finish_subtitles(ident, cues, [{"path": output.relative_to(s.DATA).as_posix(), "name": f"{project.get('output_name', project['name'])}.{extension}", "type": "video" if extension=="mp4" else "audio"}])
 
     def prepare_dubbing(self, ident, project, folder):
-        """Transcribe the video once and freeze timed speech before cloning."""
+        """Transcribe the source once and freeze timed speech before cloning."""
         from .script import compile_script
         output = folder / "video-transcript.json"
         if not output.is_file():
-            self.update(ident, stage="Transcrevendo o áudio do vídeo para dublagem automática")
+            self.update(ident, stage="Transcrevendo a fala original para dublagem automática")
             temporary = folder / "video-transcript.partial.json"
             self.engine(ident, {"engine": project.get("asr_engine", DEFAULT_ASR_MODEL), "language": project["language"], "source": str(s.safe_path(project["media"]["path"])), "output": str(temporary)}, folder)
             os.replace(temporary, output)
