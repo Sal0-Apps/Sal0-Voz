@@ -121,6 +121,11 @@ def error_reply(exc, request, retryable=False):
     reply(value)
 
 def main():
+    if sys.argv[1:] == ["--check-imports"]:
+        # Exercise this exact module entry point in each isolated interpreter.
+        # No request, backend initialization or model weights are needed.
+        reply({"ok": True, "check": "imports"})
+        return
     try:
         from onnxruntime import disable_telemetry_events
         disable_telemetry_events()

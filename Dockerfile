@@ -29,6 +29,9 @@ RUN python -m venv /opt/engines/omnivoice \
     && /opt/engines/omnivoice/bin/pip install --no-cache-dir torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu \
     && /opt/engines/omnivoice/bin/pip install --no-cache-dir -r requirements-omnivoice.txt
 COPY --from=voxcpm-build /native /opt/engines/voxcpm
+# The shared runner imports memory/process helpers inside the ASR venv too.
+# Keep this small dependency layer after existing runtimes to reuse their cache.
+RUN /opt/engines/whisper/bin/python -m pip install --no-cache-dir psutil==7.0.0
 # Model weights are downloaded by the running app into the persistent /data volume.
 # Keep runtime dependencies before app/version changes so updates reuse their layers.
 COPY app ./app
@@ -41,4 +44,4 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health',timeout=5)"
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["python","-m","uvicorn","app.main:app","--host","0.0.0.0","--port","7860","--workers","1"]
-LABEL org.opencontainers.image.version="0.3.7"
+LABEL org.opencontainers.image.version="0.3.8"
