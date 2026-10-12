@@ -104,6 +104,11 @@
             <label id="engine-label">Modelo de voz<select id="engine"><option value="qwen-1.7b" selected>Maior fidelidade · Qwen 1.7B</option></select></label>
             <label id="asr-label" hidden>Modelo de transcrição<select id="asr-engine"><option value="whisper-large-v3-turbo">Faster-Whisper large-v3-turbo · INT8</option></select></label>
             <p id="model-notice" class="hint"></p>
+            <button type="button" id="download-selected-model" class="secondary" hidden>Baixar modelo no servidor</button>
+            <div id="expression-settings" hidden>
+              <label>Expressividade <output id="expression-value">0.70</output><input id="expressiveness" type="range" min="0.25" max="1.2" step="0.05" value="0.7"></label>
+              <p class="hint">0,50 é mais discreto; 0,70 dá mais expressão; valores maiores intensificam a fala e podem acelerar o ritmo. Use uma referência com a interpretação desejada. Este ajuste não seleciona emoções específicas.</p>
+            </div>
             <details class="voice-options"><summary>Ajustar memória, ritmo e formato (opcional)</summary>
               <label class="check" id="memory-label"><input id="adaptive-memory" type="checkbox" checked> Permitir modo econômico do mesmo modelo</label>
               <p class="hint" id="memory-hint">Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória.</p>

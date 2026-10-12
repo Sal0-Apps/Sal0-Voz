@@ -11,12 +11,28 @@ DEFAULT_MODELS = (DEFAULT_CLONE_MODEL, "qwen-0.6b", DEFAULT_ASR_MODEL)
 
 CATALOG = {
     "diagnostic": {"name": "Voz de diagnóstico", "kind": "tts", "clone": False, "license": "GPL-3.0 (eSpeak NG)", "notice": "Voz sintética simples para testar o app; não representa a qualidade final."},
-    "qwen-1.7b": {"name": "Maior fidelidade · Qwen 1.7B", "kind": "tts", "clone": True, "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "revision": "fd4b254389122332181a7c3db7f27e918eec64e3", "runtime": "qwen", "license": "Apache-2.0", "memory_gib": 9.5, "notice": "Prioriza fidelidade em CPU, com pesos em float32. Mais lento e exige cerca de 9,5 GiB livres; a qualidade depende da gravação."},
-    "qwen-0.6b": {"name": "Mais leve · Qwen 0.6B", "kind": "tts", "clone": True, "repo": "Qwen/Qwen3-TTS-12Hz-0.6B-Base", "revision": "5d83992436eae1d760afd27aff78a71d676296fc", "runtime": "qwen", "license": "Apache-2.0", "memory_gib": 5.5, "notice": "Incluído na imagem. Clonagem completa em float32 ou modo econômico bfloat16, usando o modo econômico do mesmo modelo quando há pouca RAM livre. O modo econômico pode ser mais lento em CPUs antigas."},
+    "chatterbox-pt-br": {
+        "name": "Expressiva · Chatterbox V3 pt-BR", "kind": "tts", "clone": True,
+        "reference_text": False, "languages": ["pt-BR"], "expressiveness": True,
+        "repo": "ResembleAI/Chatterbox-Multilingual-pt-br",
+        "revision": "b3952f18bc2eaa72b9bd7c17d2c4653bcad4770d",
+        "files": ["README.md", "t3_pt_br.safetensors", "s3gen_v3.safetensors", "grapheme_mtl_merged_expanded_v1.json"],
+        "companions": [{"repo": "ResembleAI/chatterbox", "revision": "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18", "files": ["ve.safetensors"]}],
+        "runtime": "chatterbox", "license": "MIT", "memory_gib": 6.5, "download_gib": 3.0,
+        "notice": "Download opcional de cerca de 3 GiB. Especializado em português brasileiro, com clonagem e ajuste de expressividade. CPU float32; reserva inicial de 6,5 GiB, sujeita ao consumo real. Dispensa a transcrição da referência. A qualidade e o tempo precisam ser avaliados no seu servidor.",
+    },
+    "qwen-1.7b": {"name": "Maior fidelidade · Qwen 1.7B", "kind": "tts", "clone": True, "reference_text": True, "repo": "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "revision": "fd4b254389122332181a7c3db7f27e918eec64e3", "runtime": "qwen", "license": "Apache-2.0", "memory_gib": 9.5, "notice": "Prioriza fidelidade em CPU, com pesos em float32. Mais lento e exige cerca de 9,5 GiB livres; a qualidade depende da gravação."},
+    "qwen-0.6b": {"name": "Mais leve · Qwen 0.6B", "kind": "tts", "clone": True, "reference_text": True, "repo": "Qwen/Qwen3-TTS-12Hz-0.6B-Base", "revision": "5d83992436eae1d760afd27aff78a71d676296fc", "runtime": "qwen", "license": "Apache-2.0", "memory_gib": 5.5, "notice": "Incluído na imagem. Clonagem completa em float32 ou modo econômico bfloat16, usando o modo econômico do mesmo modelo quando há pouca RAM livre. O modo econômico pode ser mais lento em CPUs antigas."},
     "whisper-large-v3-turbo": {"name": "Faster-Whisper large-v3-turbo · INT8", "kind": "asr", "repo": "dropbox-dash/faster-whisper-large-v3-turbo", "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf", "runtime": "whisper", "license": "MIT", "notice": "Incluído na imagem. Transcreve sua gravação automaticamente e gera legendas em CPU, com INT8 e quatro threads."},
     "whisper-medium": {"name": "Whisper medium · INT8", "kind": "asr", "repo": "Systran/faster-whisper-medium", "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f", "runtime": "whisper", "license": "MIT", "notice": "Modelo opcional mantido para projetos existentes. Novas transcrições usam large-v3-turbo."},
     "whisper-large-v3": {"name": "Whisper large-v3 · INT8", "kind": "asr", "repo": "Systran/faster-whisper-large-v3", "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478", "runtime": "whisper", "license": "MIT", "notice": "Transcrição opcional com maior custo em CPU e memória. Revise os resultados."},
 }
+
+def is_clone(ident):
+    return bool(CATALOG.get(ident, {}).get("clone"))
+
+def needs_reference_text(ident):
+    return bool(CATALOG.get(ident, {}).get("reference_text"))
 
 def model_files(ident):
     """Prefer a complete persistent model; volumes never hide the image's models."""
@@ -52,7 +68,7 @@ def models_needed(project):
     result = [engine]
     if project.get("automatic_dub"):
         result.append(project.get("asr_engine", DEFAULT_ASR_MODEL))
-    if engine.startswith("qwen-") and any(
+    if needs_reference_text(engine) and any(
         not segment.get("reaction") and segment.get("character", {}).get("reference")
         and not segment["character"].get("reference_text", "").strip()
         for segment in project.get("segments", []) + ([{"character": project["default_character"]}] if project.get("default_character") else [])

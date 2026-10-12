@@ -110,7 +110,14 @@ class ModelManager:
         with self.lock:
             self._check(ident)
             self._record(ident,status="downloading",stage="Consultando revisão e tamanho",progress=0,started=time.time(),error=None,retry_at=None,attempt=(self.status(ident) or {}).get("attempt",0)+1)
-        if not plan.exists(): self._run(ident,[sys.executable,"-m","scripts.models","plan",ident],log)
+        needs_plan = not plan.exists()
+        if not needs_plan:
+            from scripts.models import validate_plan
+            try:
+                validate_plan(json.loads(plan.read_text()), CATALOG[ident], folder)
+            except (OSError, ValueError, KeyError, TypeError):
+                needs_plan = True
+        if needs_plan: self._run(ident,[sys.executable,"-m","scripts.models","plan",ident],log)
         self._check(ident)
         self._record(ident,stage="Baixando pesos para o servidor",progress=0)
         self._run(ident,[sys.executable,"-m","scripts.models","install",ident,"--accept-license"],log)

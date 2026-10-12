@@ -7,6 +7,37 @@ from pathlib import Path
 from app import storage as s
 from app.catalog import CATALOG
 
+def download_plan(meta, api):
+    """Download only the chosen weights, including pinned companion assets."""
+    specifications = [meta, *meta.get("companions", [])]
+    files, hashes, sources = {}, {}, []
+    for spec in specifications:
+        info = api.model_info(spec["repo"], revision=spec["revision"], files_metadata=True)
+        selected = {x.rfilename: x for x in info.siblings if not x.rfilename.startswith(".")}
+        if "files" in spec:
+            missing = set(spec["files"]) - selected.keys()
+            if missing:
+                raise ValueError("Arquivos ausentes na fonte: " + ", ".join(sorted(missing)))
+            selected = {name: selected[name] for name in spec["files"]}
+        if files.keys() & selected.keys():
+            raise ValueError("As fontes do modelo contêm arquivos duplicados.")
+        sources.append({"repo": spec["repo"], "revision": info.sha, "files": list(selected)})
+        for name, item in selected.items():
+            files[name] = item.size or 0
+            hashes[name] = {"sha256": item.lfs.sha256} if item.lfs else {"git_sha1": item.blob_id}
+    return {"repo": meta["repo"], "revision": sources[0]["revision"], "sources": sources,
+            "bytes": sum(files.values()), "license": meta["license"], "files": files, "upstream_hashes": hashes}
+
+def validate_plan(plan, meta, folder):
+    if plan["repo"] != meta["repo"] or any(not (folder / name).resolve().is_relative_to(folder.resolve()) for name in plan["files"]):
+        raise ValueError("Plano inválido. Remova download-plan.json e execute plan novamente.")
+    if "companions" in meta:
+        specifications = [meta, *meta["companions"]]
+        expected = [(item["repo"], item["revision"], set(item["files"])) for item in specifications]
+        actual = [(item["repo"], item["revision"], set(item["files"])) for item in plan.get("sources", [])]
+        if expected != actual or set(plan["files"]) != set().union(*(item[2] for item in expected)):
+            raise ValueError("Plano incompleto ou de outra revisão. Remova download-plan.json e execute plan novamente.")
+
 def verify_file(path, expected):
     if expected.get("sha256"):
         return s.digest(path) == expected["sha256"]
@@ -44,15 +75,10 @@ def main():
         print("Todos os hashes SHA-256 conferem."); return
     from huggingface_hub import HfApi, snapshot_download
     if args.action == "plan":
-        info = HfApi().model_info(meta["repo"], revision=meta["revision"], files_metadata=True)
-        files = {x.rfilename: x.size or 0 for x in info.siblings if not x.rfilename.startswith(".")}
-        hashes = {x.rfilename: {"sha256": x.lfs.sha256} if x.lfs else {"git_sha1": x.blob_id}
-                  for x in info.siblings if x.rfilename in files}
-        total = sum(files.values())
-        plan = {"repo": meta["repo"], "revision": info.sha, "bytes": total, "license": meta["license"], "files": files, "upstream_hashes": hashes}
+        plan = download_plan(meta, HfApi())
         s.atomic_json(folder / "download-plan.json", plan)
         print(json.dumps(plan, ensure_ascii=False, indent=2))
-        print(f"Download estimado: {total/1024**3:.2f} GiB. Execute install com --accept-license após conferir a licença na fonte.")
+        print(f"Download estimado: {plan['bytes']/1024**3:.2f} GiB. Execute install com --accept-license após conferir a licença na fonte.")
         return
     if not args.accept_license:
         parser.error("Leia a licença do modelo e acrescente --accept-license.")
@@ -60,12 +86,12 @@ def main():
     if not plan_path.exists():
         parser.error("Execute plan primeiro para fixar revisão e tamanho.")
     plan = json.loads(plan_path.read_text())
-    if plan["repo"] != meta["repo"] or any(not (folder / name).resolve().is_relative_to(folder.resolve()) for name in plan["files"]):
-        raise SystemExit("Plano inválido. Remova download-plan.json e execute plan novamente.")
+    validate_plan(plan, meta, folder)
     existing = sum(min((folder / name).stat().st_size, size) for name, size in plan["files"].items() if (folder / name).is_file())
     if shutil.disk_usage(folder).free < max(0, plan["bytes"] - existing) + 512*1024**2:
         raise SystemExit("Espaço livre insuficiente para o plano.")
-    snapshot_download(repo_id=plan["repo"], revision=plan["revision"], local_dir=str(folder), allow_patterns=list(plan["files"]), max_workers=2)
+    for source in plan.get("sources", [{"repo": plan["repo"], "revision": plan["revision"], "files": list(plan["files"])}]):
+        snapshot_download(repo_id=source["repo"], revision=source["revision"], local_dir=str(folder), allow_patterns=source["files"], max_workers=2)
     files = {}
     for relative in plan["files"]:
         path = folder / relative

@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 const defaultClone = "qwen-1.7b";
 const defaultAsr = "whisper-large-v3-turbo";
+const isClone = ident => !!state.models.find(model=>model.id===ident)?.clone;
 const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], reactions:[], characterReactions:{}, configured:false, user:{}, uploads:0, submitting:false, jobsLimit:50, mediaLimit:100, charactersLimit:100};
 const selections = {media:new Set(), characters:new Set(), results:new Set()};
 let deletePlan;
@@ -57,7 +58,7 @@ document.querySelectorAll("[data-insert]").forEach(x=>x.addEventListener("click"
   const area=$("script");area.setRangeText(x.dataset.insert,area.selectionStart,area.selectionEnd,"end");area.dispatchEvent(new Event("input"));area.focus();
 }));
 function payload(){
-  return {name:$("project-name").value.trim()||"Projeto sem título",audio_name:$("audio-name").value.trim(),adaptive_memory:$("adaptive-memory").checked,mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
+  return {name:$("project-name").value.trim()||"Projeto sem título",audio_name:$("audio-name").value.trim(),adaptive_memory:$("adaptive-memory").checked,expressiveness:Number($("expressiveness").value),mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
 }
 function saveDraft(){
   $("char-count").textContent=$("script").value.length.toLocaleString("pt-BR")+" caracteres";
@@ -87,7 +88,7 @@ $("project-form").addEventListener("submit",safe(async event=>{
   if(state.mode!=="tts"&&!$("source-media").value){$("source-upload").focus();throw Error("Escolha o áudio ou vídeo no passo "+(state.mode==="asr"?1:2)+".");}
   state.submitting=true;updateGenerateState();
   try{
-    if(state.mode!=="asr" && $("engine").value.startsWith("qwen-") && $("reference-upload").files[0])await saveQuickReference();
+    if(state.mode!=="asr" && isClone($("engine").value) && $("reference-upload").files[0])await saveQuickReference();
     const project=await saveProject(false);await post("/projects/"+project.id+"/generate");
     toast("Trabalho na fila. Você pode fechar esta aba ou preparar outro texto.");await loadJobs();
   }catch(error){if(/referência|Selecione uma voz/.test(error.message)&&state.mode!=="asr"){$("character").focus();}throw error;}
@@ -105,8 +106,21 @@ function modelNotice(){
   const model=state.models.find(x=>x.id===ident);
   const download=model?.download;
   $("model-notice").textContent=model?((model.available?"":download?.status==="downloading"?"Baixando no servidor. ":download?.status==="queued"?"Aguardando download no servidor. ":"Não instalado. ")+model.notice):"";
+  $("download-selected-model").hidden=!model||model.available||ident==="diagnostic"||["queued","downloading"].includes(download?.status);
+  $("download-selected-model").textContent="Baixar "+(model?.download_gib?"· cerca de "+model.download_gib+" GiB ":"")+"no servidor";
+  $("expression-settings").hidden=state.mode==="asr"||!model?.expressiveness;
+  $("memory-label").hidden=state.mode==="asr"||ident==="chatterbox-pt-br";
+  $("memory-hint").textContent=ident==="chatterbox-pt-br"?"Este modelo usa float32 em CPU. Se faltar RAM, aguarda memória e retoma dos trechos salvos com o mesmo modelo.":"Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória.";
+  $("expression-value").textContent=Number($("expressiveness").value).toFixed(2);
 }
-$("engine").addEventListener("change",()=>{if($("engine").value.startsWith("qwen-"))state.cloneEngine=$("engine").value;$("voice-choice").value=$("engine").value==="diagnostic"?"simple":"clone";updateVoiceChoice();modelNotice();renderPreparation();});$("asr-engine").addEventListener("change",()=>{modelNotice();renderPreparation();});
+$("expressiveness").addEventListener("input",()=>{$("expression-value").textContent=Number($("expressiveness").value).toFixed(2);});
+$("download-selected-model").onclick=safe(async()=>{
+  const ident=state.mode==="asr"?$("asr-engine").value:$("engine").value;
+  $("download-selected-model").disabled=true;
+  try{await post("/models/"+ident+"/download",{accept_license:true});toast("Download iniciado no servidor. O modelo ficará disponível após a preparação.");await loadModels();}
+  finally{$("download-selected-model").disabled=false;}
+});
+$("engine").addEventListener("change",()=>{if(isClone($("engine").value))state.cloneEngine=$("engine").value;$("voice-choice").value=$("engine").value==="diagnostic"?"simple":"clone";updateVoiceChoice();modelNotice();renderPreparation();});$("asr-engine").addEventListener("change",()=>{modelNotice();renderPreparation();});
 function fillOptions(element,items,placeholder,label){
   const selected=element.value;
   const options=(placeholder!==null?'<option value="">'+escapeHTML(placeholder)+'</option>':"")+items.map(x=>'<option value="'+escapeHTML(x.id)+'">'+escapeHTML(label(x))+'</option>').join("");
@@ -140,9 +154,10 @@ async function loadProject(p){
     if(p[key]!==undefined)$(id).value=p[key]??"";
   }
   $("audio-name").value=p.audio_name||"";$("adaptive-memory").checked=p.adaptive_memory!==false;
+  $("expressiveness").value=p.expressiveness??0.7;
   state.sourceId=$("source-media").value;$("source-upload").value="";
   $("voice-choice").value=$("engine").value==="diagnostic"?"simple":"clone";
-  if($("engine").value.startsWith("qwen-"))state.cloneEngine=$("engine").value;
+  if(isClone($("engine").value))state.cloneEngine=$("engine").value;
   setMode(p.mode||"tts");renderCues();$("rate-value").textContent=Number($("rate").value).toFixed(2)+"×";
   $("char-count").textContent=$("script").value.length+" caracteres";view("create");$("save-state").textContent=p.id?"Projeto carregado":"Novo projeto · salvamento automático no servidor";
   renderJobs();
@@ -352,7 +367,7 @@ function renderSelectedVoice(){
   else{player.hidden=true;player.removeAttribute("src");}
 }
 function chooseSavedVoice(){
-  if($("character").value){$("reference-upload").value="";$("quick-transcript").value="";$("voice-choice").value="clone";if(!$("engine").value.startsWith("qwen-"))$("engine").value=state.cloneEngine||defaultClone;$("new-voice-options").open=false;}
+  if($("character").value){$("reference-upload").value="";$("quick-transcript").value="";$("voice-choice").value="clone";if(!isClone($("engine").value))$("engine").value=state.cloneEngine||defaultClone;$("new-voice-options").open=false;}
   updateVoiceChoice();modelNotice();renderPreparation();saveDraft();
 }
 $("character").onchange=chooseSavedVoice;
@@ -397,7 +412,9 @@ async function saveQuickReference(){
 $("use-reference").onclick=safe(saveQuickReference);
 function selectedModels(){
   const ident=state.mode==="asr"?$("asr-engine").value:$("engine").value;
-  const ids=ident.startsWith("qwen-")?[ident,defaultAsr]:[ident];
+  const model=state.models.find(m=>m.id===ident),ids=[ident];
+  if(state.mode==="dub")ids.push($("asr-engine").value||defaultAsr);
+  if(model?.reference_text)ids.push(defaultAsr);
   return state.models.filter(m=>ids.includes(m.id));
 }
 function renderPreparation(){

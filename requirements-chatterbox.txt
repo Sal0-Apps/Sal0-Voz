@@ -1,0 +1,7 @@
+# Resolve the released CPU dependencies, then install pinned V3 source in Docker.
+# The separate environment keeps Qwen/Whisper dependencies unchanged.
+chatterbox-tts==0.1.7
+resemble-perth==1.0.1
+s3tokenizer==0.3.0
+soundfile==0.13.1
+psutil==7.0.0

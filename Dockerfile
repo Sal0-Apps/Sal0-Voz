@@ -1,5 +1,5 @@
 FROM python:3.11-slim-bookworm AS base
-LABEL org.opencontainers.image.title="Sal0 Voz" org.opencontainers.image.version="0.3.3" org.opencontainers.image.source="https://github.com/Sal0-Apps/Sal0-Voz"
+LABEL org.opencontainers.image.title="Sal0 Voz" org.opencontainers.image.version="0.3.4" org.opencontainers.image.source="https://github.com/Sal0-Apps/Sal0-Voz"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg espeak-ng libsndfile1 libgomp1 sox gosu ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -7,6 +7,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN python -m venv /opt/engines/whisper && /opt/engines/whisper/bin/pip install --no-cache-dir faster-whisper==1.1.1 requests==2.32.3
 RUN python -m venv /opt/engines/qwen && /opt/engines/qwen/bin/pip install --no-cache-dir torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu && /opt/engines/qwen/bin/pip install --no-cache-dir qwen-tts==0.1.1 soundfile==0.13.1 psutil==7.0.0
+COPY requirements-chatterbox.txt ./
+RUN python -m venv /opt/engines/chatterbox \
+    && /opt/engines/chatterbox/bin/pip install --no-cache-dir torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cpu \
+    && /opt/engines/chatterbox/bin/pip install --no-cache-dir -r requirements-chatterbox.txt \
+    && /opt/engines/chatterbox/bin/pip install --no-cache-dir --no-deps --force-reinstall https://codeload.github.com/resemble-ai/chatterbox/tar.gz/5de7a54aa4e5e2baadb0182dde554908b48b85c2
 RUN pip install --no-cache-dir huggingface-hub==0.36.0 && useradd --uid 1000 --create-home sal0
 # Bake outside /data: mounting the user's existing data never hides these files.
 # A failed or corrupt download fails the build instead of shipping a broken app.

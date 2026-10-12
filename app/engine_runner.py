@@ -1,4 +1,4 @@
-"""CPU engines run in isolated processes; a clone job loads Qwen only once."""
+"""CPU engines run in isolated processes; one clone model per active job."""
 import contextlib
 import json
 import io
@@ -115,14 +115,22 @@ def error_reply(exc, request, retryable=False):
     reply(value)
 
 def main():
-    from onnxruntime import disable_telemetry_events
-    disable_telemetry_events()
+    try:
+        from onnxruntime import disable_telemetry_events
+        disable_telemetry_events()
+    except ImportError:
+        pass
     serving = sys.argv[1] == "--serve"
     request = json.loads(Path(sys.argv[2] if serving else sys.argv[1]).read_text(encoding="utf-8"))
-    if request["engine"].startswith("qwen-"):
+    from .catalog import is_clone
+    if is_clone(request["engine"]):
         try:
             with contextlib.redirect_stdout(sys.stderr):
-                engine = QwenEngine(request)
+                if request["engine"] == "chatterbox-pt-br":
+                    from .chatterbox_engine import ChatterboxEngine
+                    engine = ChatterboxEngine(request)
+                else:
+                    engine = QwenEngine(request)
         except Exception as exc:
             import traceback
             traceback.print_exc(file=sys.stderr)

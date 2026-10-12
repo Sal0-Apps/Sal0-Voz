@@ -1,7 +1,9 @@
 """Choose a complete CPU clone profile according to currently available RAM."""
 from .resources import memory_available, cgroup_memory
+from .catalog import is_clone
 
 MEMORY_GIB = {
+    ("chatterbox-pt-br", "float32"): 6.5,
     ("qwen-1.7b", "float32"): 9.5,
     ("qwen-1.7b", "bfloat16"): 6.0,
     ("qwen-0.6b", "float32"): 5.5,
@@ -21,7 +23,7 @@ def choose_profile(project, available=None, locked=False, memory_limit=None):
     )):
         return None
     requested = project.get("requested_engine", project.get("engine", "qwen-1.7b"))
-    if not requested.startswith("qwen-"):
+    if not is_clone(requested):
         return None
     if available is None and memory_limit is None:
         usage = cgroup_memory()
@@ -31,7 +33,7 @@ def choose_profile(project, available=None, locked=False, memory_limit=None):
         options = [(project["engine"], project.get("dtype", "float32"))]
     else:
         options = [(requested, "float32")]
-        if project.get("adaptive_memory", True):
+        if project.get("adaptive_memory", True) and (requested, "bfloat16") in MEMORY_GIB:
             options.append((requested, "bfloat16"))
     for index, (engine, dtype) in enumerate(options):
         if not locked and index < len(options)-1 and f"{engine}/{dtype}" in project.get("memory_failed_profiles", []):
@@ -44,7 +46,7 @@ def choose_profile(project, available=None, locked=False, memory_limit=None):
         if not locked and project.get("adaptive_memory", True) and memory_limit and required + 0.25 > memory_limit/1024**3 * 0.90:
             continue
         if available_gib >= required + 0.25:
-            name = "Qwen 1.7B" if engine == "qwen-1.7b" else "Qwen 0.6B"
+            name = "Chatterbox V3 pt-BR" if engine == "chatterbox-pt-br" else "Qwen 1.7B" if engine == "qwen-1.7b" else "Qwen 0.6B"
             name += " · econômico" if dtype == "bfloat16" else " · float32"
             return {"engine": engine, "dtype": dtype, "memory_gib": required,
                     "name": name, "adapted": engine != requested or dtype != "float32"}

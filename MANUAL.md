@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.3
+# Manual — Sal0 Voz 0.3.4
 
 ## Primeira instalação
 
@@ -11,6 +11,18 @@ Crie a senha do proprietário na primeira abertura. A aplicação deve ficar na 
 A tela inicial usa **Clonar uma voz**, no perfil **Maior fidelidade · Qwen 1.7B**. A voz simples de diagnóstico continua disponível no seletor Tipo de voz para testar instalação e exportação.
 
 `qwen-1.7b`, `qwen-0.6b` e `whisper-large-v3-turbo` vêm na imagem em `/opt/sal0-models/models`, com revisões fixas e hashes verificados durante a construção. A primeira geração usa esses arquivos sem download separado. Os modelos opcionais são gravados em `/data/models`; o navegador recebe somente o status. Uma cópia completa no volume tem preferência; uma cópia incompleta não esconde o modelo da imagem. Em **Ajustes**, cada modelo mostra a disponibilidade, a fila, o progresso e os controles de preparação.
+
+## Chatterbox V3 pt-BR opcional
+
+Para avaliar uma clonagem mais expressiva no servidor com quatro núcleos e limite de 10 GiB:
+
+1. Abra **Ajustes → Modelos do aplicativo** e prepare **Expressiva · Chatterbox V3 pt-BR**, ou selecione-o no passo 3 e clique em **Baixar no servidor**.
+2. Aguarde o download de aproximadamente 3 GiB. O progresso fica salvo no servidor e downloads interrompidos podem ser retomados.
+3. Escolha sua voz salva ou envie áudio/vídeo, escreva o texto e selecione o novo modelo. Use **Português brasileiro** como idioma do texto.
+4. Comece com **Expressividade 0,70**. Reduza para 0,50 se o resultado exagerar; a amostra deve ter fala clara e a interpretação desejada.
+5. Gere e confira o resultado. Para dublagem, escolha voz, mídia e o mesmo modelo; a transcrição do original continua automática.
+
+O modelo e o decoder V3 são carregados localmente em float32, sem CUDA. A reserva inicial de 6,5 GiB é uma margem de preparação, não um benchmark de RAM. O aplicativo espera memória quando necessário, mantém o mesmo modelo e reaproveita os trechos salvos após uma interrupção. A referência é preparada sem Whisper; o modelo usa seu áudio diretamente. A intensidade ajusta a expressão, sem comandos para emoções específicas. O Qwen continua disponível e os projetos existentes preservam seu modelo.
 
 ## Usuários e Telegram
 

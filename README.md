@@ -4,7 +4,7 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.3.3 — clonagem como fluxo principal, com modelos incluídos, uso de disco para reduzir RAM e retomada automática após interrupção do motor.** Configuração para quatro núcleos/16 GB de RAM, com perfil adaptado ao limite de 10 GiB do container. A fidelidade e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
+**Versão 0.3.4 — Chatterbox V3 pt-BR opcional, com clonagem em CPU e ajuste de expressividade.** Mantém os modelos incluídos, o uso de disco para reduzir RAM e a retomada automática. Configuração para quatro núcleos/16 GB de RAM, com limite de 10 GiB do container. A fidelidade e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
 
 ## Instalar no ZimaOS
 
@@ -16,11 +16,19 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 6. Clique em **Gerar voz**. O app prepara e transcreve a referência automaticamente, usa a clonagem completa do Qwen e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro texto** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Gerar legendas**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.3` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.4` e o SHA do commit para rollback.
 
 **Qwen3-TTS 1.7B/0.6B Base e Faster-Whisper large-v3-turbo já vêm na imagem**, com revisões fixas e hashes verificados na construção. Ficam em `/opt/sal0-models/models`, fora de `/data`, para que o volume de uma instalação nova ou antiga não esconda os pesos. O Whisper transcreve a referência e as legendas em CPU INT8; o Qwen reproduz a voz em CPU float32 ou bfloat16. Não é necessário instalar CUDA ou baixar os modelos separadamente.
 
 O perfil **Mais leve · Qwen 0.6B** também vem incluído e pode ser escolhido se você preferir um modelo menor. A fila preserva o texto durante downloads interrompidos e permite retomar a preparação. `whisper-medium` e `whisper-large-v3` continuam como opções para projetos existentes. Se o pacote GHCR estiver privado, o administrador deve torná-lo público para permitir download anônimo pelo ZimaOS.
+
+### Clonagem com mais expressão em português
+
+Em **Ajustes → Modelos do aplicativo**, prepare **Expressiva · Chatterbox V3 pt-BR**. Também pode selecioná-lo no passo 3 de Criar voz e clicar em **Baixar no servidor**. É um download opcional de aproximadamente **3 GiB**, salvo no volume; não ocorre ao iniciar o aplicativo. Depois, escolha uma voz salva ou envie uma gravação, selecione esse modelo e gere. A dublagem usa a mesma opção.
+
+O perfil usa os pesos oficiais especializados em português brasileiro e o decoder V3, em CPU float32. A reserva inicial é de 6,5 GiB mais margem; é uma política de preparação, sem medição no A10. O consumo real e a qualidade continuam sujeitos à avaliação no servidor. Os ambientes são separados, o modelo carrega uma vez por execução e referências/trechos concluídos ficam no disco. Ele dispensa a transcrição da referência; Whisper é usado apenas se a operação precisar transcrever a mídia original.
+
+O controle **Expressividade** começa em 0,70. 0,50 é mais discreto, e valores maiores intensificam a interpretação e podem acelerar a fala. A referência influencia a voz e o estilo. O controle não escolhe emoções específicas nem garante que todas as vozes fiquem melhores que no Qwen. O modelo é destinado à saída em pt-BR; para inglês, use Qwen. O áudio mantém a marca d'água nativa do Chatterbox.
 
 O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preservando o volume existente. Esse arquivo é entregue separadamente; os templates genéricos do repositório continuam como estavam. O modelo escolhido é mantido em todo o áudio. Em um container limitado a 10 GiB, o padrão usa Qwen 1.7B econômico antes da primeira fala, preservando margem de memória. Antes da primeira frase, o app pode usar o modo econômico do mesmo modelo, com margens de 9,5/6,0 GiB para 1.7B float32/bfloat16 e 5,5/3,25 GiB para 0.6B, mais reserva para iniciar o processo. Se ocorrer falta de RAM antes de confirmar uma fala, tenta a precisão econômica do mesmo modelo. Depois de confirmar fala, mantém modelo e precisão. Se o modelo escolhido não couber, aguarda RAM; não troca automaticamente 1.7B por 0.6B. O painel mostra memória efetiva para o app, incluindo o limite do container. São margens de preparação, sujeitas ao consumo real. A geração em CPU pode levar vários minutos; o navegador pode ser fechado enquanto o servidor trabalha.
 
@@ -35,7 +43,7 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - VoiceScript: personagem, idioma, pausa exata, ritmo, volume e reações. Texto dividido por pontuação, com frases longas subdivididas; mesmo modelo durante todo o áudio e um processo de voz ativo por vez.
 - Fila SQLite, um executor pesado por vez, pausa, cancelamento da árvore de processos e retomada automática após falta de RAM/interrupção, por checkpoint validado com SHA-256. Intervalo crescente entre tentativas; pausa e cancelamento manuais são respeitados.
 - TTS de diagnóstico real em pt-BR/en-US com eSpeak NG.
-- Adaptadores locais Qwen3-TTS 1.7B/0.6B Base (clonagem) e Faster-Whisper large-v3-turbo/medium/large-v3 CPU INT8.
+- Adaptadores locais Qwen3-TTS 1.7B/0.6B Base e Chatterbox V3 pt-BR (clonagem), e Faster-Whisper large-v3-turbo/medium/large-v3 CPU INT8.
 - Referência mono a 24 kHz, transcrição automática em cache, áudio junto com texto na clonagem completa. Qwen carrega uma vez na execução normal e encerra após a última fala; numa retomada, recarrega e reutiliza os trechos salvos.
 - Whisper encerra antes da clonagem; áudio longo e espectrograma usam disco com cálculo em blocos. Prompts completos de vozes persistem no trabalho, com apenas a voz atual em RAM. Montagem e envio ao Telegram também usam blocos.
 - WAV, FLAC, MP3, Opus, SRT/VTT; legendas de TTS com tempos por trecho, sujeitas a revisão.
@@ -50,8 +58,8 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 
 - Benchmark dos modelos no AMD A10-9700E/16 GB e avaliação auditiva pt-BR/inglês.
 - Validação da clonagem real com referências do proprietário.
-- VoxCPM2 e Chatterbox como candidatos adicionais.
-- Conversão direta de voz, tradução automática, separação/diarização, emoções/reação nativas, voice design e treinamento.
+- VoxCPM2 como candidato adicional.
+- Conversão direta de voz, tradução automática, separação/diarização, emoções específicas por instrução, reações geradas pelo modelo, voice design e treinamento.
 - Alinhamento por palavra, editor gráfico de forma de onda, comparação de tomadas e testes extensivos de vídeo longo.
 - Homologação no ZimaOS e teste com rede externa bloqueada no servidor real.
 

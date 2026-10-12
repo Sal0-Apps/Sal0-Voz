@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import __version__, storage as s
-from .catalog import CATALOG, installed, require, models_needed, DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL, DEFAULT_MODELS
+from .catalog import CATALOG, installed, require, models_needed, DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL, DEFAULT_MODELS, is_clone
 from .resources import memory_available, cgroup_memory
 from .media import probe, ffargs, input_args
 from .model_manager import manager as model_manager
@@ -438,6 +438,7 @@ class Project(BaseModel):
     engine: str = DEFAULT_CLONE_MODEL
     asr_engine: str = DEFAULT_ASR_MODEL
     adaptive_memory: bool = True
+    expressiveness: float = Field(default=0.7, ge=0.25, le=1.2)
     audio_name: str = Field(default="", max_length=160)
     character_id: str | None = None
     media_id: str | None = None
@@ -533,7 +534,7 @@ def snapshot(project, owner=None):
         if not cues and project.get("character_id"):
             character = owned("character", project["character_id"])
             value["default_character"] = character["versions"][-1]
-        if not cues and project["engine"].startswith("qwen-") and not value.get("default_character", {}).get("reference"):
+        if not cues and is_clone(project["engine"]) and not value.get("default_character", {}).get("reference"):
             raise ValueError("Selecione uma voz com gravação de referência para dublar o áudio ou vídeo.")
         previous_end = 0
         for cue in cues:
@@ -562,11 +563,16 @@ def snapshot(project, owner=None):
             if media:
                 segment["reaction_media"] = owned("media", media["id"])
             continue
-        if project["engine"].startswith("qwen-"):
+        if is_clone(project["engine"]):
             character = segment.get("character")
             if not character or not character.get("reference"):
                 raise ValueError("Selecione um áudio de referência para clonar a voz.")
     if models_needed(value):
+        languages = CATALOG.get(project["engine"], {}).get("languages")
+        if languages and any(segment.get("pause_ms") is None and not segment.get("reaction") and segment["language"] not in languages for segment in value["segments"]):
+            raise ValueError("Escolha Português brasileiro para usar o Chatterbox pt-BR.")
+        if languages and value.get("automatic_dub") and project["language"] not in languages:
+            raise ValueError("Escolha Português brasileiro para usar o Chatterbox pt-BR.")
         value["model"] = model_for_job(project["engine"], "tts")
     elif project["engine"] not in CATALOG or CATALOG[project["engine"]]["kind"] != "tts":
         raise ValueError("Motor incompatível com esta operação.")

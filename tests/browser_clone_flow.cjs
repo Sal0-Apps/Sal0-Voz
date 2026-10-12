@@ -14,8 +14,9 @@ const assert = require('node:assert/strict');
     let downloads = 0;
     const models = [
       { id: 'diagnostic', name: 'Voz simples', kind: 'tts', available: true },
-      { id: 'qwen-1.7b', name: 'Maior fidelidade', kind: 'tts', available: true, source: 'bundled' },
-      { id: 'qwen-0.6b', name: 'Mais leve', kind: 'tts', available: false },
+      { id: 'qwen-1.7b', name: 'Maior fidelidade', kind: 'tts', clone: true, reference_text: true, available: true, source: 'bundled' },
+      { id: 'qwen-0.6b', name: 'Mais leve', kind: 'tts', clone: true, reference_text: true, available: false },
+      { id: 'chatterbox-pt-br', name: 'Expressiva · Chatterbox V3 pt-BR', kind: 'tts', clone: true, reference_text: false, expressiveness: true, available: false, download_gib: 3.0 },
       { id: 'whisper-large-v3-turbo', name: 'Faster-Whisper large-v3-turbo', kind: 'asr', available: true, source: 'bundled' },
       { id: 'whisper-medium', name: 'Whisper medium', kind: 'asr', available: false },
     ].map(model => ({ license: 'Test fixture', notice: 'Modelo local', ...model }));
@@ -39,9 +40,9 @@ const assert = require('node:assert/strict');
       if (pathname === '/api/models') return json(models);
       if (pathname === '/api/reactions') return json(JSON.parse(fs.readFileSync(path.join(__dirname, '../app/assets/reactions/catalog.json'), 'utf8')));
       if (pathname === '/api/models/prepare') return json({ status: 'queued' });
-      if (pathname === '/api/models/qwen-0.6b/download') {
+      if (['/api/models/qwen-0.6b/download','/api/models/chatterbox-pt-br/download'].includes(pathname)) {
         downloads++;
-        models.find(model => model.id === 'qwen-0.6b').download = { status: 'queued', progress: 0 };
+        models.find(model => model.id === pathname.split('/')[3]).download = { status: 'queued', progress: 0 };
         return json({ status: 'queued' });
       }
       if (pathname === '/api/media') {
@@ -176,6 +177,19 @@ const assert = require('node:assert/strict');
     await page.locator('#retry-preparation').click();
     await page.waitForFunction(() => document.querySelector('#preparation-text').textContent.includes('Preparando no servidor'));
     assert.equal(downloads, 1);
+    await page.locator('#engine').selectOption('chatterbox-pt-br');
+    assert.equal(await page.locator('#expression-settings').isVisible(),true);
+    assert.equal(await page.locator('#download-selected-model').isVisible(),true);
+    await page.locator('#download-selected-model').click();
+    await page.waitForFunction(()=>document.querySelector('#download-selected-model').hidden);
+    assert.equal(downloads,2);
+    await page.locator('#character').selectOption('voice-1');
+    assert.equal(await page.locator('#engine').inputValue(),'chatterbox-pt-br');
+    await page.locator('#expressiveness').evaluate(input=>{input.value='0.9';input.dispatchEvent(new Event('input',{bubbles:true}));});
+    await page.locator('#save-project').click();
+    await page.waitForFunction(()=>document.querySelector('#save-state').textContent==='Projeto salvo no servidor');
+    assert.equal(projects.at(-1).engine,'chatterbox-pt-br');
+    assert.equal(projects.at(-1).expressiveness,0.9);
     await page.locator('#script-import').setInputFiles({name:'texto.txt',mimeType:'text/plain',buffer:Buffer.from('Texto importado intacto.')});
     await page.waitForFunction(()=>document.querySelector('#script').value==='Texto importado intacto.');
     assert.equal(await page.locator('[data-mode="tts"]').evaluate(x=>x.classList.contains('selected')),true);

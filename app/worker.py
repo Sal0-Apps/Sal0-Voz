@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psutil
 from . import storage as s
-from .catalog import runtime, require, model_files, models_needed, DEFAULT_ASR_MODEL
+from .catalog import runtime, require, model_files, models_needed, DEFAULT_ASR_MODEL, is_clone, needs_reference_text
 from .engine_session import EngineSession
 from .engine_policy import choose_profile, MemoryUnavailable
 from .engine_policy import MEMORY_GIB
@@ -107,7 +107,7 @@ class Worker:
                               -4: "O motor encontrou uma instrução incompatível com esta CPU."}.get(process.returncode, "O motor não conseguiu concluir o processamento.")
                     if is_memory_error(detail):
                         state = s.job_state(ident)
-                        needed = MEMORY_GIB.get((state["engine"], state["dtype"]), 0.5) if (self.processing_engine or "").startswith("qwen-") else 0.5
+                        needed = MEMORY_GIB.get((state["engine"], state["dtype"]), 0.5) if is_clone(self.processing_engine) else 0.5
                         raise MemoryUnavailable(needed, memory_available()/1024**3)
                     if process.returncode < 0 and process.returncode != -4:
                         raise ProcessInterrupted(f"{reason} Código {process.returncode}. {detail[-1200:]}")
@@ -247,14 +247,14 @@ class Worker:
         if request["engine"].startswith("whisper-"):
             self.close_clone()
             request["work_dir"] = str(folder / "asr-work")
-        if request["engine"].startswith("qwen-"):
+        if is_clone(request["engine"]):
             request["dtype"] = s.get("job", ident)["snapshot"].get("dtype", "float32")
         path = folder / "request.json"
         model, manifest, _ = model_files(request["engine"])
         request["model_path"] = str(model or (s.DATA / "models" / request["engine"]))
         request["model_revision"] = manifest.get("revision")
         s.atomic_json(path, request)
-        if request["engine"].startswith("qwen-"):
+        if is_clone(request["engine"]):
             if self.clone_session is None:
                 stage = s.get("job", ident)["stage"]
                 self.clone_session = EngineSession(self, ident, request, folder)
@@ -275,7 +275,8 @@ class Worker:
             self.close_clone()
 
     def prepare_references(self, ident, project, folder):
-        # ASR exits before Qwen loads, keeping only one heavy model in memory.
+        # ASR exits before cloning; Chatterbox does not need a transcript.
+        needs_text = needs_reference_text(project["engine"])
         source_hashes = {}
         for segment in project["segments"]:
             if segment.get("pause_ms") is not None or segment.get("reaction"):
@@ -284,25 +285,25 @@ class Worker:
             source = s.safe_path(character["reference"]["path"])
             transcript = character.get("reference_text", "").strip()
             language = character.get("language", project["language"])
-            asr_revision = require(DEFAULT_ASR_MODEL, "asr").get("revision") if not transcript else None
+            asr_revision = require(DEFAULT_ASR_MODEL, "asr").get("revision") if needs_text and not transcript else None
             if source not in source_hashes:
                 source_hashes[source] = s.digest(source)
             key = json.dumps([source_hashes[source], language, transcript,
-                              [DEFAULT_ASR_MODEL, asr_revision] if not transcript else None,
-                              "reference-v2"])
+                              [DEFAULT_ASR_MODEL, asr_revision] if needs_text and not transcript else None,
+                              "reference-v2" if needs_text else "reference-audio-v1"])
             import hashlib
             cache = s.DATA / "cache" / "voice-reference" / hashlib.sha256(key.encode()).hexdigest()
             cache.mkdir(parents=True, exist_ok=True)
             audio, meta_file = cache / "reference.wav", cache / "prepared.json"
             try:
                 prepared = json.loads(meta_file.read_text())
-                valid = audio.is_file() and prepared["sha256"] == s.digest(audio) and bool(prepared["text"].strip())
+                valid = audio.is_file() and prepared["sha256"] == s.digest(audio) and (not needs_text or bool(prepared["text"].strip()))
             except (OSError, ValueError, KeyError):
                 valid = False
             if not valid:
                 self.update(ident, stage="Preparando a gravação da sua voz")
                 duration = probe(source)["duration"]
-                if transcript and duration > 30.1:
+                if needs_text and transcript and duration > 30.1:
                     raise ValueError("Com transcrição manual, use uma referência de até 30 segundos. Deixe a transcrição vazia para preparar um trecho automaticamente.")
                 temporary = cache / "reference.partial.wav"
                 self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", temporary))
@@ -311,7 +312,7 @@ class Worker:
                 if seconds < 3:
                     raise ValueError("Use uma gravação com pelo menos 3 segundos de fala clara. O ideal é de 6 a 30 segundos, com uma pessoa e sem música.")
                 os.replace(temporary, audio)
-                if not transcript:
+                if needs_text and not transcript:
                     self.update(ident, stage="Transcrevendo sua gravação automaticamente na CPU")
                     cues_file = cache / "transcript.json"
                     self.engine(ident, {"engine": DEFAULT_ASR_MODEL, "language": language,
@@ -324,7 +325,7 @@ class Worker:
                 s.atomic_json(meta_file, prepared)
             character["prepared_reference"] = audio.relative_to(s.DATA).as_posix()
             character["prepared_reference_text"] = prepared["text"]
-            if character.get("reference_id") and segment.get("character_id"):
+            if needs_text and character.get("reference_id") and segment.get("character_id"):
                 s.put("reference_preparation", {"id": segment["character_id"]+"-"+str(character["number"]),
                        "owner_username": project.get("owner_username"), "text": prepared["text"],
                        "seconds": prepared["seconds"], "automatic": prepared["automatic"]})
@@ -345,7 +346,7 @@ class Worker:
             return
         if project.get("automatic_dub") and not project["segments"]:
             self.prepare_dubbing(ident, project, folder)
-        if project["engine"].startswith("qwen-"):
+        if is_clone(project["engine"]):
             self.prepare_references(ident, project, folder)
         parts = []
         cues = []
@@ -383,7 +384,7 @@ class Worker:
                             text_file.write_text(segment["text"], encoding="utf-8")
                             self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
                         else:
-                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "output": str(raw), "checkpoint": True}, folder)
+                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "expressiveness": project.get("expressiveness", 0.7), "output": str(raw), "checkpoint": True}, folder)
                         if not audio_valid(raw):
                             checkpoint_audio(raw)
                     if index == last_speech:

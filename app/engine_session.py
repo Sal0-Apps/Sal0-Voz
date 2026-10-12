@@ -1,4 +1,4 @@
-"""One cancellable Qwen process per job, with bounded line-based responses."""
+"""One cancellable clone process per job, with bounded line-based responses."""
 import json
 import os
 import queue

@@ -15,12 +15,19 @@ A construção consulta os tamanhos e hashes da fonte na revisão fixa, verifica
 
 O perfil incluído [Qwen3-TTS 0.6B Base](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base/tree/5d83992436eae1d760afd27aff78a71d676296fc) usa Apache-2.0 e revisão `5d83992436eae1d760afd27aff78a71d676296fc`. Whisper medium e large-v3 continuam no catálogo opcional com MIT e revisões fixas indicadas em `app/catalog.py`.
 
+## Modelo opcional Chatterbox V3 pt-BR
+
+O download `chatterbox-pt-br` usa [ResembleAI/Chatterbox-Multilingual-pt-br](https://huggingface.co/ResembleAI/Chatterbox-Multilingual-pt-br/tree/b3952f18bc2eaa72b9bd7c17d2c4653bcad4770d), revisão `b3952f18bc2eaa72b9bd7c17d2c4653bcad4770d`: T3 pt-BR, decoder V3 em safetensors e tokenizer. O encoder de voz vem de [ResembleAI/chatterbox](https://huggingface.co/ResembleAI/chatterbox/tree/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18), revisão `5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18`. Cada arquivo é verificado contra o hash da fonte; o manifesto preserva as duas revisões. Checkpoints alternativos e versões duplicadas do decoder não são baixados.
+
+Modelos e [Chatterbox](https://github.com/resemble-ai/chatterbox) usam MIT. A imagem inclui o código da revisão `5de7a54aa4e5e2baadb0182dde554908b48b85c2` em ambiente CPU separado, com dependências da versão 0.1.7. A licença integral acompanha a imagem em [Chatterbox-MIT.txt](licenses/Chatterbox-MIT.txt). Os pesos pt-BR ficam no volume e são opcionais. A marca d'água nativa Perth permanece na saída.
+
 ## Bibliotecas e ferramentas
 
 - FastAPI: MIT; Uvicorn: BSD-3-Clause; SQLite: domínio público.
 - FFmpeg: LGPL/GPL conforme configuração da distribuição.
 - eSpeak NG: GPL-3.0-or-later; usado como voz de diagnóstico.
 - [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS): Apache-2.0.
+- [Chatterbox](https://github.com/resemble-ai/chatterbox) e [Perth](https://github.com/resemble-ai/Perth): MIT.
 - PyTorch/torchaudio: BSD-style, avisos próprios dos pacotes.
 - [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper)/CTranslate2: MIT.
 - Fontes do sistema, sem requisição a Google Fonts.
