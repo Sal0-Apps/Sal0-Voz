@@ -10,7 +10,7 @@ Para compilar, use Java 17, Gradle 9.4.1 e Android SDK 36:
 
 ```sh
 cd android
-gradle :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 ```
 
 O workflow publica APK e SHA-256. Assim como o cliente Karaokê, o APK de instalação direta usa assinatura de desenvolvimento quando não há chave de distribuição. O cache do CI reutiliza essa chave; uma chave perdida exige reinstalação do cliente. Para distribuição com identidade permanente, configure `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD` no ambiente de build. Nunca publique a chave no repositório.

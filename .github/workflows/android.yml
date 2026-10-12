@@ -32,7 +32,7 @@ jobs:
           key: sal0-voz-android-install-signing-v1
       - name: Compilar e validar Android
         working-directory: android
-        run: gradle --no-daemon :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
       - name: Preparar APK e checksum
         run: |
           mkdir -p dist
