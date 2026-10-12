@@ -2,7 +2,7 @@ import threading
 import pytest
 from app import storage as s
 from app.model_manager import ModelManager
-from app.catalog import DEFAULT_ASR_MODEL
+from app.catalog import CATALOG, DEFAULT_ASR_MODEL, DEFAULT_MODELS
 
 
 @pytest.mark.parametrize("status", ["queued", "failed"])
@@ -29,12 +29,66 @@ def test_default_install_and_restart_recovery(data, monkeypatch):
     manager._record("qwen-1.7b", status="downloading")
     manager.start()
     manager.stop()
-    assert manager.status("qwen-0.6b")["status"] == "queued"  # Included fallback is also prepared.
+    assert manager.status("qwen-0.6b") is None  # Optional models wait for a user's choice.
     assert manager.status(DEFAULT_ASR_MODEL)["status"] == "queued"
     assert manager.status("qwen-1.7b")["status"] == "queued"
     manager.start()
     assert not manager.stop_event.is_set()
     manager.stop()
+
+
+def test_installed_models_survive_manager_recreation_without_download(data, tmp_path, monkeypatch):
+    import app.catalog as catalog
+    import sys
+    monkeypatch.delenv("SAL0_AUTO_DOWNLOAD_MODELS", raising=False)
+    monkeypatch.delenv("SAL0_AUTO_MODELS", raising=False)
+    monkeypatch.setenv("SAL0_BUNDLED_MODELS", str(tmp_path / "empty-image"))
+    monkeypatch.setattr(catalog, "runtime", lambda _: sys.executable)
+    for ident in DEFAULT_MODELS:
+        folder = data / "models" / ident
+        folder.mkdir()
+        (folder / "weights.bin").write_bytes(b"persisted weights substitute")
+        s.atomic_json(folder / "manifest.json", {
+            "revision": CATALOG[ident]["revision"], "files": {"weights.bin": s.digest(folder / "weights.bin")},
+            "file_sizes": {"weights.bin": (folder / "weights.bin").stat().st_size},
+        })
+    for _ in range(2):
+        manager = ModelManager()
+        monkeypatch.setattr(manager, "loop", lambda: None)
+        manager.start()
+        manager.stop()
+        assert s.listing("model_download", limit=-1) == []
+        assert all(item["available"] and item["source"] == "downloaded"
+                   for item in manager.snapshot() if item["id"] in DEFAULT_MODELS)
+
+
+def test_http_startup_does_not_wait_for_model_download(data, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    import app.main as main
+    monkeypatch.setenv("SAL0_DISABLE_WORKER", "0")
+    monkeypatch.delenv("SAL0_AUTO_DOWNLOAD_MODELS", raising=False)
+    monkeypatch.delenv("SAL0_AUTO_MODELS", raising=False)
+    monkeypatch.setenv("SAL0_BUNDLED_MODELS", str(tmp_path / "empty-image"))
+    manager = ModelManager()
+    started = threading.Event()
+    def download(ident):
+        manager._record(ident, status="downloading", progress=12)
+        started.set()
+        assert manager.stop_event.wait(5), "The HTTP app must remain usable during preparation"
+    monkeypatch.setattr(manager, "_download", download)
+    monkeypatch.setattr(main, "model_manager", manager)
+    monkeypatch.setattr(main.worker, "start", lambda: None)
+    monkeypatch.setattr(main.worker, "stop", lambda: None)
+    with TestClient(main.app) as client:
+        assert started.wait(2)
+        assert client.get("/health").json()["status"] == "ok"
+        assert client.post("/api/auth/setup", json={"password": "test-password-123"}).status_code == 200
+        models = {item["id"]: item for item in client.get("/api/models").json()}
+        assert all(not models[ident]["available"] for ident in DEFAULT_MODELS)
+        assert {models[ident]["download"]["status"] for ident in DEFAULT_MODELS} == {"queued", "downloading"}
+        assert "download" not in models["qwen-0.6b"]
+        assert client.get("/api/jobs").json() == []
+    assert not manager.thread.is_alive()
 
 
 def test_cancel_between_plan_and_install(data, monkeypatch):

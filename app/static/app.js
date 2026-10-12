@@ -266,11 +266,11 @@ function renderResults(){
 }
 function renderModelList(){
   const active=state.models.filter(m=>["queued","downloading"].includes(m.download?.status)).length;
-  $("model-auto-status").textContent=active?active+" modelo(s) sendo preparados no servidor.":"Modelos incluídos e downloads concluídos ficam disponíveis sem internet para gerar a voz.";
+  $("model-auto-status").textContent=active?active+" modelo(s) sendo preparados no servidor. Você pode usar o estúdio enquanto aguarda.":"Os modelos são baixados após a instalação e ficam salvos na pasta de dados. Atualizar o app reutiliza os downloads concluídos; a geração funciona sem internet.";
   $("model-list").innerHTML=state.models.map(m=>{
     const d=m.download||{},busy=["queued","downloading"].includes(d.status);
     const action=m.available||m.id==="diagnostic"?"":busy?'<button class="quiet" data-model-cancel="'+m.id+'">Pausar download</button>':'<button class="secondary" data-model-download="'+m.id+'">'+(d.status==="failed"||d.status==="cancelled"?'Tentar novamente':'Preparar este modelo')+'</button>';
-    const label=m.available?(m.source==="bundled"?"Incluído no app":"Pronto"):d.retry_at?"Nova tentativa agendada":d.status==="failed"?"Precisa de atenção":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Opcional · não instalado";
+    const label=m.available?(m.source==="bundled"?"Incluído no app":"Pronto"):d.retry_at?"Nova tentativa agendada":d.status==="failed"?"Precisa de atenção":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Não instalado";
     return '<div class="model-row"><span class="badge">'+label+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Preparação pendente")+'</p>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(d.stage||'')+' · '+(d.progress||0)+'%</p>':'')+(d.error?'<details class="download-error"><summary>Ver o erro da preparação</summary><pre>'+escapeHTML(d.error)+'</pre></details>':'')+'<div class="item-actions">'+action+'</div></div>';
   }).join("");
   document.querySelectorAll("[data-model-download]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelDownload+"/download",{accept_license:true});toast("O servidor vai preparar o modelo. Os trabalhos aguardando continuam automaticamente.");await loadModels();await loadDiagnostics();}));

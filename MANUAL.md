@@ -1,8 +1,8 @@
-# Manual — Sal0 Voz 0.3.4
+# Manual — Sal0 Voz 0.3.5
 
 ## Primeira instalação
 
-O Compose do ZimaOS publica a porta **7886**, preservando a porta 7885 do Karaoke. Confirme o disco antes de usar o caminho `/DATA/AppData/sal0-voz`. Os dados, contas, configurações do Telegram e modelos opcionais ficam nesse volume; recriar o container não deve apagá-lo. Os modelos principais ficam na própria imagem, fora do volume.
+O Compose do ZimaOS publica a porta **7886**, preservando a porta 7885 do Karaoke. Confirme o disco antes de usar o caminho `/DATA/AppData/sal0-voz`. Os dados, contas, configurações do Telegram e todos os modelos preparados ficam nesse volume; recriar o container mantendo o volume preserva esses arquivos.
 
 O entrypoint prepara a pasta e inicia o serviço como usuário não privilegiado (UID 1000). Se restaurar arquivos com outro proprietário, ajuste as permissões do diretório de dados no servidor. Não use container privilegiado.
 
@@ -10,7 +10,9 @@ Crie a senha do proprietário na primeira abertura. A aplicação deve ficar na 
 
 A tela inicial usa **Clonar uma voz**, no perfil **Maior fidelidade · Qwen 1.7B**. A voz simples de diagnóstico continua disponível no seletor Tipo de voz para testar instalação e exportação.
 
-`qwen-1.7b`, `qwen-0.6b` e `whisper-large-v3-turbo` vêm na imagem em `/opt/sal0-models/models`, com revisões fixas e hashes verificados durante a construção. A primeira geração usa esses arquivos sem download separado. Os modelos opcionais são gravados em `/data/models`; o navegador recebe somente o status. Uma cópia completa no volume tem preferência; uma cópia incompleta não esconde o modelo da imagem. Em **Ajustes**, cada modelo mostra a disponibilidade, a fila, o progresso e os controles de preparação.
+A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e `whisper-large-v3-turbo` são preparados automaticamente em segundo plano, em `/data/models`, com revisões fixas e verificação dos arquivos. O navegador recebe somente o status. Você já pode criar a senha, enviar arquivos e preparar textos enquanto espera. A geração aguarda o modelo necessário ficar pronto; não bloqueia a abertura do aplicativo. Em **Ajustes → Modelos do aplicativo**, confira a fila, o progresso e os controles de preparação.
+
+`qwen-0.6b`, Chatterbox e os Whisper opcionais são baixados quando você os prepara ou envia um trabalho que precisa deles. Arquivos completos são reutilizados e downloads interrompidos preservam os arquivos parciais para retomada. A preparação precisa de internet; a inferência usa arquivos locais mesmo com `HF_HUB_OFFLINE=1` e `TRANSFORMERS_OFFLINE=1` no Compose.
 
 ## Chatterbox V3 pt-BR opcional
 
@@ -36,7 +38,7 @@ Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat I
 - **Clonar uma voz:** envie uma gravação, informe o idioma dela, escreva o texto e clique em Gerar voz. O app salva a voz e prepara a transcrição automaticamente. O idioma do texto pode ser diferente do da gravação.
 - **Gerar legendas:** envie áudio ou vídeo na própria tela, escolha o idioma e gere.
 - O rascunho é salvo automaticamente no servidor e o projeto mais recente é reaberto ao entrar. O resultado aparece na tela Criar e na Biblioteca.
-- Qwen 1.7B, Qwen 0.6B e large-v3-turbo já estão incluídos. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
+- Qwen 1.7B e large-v3-turbo são preparados após iniciar o app; Qwen 0.6B e Chatterbox ficam disponíveis como downloads opcionais. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
 - Uma tarefa enviada antes do modelo ficar pronto permanece na fila. Em caso de falha de rede ou espaço, Ajustes mostra o erro; retome o download e o trabalho.
 
 ## Atualizar usando latest
@@ -46,7 +48,9 @@ docker compose pull
 docker compose up -d
 ```
 
-No ZimaOS, use a atualização/recriação do aplicativo mantendo o volume de dados. Não basta reiniciar o mesmo container: ele precisa ser recriado com a imagem nova. `SAL0_AUTO_DOWNLOAD_MODELS=0` continua permitindo desativar explicitamente os downloads automáticos.
+No ZimaOS, use a atualização/recriação do aplicativo mantendo o volume de dados. Não basta reiniciar o mesmo container: ele precisa ser recriado com a imagem nova. Os modelos completos em `/data/models` não são baixados novamente ao atualizar. Na primeira atualização de uma imagem que incluía pesos, os modelos que só existiam em `/opt/sal0-models/models` precisam ser baixados uma vez para o volume. As dependências dos motores permanecem na imagem, em camadas anteriores ao código e à versão para permitir reutilização nas atualizações.
+
+`SAL0_AUTO_DOWNLOAD_MODELS=0` desativa a preparação automática na inicialização; o download manual e o necessário para um trabalho enviado continuam disponíveis. `SAL0_AUTO_MODELS` permite escolher os modelos a preparar na inicialização, com identificadores separados por vírgula. O padrão é `qwen-1.7b,whisper-large-v3-turbo`.
 
 ## Instalar modelos explicitamente (opcional)
 
@@ -66,9 +70,9 @@ docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/s
 docker run --rm -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 -v /DATA/AppData/sal0-voz:/data ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models install qwen-0.6b --accept-license
 ```
 
-Troque o identificador por `whisper-medium` ou `whisper-large-v3` para preparar modelos opcionais antigos. Os modelos principais também podem ser copiados ao volume explicitamente. O comando plan consulta a fonte, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
+Troque o identificador por `whisper-medium`, `whisper-large-v3` ou `chatterbox-pt-br` para preparar outros modelos. O comando plan consulta a fonte, fixa o commit dos pesos e calcula o tamanho. Confira a licença antes do install. O modelo só é anunciado como instalado após completar todos os arquivos e gravar seu manifesto.
 
-Os ambientes Python e os pesos principais já vêm na imagem. Pesos opcionais são baixados pelo servidor, sem passar pelo navegador. Um modelo instalado não é sobrescrito automaticamente. Trocar uma cópia persistente exige preservar os pesos antigos e atualizar a instalação explicitamente.
+Os ambientes Python já vêm na imagem. Todos os pesos são baixados pelo servidor após a instalação, sem passar pelo navegador. Um modelo instalado não é sobrescrito automaticamente. Trocar uma cópia persistente exige preservar os pesos antigos e atualizar a instalação explicitamente.
 
 Na interface, use Ajustes → Atualizar diagnóstico.
 

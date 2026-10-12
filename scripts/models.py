@@ -1,4 +1,4 @@
-"""Pinned, verified models for the image and optional persistent downloads."""
+"""Pinned, verified model downloads into the persistent data volume."""
 import argparse
 import json
 import os

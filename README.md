@@ -4,7 +4,7 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.3.4 — Chatterbox V3 pt-BR opcional, com clonagem em CPU e ajuste de expressividade.** Mantém os modelos incluídos, o uso de disco para reduzir RAM e a retomada automática. Configuração para quatro núcleos/16 GB de RAM, com limite de 10 GiB do container. A fidelidade e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
+**Versão 0.3.5 — imagem sem pesos: modelos preparados após a instalação e preservados na pasta de dados.** Mantém Chatterbox V3 pt-BR opcional, o uso de disco para reduzir RAM e a retomada automática. Configuração para quatro núcleos/16 GB de RAM, com limite de 10 GiB do container. A fidelidade e o tempo de geração precisam ser avaliados com a gravação do proprietário no servidor alvo.
 
 ## Instalar no ZimaOS
 
@@ -16,11 +16,13 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 6. Clique em **Gerar voz**. O app prepara e transcreve a referência automaticamente, usa a clonagem completa do Qwen e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro texto** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Gerar legendas**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.4` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.3.5` e o SHA do commit para rollback.
 
-**Qwen3-TTS 1.7B/0.6B Base e Faster-Whisper large-v3-turbo já vêm na imagem**, com revisões fixas e hashes verificados na construção. Ficam em `/opt/sal0-models/models`, fora de `/data`, para que o volume de uma instalação nova ou antiga não esconda os pesos. O Whisper transcreve a referência e as legendas em CPU INT8; o Qwen reproduz a voz em CPU float32 ou bfloat16. Não é necessário instalar CUDA ou baixar os modelos separadamente.
+**Os pesos são baixados pelo próprio aplicativo depois que ele inicia**, em segundo plano. Qwen3-TTS 1.7B Base e Faster-Whisper large-v3-turbo são preparados automaticamente em `/data/models`, com revisões fixas e hashes verificados. A interface e o healthcheck funcionam enquanto o download acontece; trabalhos que precisam desses modelos aguardam na fila. O progresso aparece em **Ajustes → Modelos do aplicativo**. As dependências de CPU continuam na imagem, sem precisar instalar CUDA.
 
-O perfil **Mais leve · Qwen 0.6B** também vem incluído e pode ser escolhido se você preferir um modelo menor. A fila preserva o texto durante downloads interrompidos e permite retomar a preparação. `whisper-medium` e `whisper-large-v3` continuam como opções para projetos existentes. Se o pacote GHCR estiver privado, o administrador deve torná-lo público para permitir download anônimo pelo ZimaOS.
+Modelos completos na pasta de dados são reutilizados nas atualizações. Downloads interrompidos mantêm os arquivos parciais e podem ser retomados. Nesta primeira atualização, os modelos que existiam somente na imagem antiga precisam ser baixados uma vez para o volume. Depois de preparados, a geração funciona sem internet; somente a preparação precisa de acesso à fonte dos pesos.
+
+O perfil **Mais leve · Qwen 0.6B** é baixado quando escolhido para um trabalho ou pelo botão **Preparar este modelo**. Chatterbox, `whisper-medium` e `whisper-large-v3` também são opcionais. A fila preserva o texto durante a preparação. Se o pacote GHCR estiver privado, o administrador deve torná-lo público para permitir download anônimo pelo ZimaOS.
 
 ### Clonagem com mais expressão em português
 
@@ -51,7 +53,7 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - 33 reações e sons offline no editor Detalhado: risada, gemido de dor, choro, surpresa, suspiro, tosse e outras. Gravações próprias por voz, com versões preservadas.
 - Nome do áudio opcional; vazio gera nome da voz e número crescente.
 - Cliente Android com configuração de rede, upload de áudio/vídeo e downloads: [APK](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.3.1).
-- Modelos principais incluídos; downloads opcionais no próprio servidor, com revisão fixa, licença, estimativa de tamanho e hashes; o navegador recebe apenas o status.
+- Downloads dos modelos após iniciar o app, salvos no volume para reutilização; revisão fixa, licença, estimativa de tamanho e hashes. O navegador recebe apenas o status.
 - Backup/restauração portável por CLI, inventário de hardware e healthcheck.
 
 ## Ainda pendente
@@ -102,4 +104,4 @@ Em **Criar voz**, escolha a voz, digite ou importe TXT/SRT como texto, escolha o
 
 A versão 0.3.2 corrige o `Not Found` ao carregar o catálogo de reações, que interrompia a restauração da interface. Há teste de inicialização pela API real e teste de navegador com recarga e reconexão. O APK Android 0.3.1 recebe esta interface ao atualizar o servidor.
 
-Os testes de geração dos modelos foram retirados do workflow a pedido do proprietário. A avaliação dos modelos destas revisões será feita no servidor; a publicação mantém os modelos incluídos e verificados durante a construção.
+Os testes de geração dos modelos foram retirados do workflow a pedido do proprietário. A avaliação dos modelos destas revisões será feita no servidor. A imagem é validada sem pesos e sem rede, usando somente a voz de diagnóstico; os downloads verificam os arquivos antes de disponibilizar os modelos.

@@ -1,4 +1,4 @@
-"""Offline release check: bundled defaults, real ASR and full CPU cloning."""
+"""Manual opt-in check after model downloads; never run in release CI."""
 import http.cookiejar
 import json
 import os
@@ -36,8 +36,8 @@ def main():
     auth=api("/api/auth/status")
     api("/api/auth/login" if auth["configured"] else "/api/auth/setup", {"password":password})
     catalog={m["id"]:m for m in api("/api/models")}
-    for ident in DEFAULT_MODELS:
-        assert catalog[ident]["available"] and catalog[ident]["source"]=="bundled", catalog[ident]
+    for ident in set(DEFAULT_MODELS) | {engine}:
+        assert catalog[ident]["available"], catalog[ident]
     reference_text=("Hello, this is a reference voice for the local speech test. "
                     "I am reading clearly, with short pauses, to help the model reproduce this voice.")
     source=wait_job(job({"name":"Reference", "engine":"diagnostic", "language":"en-US", "text":reference_text}))
@@ -70,6 +70,6 @@ def main():
     assert len(clone["cues"])==2, "Clone did not generate both speech segments"
     prepared=api("/api/characters/"+character["id"]+"/reference-text")
     assert prepared["automatic"] and prepared["text"], "Clone did not use an automatic full reference transcript"
-    print("PASS: bundled defaults, real large-v3-turbo ASR and two-segment "+clone["profile"]["name"]+" CPU cloning with automatic full reference transcription",flush=True)
+    print("PASS: installed models, real large-v3-turbo ASR and two-segment "+clone["profile"]["name"]+" CPU cloning with automatic full reference transcription",flush=True)
 
 if __name__=="__main__":main()
