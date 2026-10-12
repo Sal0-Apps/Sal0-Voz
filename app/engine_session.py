@@ -7,6 +7,8 @@ import threading
 import psutil
 from . import storage as s
 from .catalog import runtime
+from .engine_policy import MemoryUnavailable, MEMORY_GIB
+from .resources import oom_kills, memory_available
 
 class EngineSession:
     def __init__(self, worker, ident, request, folder):
@@ -15,6 +17,8 @@ class EngineSession:
         self.output = self.log.open("ab")
         self.process = None
         self.responses = queue.Queue()
+        self.profile = (request["engine"], request.get("dtype", "float32"))
+        self.oom_before = oom_kills()
         path = folder / "engine-session.json"
         s.atomic_json(path, request)
         env = os.environ.copy()
@@ -49,6 +53,8 @@ class EngineSession:
             except queue.Empty:
                 continue
             if line is None:
+                if oom_kills() > self.oom_before:
+                    raise MemoryUnavailable(MEMORY_GIB[self.profile], memory_available()/1024**3)
                 with self.log.open("rb") as stream:
                     stream.seek(max(0, self.log.stat().st_size - 2000))
                     detail = stream.read().decode("utf-8", errors="replace").strip()
@@ -58,6 +64,8 @@ class EngineSession:
             except ValueError:
                 continue
             if value.get("error"):
+                if value.get("kind") == "memory":
+                    raise MemoryUnavailable(value["required"], value["available"])
                 raise ValueError(value["error"])
             return value
 

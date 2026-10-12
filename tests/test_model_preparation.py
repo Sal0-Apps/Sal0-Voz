@@ -29,7 +29,7 @@ def test_default_install_and_restart_recovery(data, monkeypatch):
     manager._record("qwen-1.7b", status="downloading")
     manager.start()
     manager.stop()
-    assert manager.status("qwen-0.6b") is None  # Optional profile is not downloaded at startup.
+    assert manager.status("qwen-0.6b")["status"] == "queued"  # Included fallback is also prepared.
     assert manager.status(DEFAULT_ASR_MODEL)["status"] == "queued"
     assert manager.status("qwen-1.7b")["status"] == "queued"
     manager.start()

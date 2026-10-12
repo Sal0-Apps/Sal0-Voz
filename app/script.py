@@ -1,5 +1,6 @@
 """Strict, lossless VoiceScript subset and subtitle formats."""
 import re
+from .reactions import reaction
 
 
 def split_text(text, maximum=350):
@@ -49,6 +50,9 @@ def compile_script(source, language="pt-BR", character_id=None, rate=1.0):
                     raise ValueError("Pausa: use [pausa=450ms] ou [pausa=2s].")
                 ms = int(val[:-2]) if val.endswith("ms") else int(val[:-1]) * 1000
                 segments.append({"text": "", "pause_ms": ms, **state})
+            elif name == "reacao":
+                reaction(val)
+                segments.append({"text": "", "reaction": val, **state})
             elif name in ("personagem", "idioma"):
                 key = "character_id" if name == "personagem" else "language"
                 if name == "idioma" and val not in ("pt-BR", "en-US"):
@@ -69,8 +73,8 @@ def compile_script(source, language="pt-BR", character_id=None, rate=1.0):
     flush()
     if stack:
         raise ValueError(f"Falta fechar [/{stack[-1][0]}].")
-    if not any(x["text"].strip() for x in segments):
-        raise ValueError("O roteiro não contém fala.")
+    if not any(x["text"].strip() or x.get("reaction") for x in segments):
+        raise ValueError("O roteiro não contém fala ou reação.")
     return segments
 
 

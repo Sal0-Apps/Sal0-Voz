@@ -1,11 +1,11 @@
 const $ = (id) => document.getElementById(id);
 const defaultClone = "qwen-1.7b";
 const defaultAsr = "whisper-large-v3-turbo";
-const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], configured:false, user:{}};
+const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], reactions:[], characterReactions:{}, configured:false, user:{}};
 let events, toastTimer, saveTimer, recorder, modelTimer;
 let saveChain=Promise.resolve();
 const escapeHTML = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const bytes = n => (n/1024**3).toFixed(1)+" GB";
+const bytes = n => (n/1024**3).toFixed(1)+" GiB";
 function toast(text){ $("toast").textContent=text; $("toast").hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$("toast").hidden=true,7000); }
 function showDetails(title,text){$("log-dialog").querySelector("h2").textContent=title;$("job-log").textContent=text;$("log-dialog").showModal();}
 async function api(path, options={}){
@@ -36,7 +36,7 @@ function setMode(mode){
   document.querySelectorAll("[data-mode]").forEach(x=>x.classList.toggle("selected",x.dataset.mode===mode));
   $("script-fields").hidden=mode!=="tts"; $("source-fields").hidden=mode==="tts"; $("dub-fields").hidden=mode!=="dub";
   $("engine-label").hidden=mode==="asr"; $("asr-label").hidden=mode!=="asr"; $("rate-label").hidden=mode==="asr"; $("format-label").hidden=mode!=="tts";
-  $("editor-title").textContent={tts:"2. Escreva seu texto",asr:"Envie o áudio ou vídeo",dub:"Vídeo e roteiro revisado"}[mode];
+  $("editor-title").textContent={tts:"2. Escreva seu texto",asr:"Envie o áudio ou vídeo",dub:"Vídeo para dublar"}[mode];
   $("voice-title").textContent=mode==="asr"?"Opções de transcrição":"1. Escolha sua voz";
   $("generate").textContent={tts:"✦ Gerar voz",asr:"≡ Gerar legendas",dub:"▷ Gerar dublagem"}[mode];
   updateVoiceChoice();modelNotice();
@@ -49,7 +49,7 @@ document.querySelectorAll("[data-insert]").forEach(x=>x.addEventListener("click"
   const area=$("script");area.setRangeText(x.dataset.insert,area.selectionStart,area.selectionEnd,"end");area.dispatchEvent(new Event("input"));area.focus();
 }));
 function payload(){
-  return {name:$("project-name").value.trim()||"Projeto sem título",mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
+  return {name:$("project-name").value.trim()||"Projeto sem título",audio_name:$("audio-name").value.trim(),adaptive_memory:$("adaptive-memory").checked,mode:state.mode,text:$("script").value,language:$("language").value,engine:$("engine").value,asr_engine:$("asr-engine").value,character_id:$("character").value||null,media_id:$("source-media").value||null,background_id:$("background-media").value||null,rate:Number($("rate").value),format:$("format").value,cues:state.cues};
 }
 function saveDraft(){
   $("char-count").textContent=$("script").value.length.toLocaleString("pt-BR")+" caracteres";
@@ -102,7 +102,9 @@ function fillOptions(element,items,placeholder,label){
 function refreshSelectors(){
   fillOptions($("character"),state.characters,"Selecione uma voz salva",x=>x.name+" · v"+x.version);
   fillOptions($("source-media"),state.media.filter(x=>x.type==="media"),"Selecione na biblioteca",x=>x.name);
-  for(const id of ["character-reference","background-media"])fillOptions($(id),state.media.filter(x=>x.audio&&!x.video),id==="background-media"?"Sem ambiente separado":"Selecione uma referência",x=>x.name);
+  fillOptions($("character-reference"),state.media.filter(x=>x.audio),"Selecione áudio ou vídeo",x=>x.name+(x.video?" · áudio do vídeo":""));
+  fillOptions($("background-media"),state.media.filter(x=>x.audio&&!x.video),"Sem ambiente separado",x=>x.name);
+  fillOptions($("reaction-media"),state.media.filter(x=>x.audio),"Selecione áudio ou vídeo",x=>x.name);
 }
 async function loadModels(){
   const selectedEngine=$("engine").value||defaultClone;
@@ -121,6 +123,7 @@ async function loadProject(p){
   for(const [key,id] of Object.entries({name:"project-name",text:"script",language:"language",engine:"engine",asr_engine:"asr-engine",character_id:"character",media_id:"source-media",background_id:"background-media",rate:"rate",format:"format"})){
     if(p[key]!==undefined)$(id).value=p[key]??"";
   }
+  $("audio-name").value=p.audio_name||"";$("adaptive-memory").checked=p.adaptive_memory!==false;
   $("voice-choice").value=$("engine").value==="diagnostic"?"simple":"clone";
   if($("engine").value.startsWith("qwen-"))state.cloneEngine=$("engine").value;
   setMode(p.mode||"tts");renderCues();$("rate-value").textContent=Number($("rate").value).toFixed(2)+"×";
@@ -133,7 +136,7 @@ function renderProjects(){
   document.querySelectorAll("[data-duplicate]").forEach(b=>b.onclick=()=>{const p={...state.projects.find(p=>p.id===b.dataset.duplicate),id:null};p.name+=" · cópia";loadProject(p);});
 }
 function renderCharacters(){
-  $("character-list").innerHTML=state.characters.length?state.characters.map(c=>'<article class="card item-card"><div class="avatar">'+escapeHTML(c.name.slice(0,2).toUpperCase())+'</div><h3>'+escapeHTML(c.name)+'</h3><span class="badge">Versão '+c.version+' · '+escapeHTML(c.language)+'</span><p>'+escapeHTML(c.description||"Sem descrição")+'</p>'+(c.reference_id?'<audio controls preload="none" src="/api/media/'+c.reference_id+'/file"></audio>':'<p class="hint">Adicione uma referência para clonagem.</p>')+'<button class="secondary" data-character="'+c.id+'">Editar voz</button><button type="button" class="text-button" data-reference-text="'+c.id+'">Conferir transcrição</button></article>').join(""):'<div class="empty">Seu elenco começa aqui.<br>Importe uma amostra na Biblioteca e crie o primeiro personagem.</div>';
+  $("character-list").innerHTML=state.characters.length?state.characters.map(c=>'<article class="card item-card"><div class="avatar">'+escapeHTML(c.name.slice(0,2).toUpperCase())+'</div><h3>'+escapeHTML(c.name)+'</h3><span class="badge">Versão '+c.version+' · '+escapeHTML(c.language)+'</span><p>'+escapeHTML(c.description||"Sem descrição")+'</p>'+(c.reference_id?'<audio controls preload="none" src="/api/characters/'+c.id+'/reference-file"></audio>':'<p class="hint">Adicione uma referência para clonagem.</p>')+'<button class="secondary" data-character="'+c.id+'">Editar voz</button><button type="button" class="text-button" data-reference-text="'+c.id+'">Conferir transcrição</button></article>').join(""):'<div class="empty">Envie um áudio ou vídeo no formulário para salvar sua primeira voz.</div>';
   document.querySelectorAll("[data-reference-text]").forEach(b=>b.onclick=safe(async()=>{
     const result=await api("/characters/"+b.dataset.referenceText+"/reference-text");
     showDetails("Transcrição da voz",result.text?(result.automatic?"Transcrição automática da referência (confira as palavras):\n\n":"Texto informado na referência:\n\n")+result.text:"A referência será preparada na primeira geração. Você também pode informar a transcrição ao editar esta voz.");
@@ -141,11 +144,24 @@ function renderCharacters(){
   document.querySelectorAll("[data-character]").forEach(b=>b.onclick=()=>{
     const c=state.characters.find(x=>x.id===b.dataset.character);state.characterId=c.id;$("character-form-title").textContent="Editar personagem · v"+c.version;
     for(const [key,id] of Object.entries({name:"character-name",description:"character-description",origin:"character-origin",language:"character-language",reference_id:"character-reference",reference_text:"reference-text"}))$(id).value=c[key]||"";
+    state.characterReactions={...(c.reactions||{})};renderCharacterReactions();$("reaction-upload-status").textContent="";
   });
 }
-  $("new-character").onclick=()=>{state.characterId=null;$("character-form").reset();$("character-form-title").textContent="Nova voz";};
+  $("new-character").onclick=()=>{state.characterId=null;state.characterReactions={};$("character-form").reset();renderCharacterReactions();$("reaction-upload-status").textContent="";$("character-form-title").textContent="Nova voz";$("character-upload-status").textContent="O áudio será extraído e convertido automaticamente, sem alterar o arquivo original.";};
+$("character-upload").onchange=safe(async e=>{
+  const file=e.target.files[0];if(!file)return;
+  const save=$("character-form").querySelector('button[type="submit"]');save.disabled=true;
+  $("character-upload-status").textContent="Enviando "+file.name+" para o servidor…";
+  try{
+    const media=await upload(file);if(!media.audio)throw Error("Esse arquivo não contém uma faixa de áudio. Escolha outro áudio ou vídeo com fala.");
+    $("character-reference").value=media.id;
+    if(!$("character-name").value.trim())$("character-name").value=file.name.replace(/\.[^.]+$/,"").slice(0,120);
+    $("character-upload-status").textContent="Arquivo enviado e selecionado. Salve a voz; o app prepara o áudio automaticamente.";
+  }catch(error){$("character-upload-status").textContent=error.message;throw error;}
+  finally{save.disabled=false;e.target.value="";}
+});
 $("character-form").addEventListener("submit",safe(async e=>{
-  e.preventDefault();const data={name:$("character-name").value,description:$("character-description").value,origin:$("character-origin").value,language:$("character-language").value,reference_id:$("character-reference").value||null,reference_text:$("reference-text").value};
+  e.preventDefault();const data={name:$("character-name").value,description:$("character-description").value,origin:$("character-origin").value,language:$("character-language").value,reference_id:$("character-reference").value||null,reference_text:$("reference-text").value,reactions:state.characterReactions};
   await api(state.characterId?"/characters/"+state.characterId:"/characters",{method:state.characterId?"PUT":"POST",body:JSON.stringify(data)});
   state.characters=await api("/characters");renderCharacters();refreshSelectors();toast("Personagem salvo com versão preservada.");$("new-character").click();
 }));
@@ -214,7 +230,7 @@ function renderModelList(){
 }
 async function loadDiagnostics(){
   const d=await api("/diagnostics");$("version").textContent=d.version;
-  $("diagnostics").innerHTML='<div class="card stat"><strong>'+bytes(d.memory_available)+'</strong><small>RAM disponível no sistema</small></div><div class="card stat"><strong>'+bytes(d.disk_free)+'</strong><small>Disco disponível</small></div><div class="card stat"><strong>'+d.threads+' threads</strong><small>Processamento em CPU</small></div>';
+  $("diagnostics").innerHTML='<div class="card stat"><strong>'+bytes(d.memory_available)+'</strong><small>RAM disponível para o app</small></div><div class="card stat"><strong>'+bytes(d.disk_free)+'</strong><small>Disco disponível</small></div><div class="card stat"><strong>'+d.threads+' threads</strong><small>Processamento em CPU</small></div>';
   renderModelList();
 }
 $("refresh-models").onclick=safe(async()=>{await loadModels();await loadDiagnostics();toast("Modelos atualizados.");});
@@ -253,7 +269,8 @@ async function start(){
   $("auth-description").textContent=auth.configured?"Bem-vindo de volta ao seu estúdio.":"Crie o primeiro usuário administrador para abrir seu estúdio local.";
   $("auth-submit").textContent=auth.configured?"Entrar no estúdio":"Criar meu estúdio";
   if(!auth.authenticated){clearTimeout(saveTimer);state.projectId=null;return;}
-  [state.characters,state.media,state.projects]=await Promise.all([api("/characters?limit=100"),api("/media?limit=100"),api("/projects")]);
+  [state.characters,state.media,state.projects,state.reactions]=await Promise.all([api("/characters?limit=100"),api("/media?limit=100"),api("/projects"),api("/reactions")]);
+  renderReactionOptions();
   await loadModels();refreshSelectors();renderCharacters();renderProjects();renderMedia();await loadJobs();
   if(!state.projectId && state.projects.length)await loadProject(state.projects[0]);
   updateVoiceChoice();
@@ -333,12 +350,42 @@ function renderCurrentResult(){
   const elapsed=seconds!==undefined?Math.floor(seconds/60)+" min "+Math.floor(seconds%60)+" s":"";
   const signature=JSON.stringify([job,elapsed]);if(box.dataset.rendered===signature)return;box.dataset.rendered=signature;
   const i=(job.outputs||[]).findIndex(o=>["audio","video"].includes(o.type)),type=i>=0?job.outputs[i].type:null;
-  box.innerHTML='<h2>'+escapeHTML(job.name)+'</h2><p class="job-error">'+escapeHTML(statuses[job.status]+' · '+job.stage)+'</p><progress max="100" '+(job.status==="running"&&!job.progress?'':'value="'+(job.progress||0)+'"')+'></progress>'+(elapsed?'<p class="hint">Tempo de processamento: '+elapsed+'</p>':'')+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+i+'"></'+type+'>':'')+'<div class="item-actions">'+outputHTML(job)+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="secondary" id="retry-current">Tentar novamente</button>':'')+(['queued','running'].includes(job.status)?'<button type="button" class="quiet" id="cancel-current">Cancelar trabalho</button>':'')+'<button type="button" class="secondary" id="add-another">Adicionar outro texto</button><button type="button" class="quiet" id="diagnose-current">Ver diagnóstico</button></div>';
+  box.innerHTML='<h2>'+escapeHTML(job.name)+'</h2><p class="job-error">'+escapeHTML(statuses[job.status]+' · '+job.stage)+'</p>'+(job.profile?'<p class="hint">Perfil usado: '+escapeHTML(job.profile.name)+(job.profile.adapted?' · adaptado à RAM disponível':'')+'</p>':'')+'<progress max="100" '+(job.status==="running"&&!job.progress?'':'value="'+(job.progress||0)+'"')+'></progress>'+(elapsed?'<p class="hint">Tempo de processamento: '+elapsed+'</p>':'')+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+i+'"></'+type+'>':'')+'<div class="item-actions">'+outputHTML(job)+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="secondary" id="retry-current">Tentar novamente</button>':'')+(['queued','running'].includes(job.status)?'<button type="button" class="quiet" id="cancel-current">Cancelar trabalho</button>':'')+'<button type="button" class="secondary" id="add-another">Adicionar outro texto</button><button type="button" class="quiet" id="diagnose-current">Ver diagnóstico</button></div>';
   $("diagnose-current").onclick=safe(async()=>showDetails("Diagnóstico do trabalho",(await api("/jobs/"+job.id+"/log")).text));
   $("add-another").onclick=()=>$("new-project").click();
   if($("retry-current"))$("retry-current").onclick=safe(async()=>{await post("/jobs/"+job.id+"/resume");await loadJobs();});
   if($("cancel-current"))$("cancel-current").onclick=safe(async()=>{await post("/jobs/"+job.id+"/cancel");await loadJobs();});
 }
+function renderReactionOptions(){
+  const groups=[...new Set(state.reactions.map(x=>x.category))];
+  const html=groups.map(group=>'<optgroup label="'+escapeHTML(group)+'">'+state.reactions.filter(x=>x.category===group).map(x=>'<option value="'+escapeHTML(x.id)+'">'+escapeHTML(x.name)+'</option>').join("")+'</optgroup>').join("");
+  $("reaction-choice").innerHTML=html;$("character-reaction").innerHTML=html;
+}
+$("insert-reaction").onclick=()=>{
+  const ident=$("reaction-choice").value;if(!ident)return;
+  const area=$("script");area.setRangeText('[reacao='+ident+']',area.selectionStart,area.selectionEnd,"end");area.dispatchEvent(new Event("input"));area.focus();
+};
+$("preview-reaction").onclick=safe(async()=>{
+  const ident=$("reaction-choice").value;if(!ident)return;
+  const player=$("reaction-preview");player.src="/api/reactions/"+encodeURIComponent(ident)+"/file";player.hidden=false;await player.play();
+});
+function renderCharacterReactions(){
+  $("character-reactions").innerHTML=Object.entries(state.characterReactions).map(([key,ident])=>'<p>'+escapeHTML(state.reactions.find(x=>x.id===key)?.name||key)+' · '+escapeHTML(state.media.find(x=>x.id===ident)?.name||"Gravação salva")+'</p>').join("");
+}
+$("assign-reaction").onclick=()=>{
+  const key=$("character-reaction").value,ident=$("reaction-media").value;
+  if(!key||!ident){toast("Escolha a reação e um arquivo com áudio.");return;}
+  state.characterReactions[key]=ident;renderCharacterReactions();$("reaction-upload-status").textContent="Reação associada. Salve a voz para preservar a gravação.";
+};
+$("remove-reaction").onclick=()=>{delete state.characterReactions[$("character-reaction").value];renderCharacterReactions();};
+$("reaction-upload").onchange=safe(async e=>{
+  const file=e.target.files[0];if(!file)return;const key=$("character-reaction").value;
+  const save=$("character-form").querySelector('button[type="submit"]');save.disabled=true;
+  $("reaction-upload-status").textContent="Enviando "+file.name+"…";
+  try{const m=await upload(file);if(!m.audio)throw Error("A reação precisa conter áudio.");state.characterReactions[key]=m.id;$("reaction-media").value=m.id;renderCharacterReactions();$("reaction-upload-status").textContent="Som enviado e associado. Salve a voz.";}
+  catch(error){$("reaction-upload-status").textContent=error.message;throw error;}
+  finally{save.disabled=false;e.target.value="";}
+});
 
 async function loadWorkerStatus(){
   const response=await fetch("/health",{cache:"no-store"});

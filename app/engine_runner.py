@@ -1,6 +1,7 @@
 """CPU engines run in isolated processes; a clone job loads Qwen only once."""
 import contextlib
 import json
+import io
 import os
 import subprocess
 import sys
@@ -16,8 +17,8 @@ os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 def decode_audio(source):
     """Use our FFmpeg decoder instead of depending on PyAV's changing API."""
     import numpy as np
-    from .media import ffargs
-    result = subprocess.run(ffargs("-protocol_whitelist", "file,pipe", "-i", source,
+    from .media import ffargs, input_args
+    result = subprocess.run(ffargs(*input_args(source),
                                   "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000",
                                   "-f", "f32le", "pipe:1"),
                             capture_output=True, timeout=300)
@@ -27,19 +28,31 @@ def decode_audio(source):
 
 class QwenEngine:
     def __init__(self, request):
-        from .catalog import CATALOG
+        from .engine_policy import MEMORY_GIB, MemoryUnavailable
         from .resources import memory_available
-        needed = CATALOG[request["engine"]]["memory_gib"] * 1024**3
-        if memory_available() < needed:
-            raise ValueError("Memória livre insuficiente para este perfil. Libere memória no servidor ou escolha Mais leve · Qwen 0.6B.")
+        self.dtype = request.get("dtype", "float32")
+        needed = MEMORY_GIB.get((request["engine"], self.dtype))
+        if needed is None:
+            raise ValueError("Perfil de voz incompatível com CPU.")
+        available = memory_available() / 1024**3
+        if available < needed:
+            raise MemoryUnavailable(needed, available)
         import torch
-        from qwen_tts import Qwen3TTSModel
+        startup = io.StringIO()
+        with contextlib.redirect_stdout(startup):
+            from qwen_tts import Qwen3TTSModel
+        for line in startup.getvalue().splitlines():
+            if line.strip() and line.strip() != "********" and "flash-attn is not installed" not in line:
+                print(line, file=sys.stderr)
+        torch.backends.nnpack.set_flags(False)
         torch.set_num_threads(max(1, int(os.getenv("SAL0_THREADS", "4"))))
         torch.set_num_interop_threads(1)
         self.model = Qwen3TTSModel.from_pretrained(
-            request["model_path"], device_map="cpu", dtype=torch.float32,
+            request["model_path"], device_map="cpu", dtype=getattr(torch, self.dtype),
             attn_implementation="eager", local_files_only=True, low_cpu_mem_usage=True,
         )
+        self.model.model.talker.generation_config.pad_token_id = self.model.model.config.talker_config.codec_eos_token_id
+        print(f"CPU · atenção PyTorch eager · {self.dtype} · sem CUDA", file=sys.stderr)
         self.prompts = {}
 
     def generate(self, request):
@@ -49,7 +62,7 @@ class QwenEngine:
         if not transcript:
             raise ValueError("A gravação precisa ser transcrita antes da clonagem. Confira a preparação da referência.")
         key = (request["reference"], transcript)
-        with torch.inference_mode():
+        with torch.inference_mode(), torch.autocast(device_type="cpu", dtype=torch.bfloat16, enabled=self.dtype == "bfloat16"):
             if key not in self.prompts:
                 self.prompts[key] = self.model.create_voice_clone_prompt(
                     ref_audio=request["reference"], ref_text=transcript, x_vector_only_mode=False,
@@ -79,14 +92,33 @@ def reply(value):
     sys.stdout.write(json.dumps(value, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
+def error_reply(exc, request):
+    from .engine_policy import MemoryUnavailable, MEMORY_GIB
+    from .resources import memory_available
+    value = {"error": str(exc)}
+    memory_error = isinstance(exc, (MemoryError, MemoryUnavailable)) or any(
+        term in str(exc).lower() for term in ("defaultcpuallocator", "not enough memory", "out of memory", "std::bad_alloc")
+    )
+    if memory_error:
+        value.update(kind="memory", required=getattr(exc, "required", MEMORY_GIB[(request["engine"], request.get("dtype", "float32"))]), available=getattr(exc, "available", memory_available()/1024**3))
+    reply(value)
+
 def main():
     from onnxruntime import disable_telemetry_events
     disable_telemetry_events()
     serving = sys.argv[1] == "--serve"
     request = json.loads(Path(sys.argv[2] if serving else sys.argv[1]).read_text(encoding="utf-8"))
     if request["engine"].startswith("qwen-"):
-        with contextlib.redirect_stdout(sys.stderr):
-            engine = QwenEngine(request)
+        try:
+            with contextlib.redirect_stdout(sys.stderr):
+                engine = QwenEngine(request)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            if not serving:
+                raise
+            error_reply(exc, request)
+            return
         if not serving:
             engine.generate(request)
             return
@@ -100,7 +132,7 @@ def main():
             except Exception as exc:
                 import traceback
                 traceback.print_exc(file=sys.stderr)
-                reply({"error": str(exc)})
+                error_reply(exc, request)
                 return
     elif request["engine"].startswith("whisper-") and not serving:
         transcribe(request)

@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.0
+# Manual — Sal0 Voz 0.3.1
 
 ## Primeira instalação
 
@@ -24,7 +24,7 @@ Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat I
 - **Clonar uma voz:** envie uma gravação, informe o idioma dela, escreva o texto e clique em Gerar voz. O app salva a voz e prepara a transcrição automaticamente. O idioma do texto pode ser diferente do da gravação.
 - **Gerar legendas:** envie áudio ou vídeo na própria tela, escolha o idioma e gere.
 - O rascunho é salvo automaticamente no servidor e o projeto mais recente é reaberto ao entrar. O resultado aparece na tela Criar e na Biblioteca.
-- Qwen 1.7B e large-v3-turbo já estão incluídos. Se escolher o perfil opcional Qwen 0.6B, o servidor o prepara uma vez. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
+- Qwen 1.7B, Qwen 0.6B e large-v3-turbo já estão incluídos. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
 - Uma tarefa enviada antes do modelo ficar pronto permanece na fila. Em caso de falha de rede ou espaço, Ajustes mostra o erro; retome o download e o trabalho.
 
 ## Atualizar usando latest
@@ -62,7 +62,7 @@ Na interface, use Ajustes → Atualizar diagnóstico.
 
 ## Personagens e clonagem
 
-1. Importe uma referência de áudio limpa na Biblioteca.
+1. Envie áudio ou vídeo com fala limpa diretamente em Minhas vozes, ou escolha um arquivo da Biblioteca. O app extrai e converte o áudio automaticamente.
 2. Crie um personagem, informe a origem, selecione o áudio; a transcrição é opcional.
 3. Em Criar voz, selecione o personagem, idioma e Qwen instalado.
 4. Comece com uma frase curta. Ouça e avalie conteúdo, semelhança e naturalidade.
@@ -86,7 +86,7 @@ Olá! [pausa=450ms]
 
 `[personagem=ID]` muda o personagem; use o ID do catálogo/API. Ritmo de 0.8 a 1.2 e volume de -24 a +6 dB usam pós-processamento FFmpeg. Use `\[` e `\]` para colchetes literais.
 
-Tags desconhecidas, emoções, tons e reações não suportados causam erro explícito. O aplicativo não as envia como fala. Não há cota de caracteres, mas tempo, memória e disco limitam os projetos. Os blocos são pequenos para o motor; o original é preservado.
+Tags desconhecidas, emoções, tons e nomes de reações inexistentes causam erro explícito. O aplicativo não as envia como fala. Não há cota de caracteres, mas tempo, memória e disco limitam os projetos. Os blocos são pequenos para o motor; o original é preservado.
 
 O editor salva o rascunho no servidor após uma breve pausa, inclusive antes de clicar em Salvar projeto. Duplicar cria projeto independente. Resultados anteriores permanecem na Biblioteca.
 
@@ -100,14 +100,14 @@ Importe um SRT para editar início, fim, texto e personagem. A API permite baixa
 
 ## Dublagem
 
-1. Importe vídeo e um SRT revisado.
-2. Selecione o vídeo original, atribua o personagem principal e personagens por fala.
+1. Envie o vídeo diretamente em Criar voz → Dublar vídeo. O SRT é opcional.
+2. Selecione o vídeo, a voz salva e o idioma da fala original. Sem SRT, o app transcreve o áudio com Faster-Whisper large-v3-turbo e dubla o texto detectado. Não traduz o vídeo. Com SRT, usa o texto/tempos revisados e permite personagem por fala.
 3. Para manter música e efeitos, importe uma faixa de ambiente já separada.
 4. Gere e ouça o resultado.
 
-Sem ambiente separado, a faixa original de áudio é substituída. Não há separação automática nesta versão. As falas ficam ancoradas aos tempos do SRT; não são concatenadas de forma a deslocar falas posteriores. Sobreposições exigem revisão. O vídeo é copiado sem reencodar; codecs incompatíveis com MP4 resultam em erro explícito. Lip sync visual não está incluído.
+Sem ambiente separado, a faixa original de áudio é substituída. Não há separação automática nesta versão. As falas ficam ancoradas aos tempos detectados ou do SRT; não são concatenadas de forma a deslocar falas posteriores. Sobreposições exigem revisão. H.264/yuv420p é copiado sem reencodar. Outros formatos reconhecidos são convertidos automaticamente para MP4 H.264/AAC. Lip sync visual não está incluído.
 
-Se uma fala exceder sua janela em mais de 10%, o trabalho falha com indicação do trecho; edite o texto/tempos e gere outra versão. Não corta palavras. Dentro de 10%, usa ajuste moderado de ritmo. O usuário deve ouvir a naturalidade.
+No modo automático, o app ajusta o ritmo de cada fala para caber na janela sem cortar o texto. Confira a transcrição e a naturalidade. No modo com SRT revisado, se uma fala exceder sua janela em mais de 10%, o trabalho falha com indicação do trecho; edite o texto/tempos e gere outra versão. Não corta palavras. Dentro de 10%, usa ajuste moderado de ritmo. O usuário deve ouvir a naturalidade.
 
 ## Fila, reinício e recursos
 
@@ -115,7 +115,11 @@ Uma tarefa pesada por vez, incluindo exportação. Fechar o navegador não encer
 
 Reiniciar o container recupera trabalhos interrompidos. Exportações parciais são refeitas. Erros preservam entradas e referências. O diagnóstico do trabalho mostra o log local, acessível somente ao proprietário.
 
-O Compose permite até **12 GiB e quatro CPUs**, para um servidor de 16 GB. O perfil 1.7B pede cerca de 9,5 GiB livres para carregar e prioriza fidelidade; o 0.6B pede 5,5 GiB e reduz o custo de CPU. Os dois executam Qwen em float32/eager, sem CUDA. A execução sequencial evita carregar Whisper e Qwen juntos. O executor considera o limite de memória do container, desconta cache de arquivos limpos e pausa com pouca memória ou disco. As margens não substituem a medição real de pico no A10. Feche outras tarefas pesadas antes de gerar.
+O Compose permite até **12 GiB e quatro CPUs**, para um servidor de 16 GB. Com a opção Adaptar à RAM livre marcada, o app tenta o modelo escolhido em float32 e depois em bfloat16; para Qwen 1.7B, também tenta Qwen 0.6B. As margens são 9,5 GiB para 1.7B float32, 6,0 GiB para 1.7B econômico, 5,5 GiB para 0.6B float32 e 3,25 GiB para 0.6B econômico, mais reserva de 0,25 GiB antes de iniciar. Bfloat16 pode ser mais lento em CPUs antigas. Todas as opções usam clonagem completa, atenção eager e CPU. Whisper termina antes de carregar Qwen.
+
+Se o processo reportar falta de RAM ou o container registrar OOM, o trabalho volta à fila. Antes da primeira fala confirmada, tenta um perfil menor; após confirmar fala, mantém o perfil e aguarda memória para evitar mudar a voz no meio do áudio. Desmarque a adaptação se preferir aguardar o modelo escolhido em float32. Erros antigos podem ser retomados pelo botão Tentar novamente. O diagnóstico separa memória total do host, livre no host, limite do container e disponível para o app; 10 GB decimais equivalem a cerca de 9,31 GiB. Nenhuma margem garante execução com outros aplicativos consumindo RAM durante o trabalho.
+
+O aviso de flash-attn não exige instalação em CPU. A execução usa atenção PyTorch; NNPACK é desativado por compatibilidade, e pad_token_id é informado explicitamente. Erros reais permanecem no diagnóstico.
 
 ## Backup e restauração
 
@@ -146,7 +150,7 @@ docker pull ghcr.io/sal0-apps/sal0-voz:latest
 docker save ghcr.io/sal0-apps/sal0-voz:latest -o sal0-voz-latest.tar
 ```
 
-Leve a imagem e o Compose ao servidor. Use `docker load -i sal0-voz-latest.tar` e inicie: Qwen 1.7B e large-v3-turbo já estão na imagem. Se quiser o perfil opcional 0.6B offline, copie também sua instalação verificada ao volume. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
+Leve a imagem e o Compose ao servidor. Use `docker load -i sal0-voz-latest.tar` e inicie: Qwen 1.7B, 0.6B e large-v3-turbo já estão na imagem. Os ícones internos e demais recursos web são locais. O painel do ZimaOS usa a URL de ícone do GitHub; para painel totalmente sem rede, configure seu ícone local no ZimaOS.
 
 As flags offline impedem downloads pelas bibliotecas compatíveis; **não são um firewall**. A telemetria de Hugging Face, Gradio e ONNX Runtime é desativada no motor. O workflow executa o teste de modelos reais com `--network none`; a homologação no servidor deve manter acesso LAN e bloquear saída externa.
 
@@ -166,3 +170,21 @@ Faça backup, pare o app, atualize a tag `latest` e recrie; para rollback, use u
 
 Conversão direta, tradução automática, separação/diarização, emoção automática, treinamento, VoxCPM2 e Chatterbox ainda não foram integrados. Qwen/Whisper estão disponíveis como adaptadores reais, mas dependem dos pesos e validação de CPU. Não foi feita comparação auditiva ElevenLabs nem homologação no servidor do usuário. Consulte VALIDACAO.md.
 
+
+## Reações e nomes dos áudios
+
+Em Detalhado, escolha uma das 33 reações e clique em Inserir reação. Use Ouvir exemplo para conferir o som. Por exemplo:
+
+```text
+Olá! [reacao=risada] Isso doeu. [reacao=gemido]
+```
+
+A tag insere áudio não verbal na posição marcada. Ela não é enviada ao TTS. Ritmo, volume, pausas e personagem continuam valendo. As legendas identificam o som, como [risada]. Também é possível gerar apenas reações, sem carregar modelos neurais.
+
+Os exemplos são gravações de terceiros com CC0; não recebem o timbre da voz clonada automaticamente. Em Minhas vozes → Reações com esta voz, escolha uma reação e envie sua gravação em áudio ou vídeo, ou associe um arquivo da Biblioteca. Salve a voz para preservar a versão. O servidor converte o som para mono/24 kHz e usa até 30 segundos. Trabalhos enviados mantêm as gravações escolhidas, mesmo se você editar a voz depois. [Lista e créditos](app/assets/reactions/SOURCES.md).
+
+Preencha Nome do áudio para escolher o nome de download. Vazio usa o nome da voz e um número crescente, como Minha voz 1.wav e Minha voz 2.wav. Os nomes são preservados ao retomar; a numeração continua após reinício. O nome do projeto permanece separado.
+
+## Aplicativo Android
+
+Baixe [Sal0 Voz Android](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.3.1) e configure o endereço local do servidor. Endereço externo e SSID são opcionais. Uploads e downloads usam o servidor; fechar o APK não cancela trabalhos. Consulte [instruções do cliente](android/README.md).

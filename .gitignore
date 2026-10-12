@@ -8,3 +8,8 @@ data/
 test-results/
 dist/
 *.zip
+android/.gradle/
+android/**/build/
+android/local.properties
+*.keystore
+*.jks

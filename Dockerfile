@@ -1,5 +1,5 @@
 FROM python:3.11-slim-bookworm AS base
-LABEL org.opencontainers.image.title="Sal0 Voz" org.opencontainers.image.version="0.3.0" org.opencontainers.image.source="https://github.com/Sal0-Apps/Sal0-Voz"
+LABEL org.opencontainers.image.title="Sal0 Voz" org.opencontainers.image.version="0.3.1" org.opencontainers.image.source="https://github.com/Sal0-Apps/Sal0-Voz"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg espeak-ng libsndfile1 libgomp1 sox gosu ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir huggingface-hub==0.36.0 && useradd --uid 1000 --c
 # A failed or corrupt download fails the build instead of shipping a broken app.
 COPY app/catalog.py app/storage.py ./app/
 COPY scripts/__init__.py scripts/models.py scripts/bundle_models.py ./scripts/
-ARG SAL0_BUNDLE_MODELS="qwen-1.7b,whisper-large-v3-turbo"
+ARG SAL0_BUNDLE_MODELS="qwen-1.7b,qwen-0.6b,whisper-large-v3-turbo"
 RUN SAL0_DATA=/opt/sal0-models SAL0_BUNDLE_MODELS="$SAL0_BUNDLE_MODELS" HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 HF_HUB_DISABLE_XET=1 HF_HUB_DISABLE_TELEMETRY=1 python -m scripts.bundle_models \
     && chmod -R a+rX /opt/sal0-models/models \
     && rm -rf /root/.cache/huggingface

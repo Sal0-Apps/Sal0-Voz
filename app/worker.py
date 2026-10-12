@@ -12,10 +12,13 @@ import psutil
 from . import storage as s
 from .catalog import runtime, require, model_files, models_needed, DEFAULT_ASR_MODEL
 from .engine_session import EngineSession
+from .engine_policy import choose_profile, MemoryUnavailable
+from .engine_policy import MEMORY_GIB
 from .resources import cgroup_memory
 from .model_manager import manager as model_manager
-from .media import ffargs, probe
+from .media import ffargs, probe, input_args
 from .script import subtitles
+from .reactions import reaction_file, caption
 from .telegram import notify_job
 
 class Interrupted(Exception):
@@ -64,6 +67,9 @@ class Worker:
         memory = psutil.virtual_memory()
         usage = cgroup_memory(Path("/sys/fs/cgroup"))
         if usage and usage[1] > usage[0]*0.94:
+            project = s.get("job", ident).get("snapshot", {})
+            if project.get("mode") != "asr" and project.get("engine", "").startswith("qwen-"):
+                raise MemoryUnavailable(MEMORY_GIB[project["engine"], project.get("dtype", "float32")], max(0, usage[0]-usage[1])/1024**3)
             self.update(ident, status="paused", stage="Memória do container próxima do limite")
             raise Interrupted()
         if memory.available < 256*1024**2:
@@ -109,6 +115,15 @@ class Worker:
                 for candidate in jobs:
                     try:
                         project = candidate["snapshot"]
+                        folder = s.DATA / "jobs" / candidate["id"]
+                        locked = any(segment.get("pause_ms") is None and not segment.get("reaction") and
+                                     (folder / f"segment-{index:06d}.json").is_file()
+                                     for index, segment in enumerate(project.get("segments", [])))
+                        profile = choose_profile(project, locked=locked)
+                        if profile:
+                            project.setdefault("requested_engine", project["engine"])
+                            project.update(engine=profile["engine"], dtype=profile["dtype"])
+                            self.update(candidate["id"], snapshot=project, profile=profile, waiting_memory=None)
                         needed = models_needed(project)
                         waiting = []
                         models = {}
@@ -132,10 +147,13 @@ class Worker:
                             if old.get("stage") != stage or old.get("waiting_models") != waiting:
                                 self.update(candidate["id"], stage=stage, waiting_models=waiting)
                             continue
-                        project["model"] = models[needed[0]]
+                        if needed:
+                            project["model"] = models[needed[0]]
                         self.update(candidate["id"], snapshot=project)
                         job = candidate
                         break
+                    except MemoryUnavailable as exc:
+                        self.update(candidate["id"], stage=str(exc), waiting_memory={"required_gib": exc.required, "available_gib": round(exc.available, 1)})
                     except Exception as exc:
                         self.update(candidate["id"], status="failed", stage="Não foi possível preparar este trabalho: " + str(exc), error=str(exc))
                 if job:
@@ -153,11 +171,24 @@ class Worker:
             except Interrupted:
                 if self.stop_event.is_set() and s.get("job", ident)["status"] == "running":
                     self.update(ident, status="queued", stage="Interrompido com segurança; aguardando reinício")
+            except MemoryUnavailable as exc:
+                project = s.get("job", ident)["snapshot"]
+                folder = s.DATA / "jobs" / ident
+                locked = any(x.get("pause_ms") is None and not x.get("reaction") and (folder / f"segment-{i:06d}.json").is_file() for i,x in enumerate(project.get("segments", [])))
+                if not locked and project.get("adaptive_memory", True):
+                    failed = project.setdefault("memory_failed_profiles", [])
+                    key = project["engine"] + "/" + project.get("dtype", "float32")
+                    if key not in failed:
+                        failed.append(key)
+                self.update(ident, status="queued", stage=str(exc), snapshot=project, waiting_memory={"required_gib": exc.required, "available_gib": round(exc.available, 1)}, error=None)
+                self.stop_event.wait(2)
             except Exception as exc:
                 failed = self.update(ident, status="failed", stage=str(exc), error=str(exc))
                 notify_job(failed)
 
     def engine(self, ident, request, folder):
+        if request["engine"].startswith("qwen-"):
+            request["dtype"] = s.get("job", ident)["snapshot"].get("dtype", "float32")
         path = folder / "request.json"
         model, _, _ = model_files(request["engine"])
         request["model_path"] = str(model or (s.DATA / "models" / request["engine"]))
@@ -183,7 +214,7 @@ class Worker:
     def prepare_references(self, ident, project, folder):
         # ASR exits before Qwen loads, keeping only one heavy model in memory.
         for segment in project["segments"]:
-            if segment.get("pause_ms") is not None:
+            if segment.get("pause_ms") is not None or segment.get("reaction"):
                 continue
             character = segment["character"]
             source = s.safe_path(character["reference"]["path"])
@@ -208,7 +239,7 @@ class Worker:
                 if transcript and duration > 30.1:
                     raise ValueError("Com transcrição manual, use uma referência de até 30 segundos. Deixe a transcrição vazia para preparar um trecho automaticamente.")
                 temporary = cache / "reference.partial.wav"
-                self.run(ident, ffargs("-i", source, "-t", "30", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", temporary))
+                self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", temporary))
                 with wave.open(str(temporary)) as wav:
                     seconds = wav.getnframes() / wav.getframerate()
                 if seconds < 3:
@@ -246,6 +277,8 @@ class Worker:
                 raise ValueError("Nenhuma fala detectada. Confira o áudio e o idioma.")
             self.finish_subtitles(ident, cues)
             return
+        if project.get("automatic_dub") and not project["segments"]:
+            self.prepare_dubbing(ident, project, folder)
         if project["engine"].startswith("qwen-"):
             self.prepare_references(ident, project, folder)
         parts = []
@@ -274,7 +307,10 @@ class Worker:
                 else:
                     raw = folder / f"raw-{index}.wav"
                     character = segment.get("character")
-                    if project["engine"] == "diagnostic":
+                    if segment.get("reaction"):
+                        source = s.safe_path(segment["reaction_media"]["path"]) if segment.get("reaction_media") else reaction_file(segment["reaction"])
+                        self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", raw))
+                    elif project["engine"] == "diagnostic":
                         text_file = folder / "spoken.txt"
                         text_file.write_text(segment["text"], encoding="utf-8")
                         self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
@@ -293,18 +329,22 @@ class Worker:
                 start, end = segment["start_ms"], segment["end_ms"]
                 window = end-start
                 ratio = duration_ms/window
-                if ratio > 1.1:
+                if ratio > 1.1 and not project.get("automatic_dub"):
                     raise ValueError(f"Trecho {index+1} excede a janela em mais de 10%. Edite o texto ou os tempos e gere uma nova versão; nenhuma palavra foi cortada.")
                 if duration_ms > window:
                     fitted = folder / f"fitted-{index}.wav"
-                    self.run(ident, ffargs("-i", target, "-af", f"atempo={ratio}", "-c:a", "pcm_s16le", fitted))
+                    factors = []
+                    while ratio > 2:
+                        factors.append("atempo=2"); ratio /= 2
+                    factors.append(f"atempo={ratio}")
+                    self.run(ident, ffargs("-i", target, "-af", ",".join(factors), "-c:a", "pcm_s16le", fitted))
                     target = fitted
-                cues.append({"start_ms": start, "end_ms": end, "text": segment["text"]})
+                cues.append({"start_ms": start, "end_ms": end, "text": caption(segment)})
                 parts.append((target, start))
             else:
                 parts.append(target)
-                if segment["text"].strip():
-                    cues.append({"start_ms": cursor, "end_ms": cursor+duration_ms, "text": segment["text"].strip()})
+                if caption(segment):
+                    cues.append({"start_ms": cursor, "end_ms": cursor+duration_ms, "text": caption(segment)})
                 cursor += duration_ms
         self.update(ident, progress=90, stage="Montando exportação")
         joined = folder / "joined.wav"
@@ -328,13 +368,57 @@ class Worker:
                 args += ["-i", str(s.safe_path(project["background"]["path"])), "-filter_complex", "[1:a]volume=1[v];[2:a]volume=0.7[b];[v][b]amix=inputs=2:duration=first:normalize=0[a]", "-map", "0:v:0", "-map", "[a]"]
             else:
                 args += ["-map", "0:v:0", "-map", "1:a:0"]
-            args += ["-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", str(temporary)]
+            video = next((x for x in project["media"].get("streams", []) if x["type"] == "video"), {})
+            if video.get("codec") == "h264" and video.get("pixel_format") == "yuv420p":
+                args += ["-c:v", "copy"]
+            else:
+                args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-threads", os.getenv("SAL0_THREADS", "4")]
+            args += ["-c:a", "aac", "-movflags", "+faststart", str(temporary)]
         else:
             codec = {"wav": "pcm_s24le", "flac": "flac", "mp3": "libmp3lame", "opus": "libopus"}[extension]
             args = ffargs("-i", joined, "-c:a", codec, temporary)
         self.run(ident, args)
         os.replace(temporary, output)
-        self.finish_subtitles(ident, cues, [{"path": output.relative_to(s.DATA).as_posix(), "name": f"{project['name']}.{extension}", "type": "video" if extension=="mp4" else "audio"}])
+        self.finish_subtitles(ident, cues, [{"path": output.relative_to(s.DATA).as_posix(), "name": f"{project.get('output_name', project['name'])}.{extension}", "type": "video" if extension=="mp4" else "audio"}])
+
+    def prepare_dubbing(self, ident, project, folder):
+        """Transcribe the video once and freeze timed speech before cloning."""
+        from .script import compile_script
+        output = folder / "video-transcript.json"
+        if not output.is_file():
+            self.update(ident, stage="Transcrevendo o áudio do vídeo para dublagem automática")
+            temporary = folder / "video-transcript.partial.json"
+            self.engine(ident, {"engine": project.get("asr_engine", DEFAULT_ASR_MODEL), "language": project["language"], "source": str(s.safe_path(project["media"]["path"])), "output": str(temporary)}, folder)
+            os.replace(temporary, output)
+        cues = json.loads(output.read_text(encoding="utf-8"))
+        if not cues:
+            raise ValueError("Não encontrei fala no vídeo. Confira o áudio e o idioma escolhido.")
+        segments, previous_end = [], 0
+        for cue in cues:
+            start = max(previous_end, int(cue["start_ms"]))
+            end = min(round(project["media"]["duration"]*1000), int(cue["end_ms"]))
+            if end <= start or not cue["text"].strip():
+                continue
+            # Transcribed brackets are literal speech, never script controls.
+            source = cue["text"].replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+            parsed = compile_script(source, project["language"], project.get("character_id"), project.get("rate", 1))
+            length = sum(len(x["text"]) for x in parsed)
+            cursor, used = start, 0
+            for item in parsed:
+                used += len(item["text"])
+                finish = start + round((end-start)*used/length)
+                if finish <= cursor:
+                    raise ValueError("O vídeo contém fala rápida demais para dividir neste intervalo. Revise as legendas geradas.")
+                segment = {**item, "start_ms": cursor, "end_ms": finish}
+                if project.get("default_character"):
+                    segment["character"] = dict(project["default_character"])
+                segments.append(segment); cursor = finish
+            previous_end = end
+        if not segments:
+            raise ValueError("Não encontrei trechos de fala utilizáveis no vídeo.")
+        project["segments"] = segments
+        project["cues"] = [{"start_ms": x["start_ms"], "end_ms": x["end_ms"], "text": x["text"].strip()} for x in segments]
+        self.update(ident, snapshot=project)
 
     def timeline(self, parts, output, frames, ident):
         # Disk-based timeline, constant memory. Overlap is rejected during submission.
@@ -356,9 +440,11 @@ class Worker:
 
     def finish_subtitles(self, ident, cues, outputs=None):
         outputs = outputs or []
+        project = s.get("job", ident).get("snapshot", {})
+        name = project.get("output_name", "legendas")
         for extension in ("srt", "vtt"):
             path = s.DATA / "exports" / f"{ident}.{extension}"
             path.write_text(subtitles(cues, vtt=extension=="vtt"), encoding="utf-8")
-            outputs.append({"path": path.relative_to(s.DATA).as_posix(), "name": f"legendas.{extension}", "type": "subtitle"})
+            outputs.append({"path": path.relative_to(s.DATA).as_posix(), "name": f"{name}.{extension}", "type": "subtitle"})
         self.update(ident, outputs=outputs, cues=cues, subtitle_alignment="Tempos por trecho; revisão humana necessária.")
 

@@ -60,12 +60,16 @@ def main():
     assert wait_job(transcription)["cues"], "Whisper produced no subtitles"
     character=api("/api/characters", {"name":"Synthetic test reference", "language":"en-US", "reference_id":media["id"]})
     clone=wait_job(job({"name":"Real Qwen CPU", "engine":engine, "language":"pt-BR", "text":"Olá, esta é minha voz. [pausa=250ms] Agora, outro trecho.", "character_id":character["id"]}))
+    expected_dtype = os.getenv("SAL0_SMOKE_EXPECT_DTYPE", "float32")
+    assert clone["profile"]["dtype"] == expected_dtype, clone["profile"]
+    if expected_dtype == "bfloat16":
+        assert clone["profile"]["engine"] == os.getenv("SAL0_SMOKE_EXPECT_ENGINE", "qwen-0.6b") and clone["profile"]["adapted"], clone["profile"]
     with opener.open(BASE+"/api/jobs/"+clone["id"]+"/output/0") as response:
         result=response.read()
     assert result[:4]==b"RIFF" and len(result)>1000
     assert len(clone["cues"])==2, "Clone did not generate both speech segments"
     prepared=api("/api/characters/"+character["id"]+"/reference-text")
     assert prepared["automatic"] and prepared["text"], "Clone did not use an automatic full reference transcript"
-    print("PASS: bundled defaults, real large-v3-turbo ASR and two-segment "+engine+" CPU cloning with automatic full reference transcription",flush=True)
+    print("PASS: bundled defaults, real large-v3-turbo ASR and two-segment "+clone["profile"]["name"]+" CPU cloning with automatic full reference transcription",flush=True)
 
 if __name__=="__main__":main()

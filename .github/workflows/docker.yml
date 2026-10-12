@@ -2,6 +2,7 @@ name: CI e imagem Docker
 on:
   push:
     branches: [main]
+    paths: ["app/**", "scripts/**", "tests/**", "requirements*.txt", "Dockerfile", "compose.yaml", "docker-compose.yml", ".github/workflows/docker.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,7 +46,7 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: |
-            ghcr.io/sal0-apps/sal0-voz:0.3.0
+            ghcr.io/sal0-apps/sal0-voz:0.3.1
             ghcr.io/sal0-apps/sal0-voz:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -70,20 +71,33 @@ jobs:
           done
           docker exec -e SAL0_SMOKE_CLONE_ENGINE=qwen-1.7b sal0-default-smoke python -m scripts.smoke_models
           docker stop sal0-default-smoke
-      - name: Validar perfil opcional e clonagem completa offline
+      - name: Validar perfil leve completo offline
         run: |
-          docker volume create sal0-model-test
-          # The optional profile uses a separate data volume from the default test.
-          for action in plan install verify; do
-            docker run --rm -v sal0-model-test:/data -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 ghcr.io/sal0-apps/sal0-voz:latest python -m scripts.models "$action" qwen-0.6b --accept-license
-          done
-          docker run -d --name sal0-model-smoke --cpus 4 --memory 12g --network none -v sal0-model-test:/data -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
+          docker run -d --name sal0-model-smoke --cpus 4 --memory 12g --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
           for i in $(seq 1 30); do
             if docker exec sal0-model-smoke python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
             sleep 2
           done
           docker exec sal0-model-smoke python -m scripts.smoke_models
           docker stop sal0-model-smoke
+      - name: Validar adaptação com quatro CPUs, 4 GiB e AVX2 offline
+        run: |
+          docker run -d --name sal0-low-memory --cpus 4 --memory 4g --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 -e ATEN_CPU_CAPABILITY=avx2 -e ONEDNN_MAX_CPU_ISA=AVX2 ghcr.io/sal0-apps/sal0-voz:latest
+          for i in $(seq 1 30); do
+            if docker exec sal0-low-memory python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
+            sleep 2
+          done
+          docker exec -e SAL0_SMOKE_CLONE_ENGINE=qwen-1.7b -e SAL0_SMOKE_EXPECT_DTYPE=bfloat16 sal0-low-memory python -m scripts.smoke_models
+          docker stop sal0-low-memory
+      - name: Validar Qwen 1.7B econômico com 8 GiB offline
+        run: |
+          docker run -d --name sal0-medium-memory --cpus 4 --memory 8g --network none -e SAL0_AUTO_DOWNLOAD_MODELS=0 ghcr.io/sal0-apps/sal0-voz:latest
+          for i in $(seq 1 30); do
+            if docker exec sal0-medium-memory python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health')"; then break; fi
+            sleep 2
+          done
+          docker exec -e SAL0_SMOKE_CLONE_ENGINE=qwen-1.7b -e SAL0_SMOKE_EXPECT_DTYPE=bfloat16 -e SAL0_SMOKE_EXPECT_ENGINE=qwen-1.7b sal0-medium-memory python -m scripts.smoke_models
+          docker stop sal0-medium-memory
       - name: Diagnostico em caso de falha
         if: failure()
         run: |
@@ -92,10 +106,14 @@ jobs:
           docker logs sal0-model-smoke || true
           docker exec sal0-model-smoke sh -c 'tail -n 60 /data/jobs/*/process.log' || true
           docker exec sal0-model-smoke sh -c 'tail -n 60 /data/models/*/download.log' || true
+          docker logs sal0-low-memory || true
+          docker exec sal0-low-memory sh -c 'tail -n 60 /data/jobs/*/process.log' || true
+          docker logs sal0-medium-memory || true
+          docker exec sal0-medium-memory sh -c 'tail -n 60 /data/jobs/*/process.log' || true
       - name: Publicar imagem versionada
         run: |
-          docker push ghcr.io/sal0-apps/sal0-voz:0.3.0
+          docker push ghcr.io/sal0-apps/sal0-voz:0.3.1
           docker push ghcr.io/sal0-apps/sal0-voz:latest
-          docker tag ghcr.io/sal0-apps/sal0-voz:0.3.0 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
+          docker tag ghcr.io/sal0-apps/sal0-voz:0.3.1 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
           docker push ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
 

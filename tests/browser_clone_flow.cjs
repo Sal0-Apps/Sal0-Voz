@@ -5,7 +5,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.SAL0_CHROMIUM || undefined });
   try {
     const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
     const errors = [], unexpected = [];
@@ -37,6 +37,7 @@ const assert = require('node:assert/strict');
       if (pathname === '/api/auth/status') return json({ configured: true, authenticated: true, username: 'admin', role: 'admin' });
       if (pathname === '/api/events/stream') return route.fulfill({ contentType: 'text/event-stream', body: '' });
       if (pathname === '/api/models') return json(models);
+      if (pathname === '/api/reactions') return json(JSON.parse(fs.readFileSync(path.join(__dirname, '../app/assets/reactions/catalog.json'), 'utf8')));
       if (pathname === '/api/models/prepare') return json({ status: 'queued' });
       if (pathname === '/api/models/qwen-0.6b/download') {
         downloads++;
@@ -45,7 +46,8 @@ const assert = require('node:assert/strict');
       }
       if (pathname === '/api/media') {
         if (method === 'POST') {
-          const item = { id: 'ref-1', name: 'reference.wav', type: 'media', audio: true, video: false, duration: 8 };
+          const name = request.postDataBuffer().toString().match(/filename="([^"]+)"/)[1];
+          const item = { id: `ref-${media.length+1}`, name, type: 'media', audio: true, video: /\.(mkv|mp4)$/i.test(name), duration: 8 };
           media.push(item);
           return json(item);
         }
@@ -53,7 +55,7 @@ const assert = require('node:assert/strict');
       }
       if (pathname === '/api/characters') {
         if (method === 'POST') {
-          const item = { ...request.postDataJSON(), id: 'voice-1', version: 1 };
+          const item = { ...request.postDataJSON(), id: `voice-${characters.length+1}`, version: 1 };
           characters.push(item);
           return json(item);
         }
@@ -99,6 +101,8 @@ const assert = require('node:assert/strict');
     assert.equal(generated[0].text, 'O texto novo deve continuar intacto.');
     assert.equal(generated[0].engine, 'qwen-1.7b');
     assert.equal(generated[0].asr_engine, 'whisper-large-v3-turbo');
+    assert.equal(generated[0].audio_name, '');
+    assert.equal(generated[0].adaptive_memory, true);
     await page.locator('#character').focus();
     await page.waitForTimeout(5400);
     assert.equal(await page.locator('#character').inputValue(), 'voice-1');
@@ -110,6 +114,35 @@ const assert = require('node:assert/strict');
     assert.equal(jobs[0].status, 'running');
     assert.equal(await page.locator('#character').inputValue(), 'voice-1');
     assert.equal(await page.locator('#reference-language').inputValue(), 'en-US');
+    await page.locator('[data-editor="detailed"]').click();
+    await page.locator('#reaction-choice').selectOption('gemido');
+    await page.locator('#insert-reaction').click();
+    assert.equal(await page.locator('#script').inputValue(), '[reacao=gemido]');
+    assert.equal(await page.locator('#reaction-choice option').count(), 33);
+    await page.locator('#audio-name').fill('Cena de teste');
+    await page.locator('#save-project').click();
+    await page.waitForFunction(() => document.querySelector('#save-state').textContent === 'Projeto salvo no servidor');
+    assert.equal(projects.at(-1).audio_name, 'Cena de teste');
+    await page.locator('nav [data-view="characters"]').click();
+    await page.locator('#character-upload').setInputFiles({name:'uploaded-video.mkv',mimeType:'application/octet-stream',buffer:Buffer.from('fixture video')});
+    await page.waitForFunction(() => document.querySelector('#character-upload-status').textContent.startsWith('Arquivo enviado'));
+    assert.equal(await page.locator('#character-reference').inputValue(), 'ref-2');
+    assert.equal(await page.locator('#character-name').inputValue(), 'uploaded-video');
+    await page.locator('#character-form summary').filter({hasText:'Reações com esta voz'}).click();
+    await page.locator('#character-reaction').selectOption('gemido');
+    await page.locator('#reaction-upload').setInputFiles({name:'my-reaction.mp4',mimeType:'video/mp4',buffer:Buffer.from('fixture reaction')});
+    await page.waitForFunction(() => document.querySelector('#reaction-upload-status').textContent.startsWith('Som enviado'));
+    await page.locator('#character-form button[type="submit"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-character]').length === 2);
+    assert.equal(characters[1].reference_id, 'ref-2');
+    assert.deepEqual(characters[1].reactions, {gemido:'ref-3'});
+    await page.locator('nav [data-view="create"]').click();
+    await page.locator('[data-mode="dub"]').click();
+    await page.locator('#source-media').selectOption('ref-2');
+    await page.locator('#generate').click();
+    await page.waitForFunction(() => !document.querySelector('#generate').disabled);
+    assert.equal(generated.at(-1).mode, 'dub');
+    assert.deepEqual(generated.at(-1).cues, []);
     for (const width of [1366, 390]) {
       await page.setViewportSize({ width, height: 900 });
       for (const view of ['create', 'characters', 'projects', 'library', 'settings']) {
@@ -121,6 +154,7 @@ const assert = require('node:assert/strict');
     }
     assert.equal(await page.locator('.settings-section').first().evaluate(element => element.open), false);
     await page.locator('nav [data-view="create"]').click();
+    await page.locator('[data-mode="tts"]').click();
     await page.locator('.voice-options > summary').click();
     await page.locator('#engine').selectOption('qwen-0.6b');
     await page.locator('#retry-preparation').click();
@@ -128,7 +162,7 @@ const assert = require('node:assert/strict');
     assert.equal(downloads, 1);
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
-    console.log('PASS: Turbo defaults, independent reference language, upload and generation, polling, voice reuse, optional download, desktop and mobile views');
+    console.log('PASS: Turbo defaults, upload of video references and own reactions, detailed reaction insertion, output name, video dubbing without SRT, polling, desktop and mobile views');
   } finally {
     await browser.close();
   }

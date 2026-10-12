@@ -26,3 +26,9 @@ def memory_available():
         limit, working = usage
         available = min(available, max(0, limit - working))
     return available
+
+def oom_kills():
+    try:
+        return int(dict(line.split() for line in Path("/sys/fs/cgroup/memory.events").read_text().splitlines()).get("oom_kill", 0))
+    except (OSError, ValueError):
+        return 0

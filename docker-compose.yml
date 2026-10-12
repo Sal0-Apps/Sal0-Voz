@@ -25,7 +25,7 @@ services:
       DO_NOT_TRACK: "1"
       PYANNOTE_METRICS_ENABLED: "0"
       SAL0_AUTO_DOWNLOAD_MODELS: "1"
-      SAL0_AUTO_MODELS: "qwen-1.7b,whisper-large-v3-turbo"
+      SAL0_AUTO_MODELS: "qwen-1.7b,qwen-0.6b,whisper-large-v3-turbo"
     mem_limit: 12g
     cpus: 4
     stop_grace_period: 1m
@@ -62,5 +62,5 @@ x-casaos:
   scheme: http
   index: /
   architectures: [amd64]
-  version: "0.3.0"
+  version: "0.3.1"
 

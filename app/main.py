@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import threading
@@ -18,8 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import __version__, storage as s
 from .catalog import CATALOG, installed, require, models_needed, DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL, DEFAULT_MODELS
-from .resources import memory_available
-from .media import probe
+from .resources import memory_available, cgroup_memory
+from .media import probe, ffargs, input_args
 from .model_manager import manager as model_manager
 from .script import compile_script, parse_srt, validate_cues, subtitles
 from .telegram import masked as masked_telegram, notify_job, save_config as save_telegram
@@ -258,7 +259,8 @@ def delete_user(username: str, request: Request):
 @app.get("/api/diagnostics")
 def diagnostics():
     disk = shutil.disk_usage(s.DATA); memory = psutil.virtual_memory()
-    return {"version": __version__, "cpu": "CPU", "threads": int(os.getenv("SAL0_THREADS", "4")), "memory_total": memory.total, "memory_available": memory_available(), "disk_free": disk.free, "ffmpeg": bool(shutil.which("ffmpeg") or os.getenv("SAL0_FFMPEG")), "ffprobe": bool(shutil.which("ffprobe") or os.getenv("SAL0_FFPROBE")), "platform": os.name, "validation": "Benchmark no servidor do proprietário pendente", "features": {"voice_conversion": False, "automatic_emotion": False, "automatic_translation": False, "automatic_separation": False}}
+    usage = cgroup_memory()
+    return {"version": __version__, "cpu": "CPU", "threads": int(os.getenv("SAL0_THREADS", "4")), "memory_total": memory.total, "memory_available": memory_available(), "memory_host_available": memory.available, "memory_container_limit": usage[0] if usage else None, "disk_free": disk.free, "ffmpeg": bool(shutil.which("ffmpeg") or os.getenv("SAL0_FFMPEG")), "ffprobe": bool(shutil.which("ffprobe") or os.getenv("SAL0_FFPROBE")), "platform": os.name, "validation": "Benchmark no servidor do proprietário pendente", "features": {"voice_conversion": False, "automatic_emotion": False, "automatic_translation": False, "automatic_separation": False, "reactions": True, "automatic_dubbing": True}}
 
 def visible(value, user):
     return user.get("role") == "admin" or value.get("owner_username") == user.get("username")
@@ -278,9 +280,8 @@ def list_records(kind: str, request: Request, offset: int = 0, limit: int = 50):
 def upload(file: UploadFile, request: Request):
     name = Path((file.filename or "arquivo").replace("\\", "/")).name
     suffix = Path(name).suffix.lower()
-    allowed = {".wav", ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".mp4", ".mkv", ".webm", ".mov", ".txt", ".srt"}
-    if suffix not in allowed:
-        raise ValueError("Formato não suportado.")
+    if not re.fullmatch(r"\.[a-z0-9]{1,12}", suffix):
+        suffix = ".media"
     ident = s.uid(); path = s.DATA / "media" / (ident + suffix)
     try:
         with path.open("wb") as output:
@@ -307,7 +308,10 @@ def media_file(ident: str, request: Request):
     media = s.get("media", ident)
     if not visible(media, current_user(request)):
         raise HTTPException(403, "Arquivo pertence a outro usuário.")
-    return FileResponse(s.safe_path(media["path"]), filename=media["name"], content_disposition_type="inline")
+    import mimetypes
+    guessed = mimetypes.guess_type(media["name"])[0] or "application/octet-stream"
+    content_type = guessed if guessed.startswith(("audio/", "video/")) else "text/plain" if media["type"] in ("text", "script", "subtitle") else "application/octet-stream"
+    return FileResponse(s.safe_path(media["path"]), media_type=content_type, filename=media["name"], content_disposition_type="inline")
 
 class Character(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -316,6 +320,7 @@ class Character(BaseModel):
     origin: str = "own"
     reference_id: str | None = None
     reference_text: str = ""
+    reactions: dict[str, str] = Field(default_factory=dict)
 
 def save_character(body, previous=None, owner=None):
     value = body.model_dump()
@@ -324,9 +329,19 @@ def save_character(body, previous=None, owner=None):
     reference = s.get("media", body.reference_id) if body.reference_id else None
     if reference and not visible(reference, owner):
         raise HTTPException(403, "Arquivo pertence a outro usuário.")
-    if reference and (not reference.get("audio") or reference.get("video")):
-        raise ValueError("Selecione uma referência somente de áudio.")
-    version = {"number": len(previous.get("versions", []))+1 if previous else 1, **value, "reference": reference}
+    if reference and not reference.get("audio"):
+        raise ValueError("O arquivo de referência precisa conter áudio. Um vídeo sem faixa de áudio não pode ser usado para clonar a voz.")
+    from .reactions import reaction
+    reaction_media = {}
+    for key, ident in body.reactions.items():
+        reaction(key)
+        media = s.get("media", ident)
+        if not visible(media, owner):
+            raise HTTPException(403, "Arquivo de reação pertence a outro usuário.")
+        if not media.get("audio"):
+            raise ValueError("A gravação da reação precisa conter áudio.")
+        reaction_media[key] = media
+    version = {"number": len(previous.get("versions", []))+1 if previous else 1, **value, "reference": reference, "reaction_media": reaction_media}
     versions = previous["versions"] + [version] if previous else [version]
     return s.put("character", {**value, "owner_username": previous.get("owner_username") if previous else owner["username"], "id": previous["id"] if previous else s.uid(), "versions": versions, "version": version["number"]})
 
@@ -354,6 +369,32 @@ def reference_text(ident: str, request: Request):
     except KeyError:
         return {"text": "", "automatic": True}
 
+@app.get("/api/characters/{ident}/reference-file")
+def character_reference_file(ident: str, request: Request):
+    character = s.get("character", ident)
+    if not visible(character, current_user(request)):
+        raise HTTPException(403, "Voz pertence a outro usuário.")
+    reference = character["versions"][-1].get("reference")
+    if not reference or not reference.get("audio"):
+        raise ValueError("Esta voz ainda não tem uma referência com áudio.")
+    source = s.safe_path(reference["path"])
+    folder = s.DATA / "cache" / "reference-preview"
+    folder.mkdir(parents=True, exist_ok=True)
+    output = folder / (s.digest(source) + ".wav")
+    if not output.is_file():
+        import subprocess
+        temporary = folder / (s.uid() + ".partial.wav")
+        try:
+            result = subprocess.run(ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn",
+                                          "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", temporary),
+                                    capture_output=True, timeout=120)
+            if result.returncode or not temporary.is_file() or temporary.stat().st_size <= 44:
+                raise ValueError("Não foi possível extrair o áudio desta referência. Confira o arquivo original.")
+            os.replace(temporary, output)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return FileResponse(output, media_type="audio/wav", filename="referencia.wav", content_disposition_type="inline")
+
 class Project(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     mode: str = "tts"
@@ -361,6 +402,8 @@ class Project(BaseModel):
     language: str = "pt-BR"
     engine: str = DEFAULT_CLONE_MODEL
     asr_engine: str = DEFAULT_ASR_MODEL
+    adaptive_memory: bool = True
+    audio_name: str = Field(default="", max_length=160)
     character_id: str | None = None
     media_id: str | None = None
     background_id: str | None = None
@@ -410,7 +453,17 @@ def project_revisions(ident: str, request: Request):
 
 @app.post("/api/script/validate")
 def validate_script(body: Project):
-    return {"segments": compile_script(body.text, body.language, body.character_id, body.rate), "capabilities": {"pause": "exact", "rate": "postprocessing", "volume": "postprocessing", "emotion": "unavailable", "reactions": "unavailable"}}
+    return {"segments": compile_script(body.text, body.language, body.character_id, body.rate), "capabilities": {"pause": "exact", "rate": "postprocessing", "volume": "postprocessing", "emotion": "unavailable", "reactions": "audio_clips"}}
+
+@app.get("/api/reactions")
+def get_reactions():
+    from .reactions import catalog
+    return [{key: item[key] for key in ("id", "name", "category")} for item in catalog()]
+
+@app.get("/api/reactions/{ident}/file")
+def get_reaction_file(ident: str):
+    from .reactions import reaction_file
+    return FileResponse(reaction_file(ident), media_type="audio/wav", content_disposition_type="inline")
 
 def model_for_job(ident, kind):
     if ident not in CATALOG or CATALOG[ident]["kind"] != kind:
@@ -438,13 +491,16 @@ def snapshot(project, owner=None):
     if project["mode"] == "asr":
         value["model"] = model_for_job(project["asr_engine"], "asr")
         return value
-    value["model"] = model_for_job(project["engine"], "tts")
     if project["mode"] == "dub":
         if not value["media"].get("video"):
             raise ValueError("Selecione um vídeo para dublar.")
         cues = validate_cues(project["cues"])
-        if not cues:
-            raise ValueError("Importe e revise um SRT antes de dublar.")
+        value["automatic_dub"] = not bool(cues)
+        if not cues and project.get("character_id"):
+            character = owned("character", project["character_id"])
+            value["default_character"] = character["versions"][-1]
+        if not cues and project["engine"].startswith("qwen-") and not value.get("default_character", {}).get("reference"):
+            raise ValueError("Selecione uma voz com gravação de referência para dublar o vídeo.")
         previous_end = 0
         for cue in cues:
             if cue["start_ms"] < previous_end or cue["end_ms"] > value["media"]["duration"]*1000:
@@ -469,10 +525,19 @@ def snapshot(project, owner=None):
         if char_id:
             character = owned("character", char_id)
             segment["character"] = character["versions"][-1]
+        if segment.get("reaction"):
+            media = segment.get("character", {}).get("reaction_media", {}).get(segment["reaction"])
+            if media:
+                segment["reaction_media"] = owned("media", media["id"])
+            continue
         if project["engine"].startswith("qwen-"):
             character = segment.get("character")
             if not character or not character.get("reference"):
                 raise ValueError("Selecione um áudio de referência para clonar a voz.")
+    if models_needed(value):
+        value["model"] = model_for_job(project["engine"], "tts")
+    elif project["engine"] not in CATALOG or CATALOG[project["engine"]]["kind"] != "tts":
+        raise ValueError("Motor incompatível com esta operação.")
     return value
 
 @app.post("/api/projects/{ident}/generate")
@@ -482,13 +547,15 @@ def generate(ident: str, request: Request):
     if not visible(project_record, owner):
         raise HTTPException(403, "Projeto pertence a outro usuário.")
     project = snapshot(project_record, owner)
+    from .output_names import output_name
+    project["output_name"] = output_name(project, owner["username"])
     waiting = False
     for engine in models_needed(project):
         model = model_for_job(engine, "asr" if engine.startswith("whisper-") else "tts")
         if model.get("available") is False:
             waiting = True
             model_manager.request(engine, accept_license=True, automatic=True)
-    job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["name"], "snapshot": project, "status": "queued", "stage": "Aguardando modelo — o trabalho começará automaticamente" if waiting else "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
+    job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["output_name"], "snapshot": project, "status": "queued", "stage": "Aguardando modelo — o trabalho começará automaticamente" if waiting else "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
     threading.Thread(target=notify_job, args=(job,), daemon=True).start()
     (s.DATA / "jobs" / job["id"]).mkdir(parents=True, exist_ok=True)
     worker.wake.set()
