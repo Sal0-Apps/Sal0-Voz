@@ -14,6 +14,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 import android.view.MotionEvent;
+import android.view.InputDevice;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
@@ -36,7 +37,17 @@ public final class WebInterfaceTest {
     private MainActivity getActivity() { return activity; }
 
     @After
-    public void tearDown() { if (scenario != null) scenario.close(); }
+    public void tearDown() throws Exception {
+        try {
+            if (web != null) {
+                screenshot("android-final-state");
+                String state = js("JSON.stringify({url:location.href,width:innerWidth,height:innerHeight,scrollY,click:window.__sal0LastTap,visibleViews:[...document.querySelectorAll('.view')].filter(e=>!e.hidden).map(e=>e.id),open:[...document.querySelectorAll('details[open],dialog[open]')].map(e=>e.id),body:document.body.innerText})");
+                try (FileOutputStream file = new FileOutputStream(new File(getActivity().getExternalFilesDir(null), "web-state.json"))) {
+                    file.write(state.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+            }
+        } finally { if (scenario != null) scenario.close(); }
+    }
 
     @Before
     public void setUp() throws Exception {
@@ -81,9 +92,19 @@ public final class WebInterfaceTest {
 
     private void tap(String selector) throws Exception {
         String query = "document.querySelector(" + org.json.JSONObject.quote(selector) + ")";
-        until(query + "!==null");
+        until("(()=>{const e=" + query + ";return !!e&&e.getBoundingClientRect().width>0&&e.getBoundingClientRect().height>0&&!e.disabled})()");
         js("(" + query + ".scrollIntoView({block:'center',behavior:'instant'}),true)");
+        // The Android UI thread being idle does not mean Chromium has drawn a
+        // scroll or a newly expanded <details>. Synchronize the visual state
+        // before translating DOM coordinates into a physical touch.
+        CountDownLatch rendered = new CountDownLatch(1);
+        getInstrumentation().runOnMainSync(() -> web.postVisualStateCallback(1, new WebView.VisualStateCallback() {
+            @Override public void onComplete(long requestId) { web.postOnAnimation(rendered::countDown); }
+        }));
+        assertTrue("WebView rendered before touch", rendered.await(5, TimeUnit.SECONDS));
         getInstrumentation().waitForIdleSync();
+        until("(()=>{const e=" + query + ",r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;return y>0&&y<innerHeight&&e.contains(document.elementFromPoint(x,y))})()");
+        js("(()=>{window.__sal0LastTap={selector:" + org.json.JSONObject.quote(selector) + ",received:false};" + query + ".addEventListener('click',e=>{window.__sal0LastTap.received=e.isTrusted},{once:true,capture:true});return true})()");
         JSONArray rect = new JSONArray(js("(()=>{const r=" + query + ".getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2,innerWidth]})()"));
         int[] location = new int[2];
         getInstrumentation().runOnMainSync(() -> web.getLocationOnScreen(location));
@@ -93,10 +114,14 @@ public final class WebInterfaceTest {
         long now = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
         MotionEvent up = MotionEvent.obtain(now, now + 80, MotionEvent.ACTION_UP, x, y, 0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
         getInstrumentation().sendPointerSync(down);
+        SystemClock.sleep(80);
         getInstrumentation().sendPointerSync(up);
         down.recycle(); up.recycle();
         getInstrumentation().waitForIdleSync();
+        until("window.__sal0LastTap.received");
     }
 
     private void screenshot(String name) throws Exception {
@@ -129,8 +154,9 @@ public final class WebInterfaceTest {
         assertEquals(BuildConfig.VERSION_CODE, getActivity().getSharedPreferences("sal0_web_runtime", Context.MODE_PRIVATE).getInt("asset_cache_version", 0));
         assertEquals("true", js("new URL(document.querySelector('script[src]').src).searchParams.has('v')"));
         tap("#tab-library");
-        until("document.querySelector('#library-results-pane').open");
+        until("!document.querySelector('#view-library').hidden&&document.querySelector('#library-results-pane').open");
         tap("#library-voices");
+        until("document.querySelector('#view-characters').open");
         tap("#add-voice");
         until("document.querySelector('#voice-dialog').open");
         screenshot("android-voice-dialog");
