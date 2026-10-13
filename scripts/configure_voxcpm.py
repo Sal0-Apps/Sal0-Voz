@@ -3,6 +3,26 @@ from pathlib import Path
 import sys
 
 
+def configure_decode_limit(source):
+    start = source.index("void VoxCPM2Runtime::decode_loop(")
+    end = source.index("std::vector<float> VoxCPM2Runtime::decode_pool_range_to_waveform", start)
+    loop = source[start:end]
+    if "SAL0_TEXT_CAPACITY" in loop:
+        return source
+    # Both normal termination paths return before this new capacity error.
+    # Keep sampling, diffusion steps, and the stop predictor unchanged.
+    if loop.count("            break;") != 2 or not loop.endswith("}\n\n"):
+        raise ValueError("O limite de saída não corresponde ao motor fixado.")
+    loop = loop.replace("            break;", "            return;")
+    loop = loop[:-3] + '''    if (params.stop_on_predictor) {
+        fail("SAL0_TEXT_CAPACITY: output limit reached before the stop predictor");
+    }
+}
+
+'''
+    return source[:start]+loop+source[end:]
+
+
 def configure(root):
     path = Path(root) / "tools/omni/voxcpm2/voxcpm2_cli.cpp"
     source = path.read_text()
@@ -33,7 +53,7 @@ def configure(root):
     }'''
     if anchor not in source and replacement not in source:
         raise ValueError("A integração de threads não corresponde ao motor fixado.")
-    path.write_text(source.replace(anchor, replacement, 1))
+    path.write_text(configure_decode_limit(source.replace(anchor, replacement, 1)))
     # The pinned fork uses macOS F_NOCACHE in an otherwise portable MoE file.
     # VoxCPM2 is dense and does not use MoE; retain the macOS behavior while
     # allowing its shared runtime to compile on Linux without defining a fake flag.

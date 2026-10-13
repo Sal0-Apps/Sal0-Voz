@@ -3,21 +3,22 @@ from app.script import compile_script, split_text, parse_srt, subtitles
 
 def test_long_text_preserves_all_characters():
     text = ("Capítulo um. Olá, mundo! Uma voz em português.\n" * 2500)
-    parts = list(split_text(text))
+    parts = list(split_text(text, maximum=1600))
     assert "".join(parts) == text
-    assert all(len(x) <= 351 for x in parts)
+    assert all(len(x) <= 1601 for x in parts)
+    assert max(len(x) for x in parts) > 1400
     assert len(text) > 100000
 
-def test_each_sentence_is_generated_separately_with_punctuation_intact():
+def test_whole_text_is_preferred_with_punctuation_intact():
     text = 'Olá! Como você está? Tudo bem. Mais uma frase; depois: fim…\nOutra linha.'
     parts = list(split_text(text))
-    assert parts == ['Olá! ', 'Como você está? ', 'Tudo bem. ', 'Mais uma frase; ', 'depois: ', 'fim…\n', 'Outra linha.']
+    assert parts == [text]
     assert ''.join(parts) == text
     assert [x['text'] for x in compile_script(text)] == parts
 
 def test_numbers_and_titles_do_not_break_mid_expression():
     text = 'Dr. Silva pagou 3.14 reais. São 12:30 agora!'
-    assert list(split_text(text)) == ['Dr. Silva pagou 3.14 reais. ', 'São 12:30 agora!']
+    assert list(split_text(text, maximum=29)) == ['Dr. Silva pagou 3.14 reais. ', 'São 12:30 agora!']
 
 def test_controls_do_not_become_spoken_text():
     result = compile_script("[personagem=luna][idioma=pt-BR][ritmo=1.05]Olá![/ritmo][pausa=450ms]Fim.")

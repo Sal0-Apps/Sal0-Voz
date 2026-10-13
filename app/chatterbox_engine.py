@@ -9,6 +9,7 @@ from .audio_files import checkpoint_audio
 from . import storage as s
 from .resources import memory_available, release_temporary_memory, is_memory_error
 from .engine_policy import MEMORY_GIB, MemoryUnavailable
+from .generation_limits import chatterbox_capacity
 
 
 def load_model(folder, torch):
@@ -109,7 +110,7 @@ class ChatterboxEngine:
             raise ValueError("Expressividade: escolha um valor entre 0,25 e 1,20.")
         import torch
         import soundfile as sf
-        with torch.inference_mode():
+        with torch.inference_mode(), chatterbox_capacity(self.model):
             self.prepare_reference(request["reference"], expression)
             wav = self.model.generate(request["text"], language_id="pt", audio_prompt_path=None,
                                       exaggeration=expression, cfg_weight=0.3,

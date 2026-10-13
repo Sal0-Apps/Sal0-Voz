@@ -7,7 +7,7 @@ import threading
 from . import storage as s
 from .catalog import runtime
 from .engine_policy import MemoryUnavailable, MEMORY_GIB
-from .resources import oom_kills, memory_available, ProcessInterrupted, stop_process_tree
+from .resources import oom_kills, memory_available, ProcessInterrupted, stop_process_tree, TextCapacityExceeded
 
 class EngineSession:
     def __init__(self, worker, ident, request, folder):
@@ -73,6 +73,8 @@ class EngineSession:
                     raise MemoryUnavailable(value["required"], value["available"])
                 if value.get("kind") == "interrupted":
                     raise ProcessInterrupted(value["error"])
+                if value.get("kind") == "text_capacity":
+                    raise TextCapacityExceeded(value["error"])
                 raise ValueError(value["error"])
             return value
 

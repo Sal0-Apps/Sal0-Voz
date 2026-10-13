@@ -144,9 +144,9 @@ def test_voxcpm_style_retries_regenerate_old_spoken_instructions(owner,data,monk
         calls.append(request);type(data)(request['output']).write_bytes(audio_bytes(1))
     monkeypatch.setattr(worker,'engine',engine)
     worker.update(job['id'],status='running');worker.execute(job)
-    assert [x['text'] for x in calls]==['Olá! ','Tudo bem?']
+    assert [x['text'] for x in calls]==['Olá! Tudo bem?']
     assert all(x['voice_style']=='excited' and x['reference_text']=='' for x in calls)
-    worker.execute(s.get('job',job['id']));assert len(calls)==2
+    worker.execute(s.get('job',job['id']));assert len(calls)==1
 
 def test_video_reference_and_unusual_extensions_are_converted(owner, data):
     source = data/'media'/'source.mkv'
@@ -258,7 +258,7 @@ def test_video_is_dubbed_without_srt_and_keeps_all_transcribed_text(owner,data,m
     result = s.get('job',job['id'])
     assert result['cues'][0]['text'] == 'Todo o texto [literal]. Outra frase!'
     assert calls[0]['engine'] == 'whisper-large-v3-turbo'
-    assert [x['text'] for x in calls if x['engine']=='qwen-1.7b']==['Todo o texto [literal]. ','Outra frase!']
+    assert [x['text'] for x in calls if x['engine']=='qwen-1.7b']==['Todo o texto [literal]. Outra frase!']
     assert calls[-1]['reference_text'] == 'Texto da referência.'
     info = probe(s.safe_path(result['outputs'][0]['path']))
     assert info['video'] and info['audio'] and abs(info['duration']-4) < .15
@@ -269,7 +269,7 @@ def test_video_is_dubbed_without_srt_and_keeps_all_transcribed_text(owner,data,m
     previous = len(calls);worker.execute(s.get('job',job['id']))
     assert len(calls) == previous
 
-def test_sentences_keep_one_voice_model_and_one_process(owner,data,monkeypatch):
+def test_whole_text_keeps_one_voice_model_and_one_process(owner,data,monkeypatch):
     import app.main as main
     import app.worker as module
     monkeypatch.setattr(main,'require',lambda *args:{'id':args[0],'revision':'fixed'})
@@ -287,10 +287,10 @@ def test_sentences_keep_one_voice_model_and_one_process(owner,data,monkeypatch):
     monkeypatch.setattr(module,'EngineSession',Session)
     worker=Worker();worker.update(job['id'],status='running');worker.execute(job)
     assert len(sessions)==1 and sessions[0].closed
-    assert [x['text'] for x in requests]==['Primeira! ','Segunda? ','Terceira.']
+    assert [x['text'] for x in requests]==['Primeira! Segunda? Terceira.']
     assert all(x['engine']=='qwen-1.7b' for x in requests)
     result=s.get('job',job['id'])
-    assert len(result['cues'])==3 and abs(probe(s.safe_path(result['outputs'][0]['path']))['duration']-3)<.01
+    assert len(result['cues'])==1 and abs(probe(s.safe_path(result['outputs'][0]['path']))['duration']-1)<.01
 
 def test_manual_dubbing_cue_can_have_multiple_sentences(owner,monkeypatch):
     import app.main as main
@@ -300,5 +300,5 @@ def test_manual_dubbing_cue_can_have_multiple_sentences(owner,monkeypatch):
     response=owner.post('/api/projects/'+project['id']+'/generate')
     assert response.status_code==200,response.text
     segments=s.get('job',response.json()['id'])['snapshot']['segments']
-    assert [x['text'] for x in segments]==['Olá! ','Tudo bem?']
+    assert [x['text'] for x in segments]==['Olá! Tudo bem?']
     assert all(x['cue_index']==0 and x['start_ms']==0 and x['end_ms']==4000 for x in segments)

@@ -1,5 +1,7 @@
 import json
+import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,11 +16,11 @@ from .catalog import CATALOG, runtime, require, model_files, models_needed, DEFA
 from .engine_session import EngineSession
 from .engine_policy import choose_profile, MemoryUnavailable
 from .engine_policy import MEMORY_GIB
-from .resources import cgroup_memory, memory_available, release_temporary_memory, ProcessInterrupted, stop_process_tree, is_memory_error
+from .resources import cgroup_memory, memory_available, release_temporary_memory, ProcessInterrupted, stop_process_tree, is_memory_error, TextCapacityExceeded
 from .audio_files import audio_valid, checkpoint_audio
 from .model_manager import manager as model_manager
 from .media import ffargs, probe, input_args
-from .script import subtitles
+from .script import subtitles, split_text
 from .reactions import caption, synthesis_text, render_policy
 from .telegram import notify_job
 
@@ -117,7 +119,7 @@ class Worker:
 
     @staticmethod
     def speech_started(project, folder):
-        return any(segment.get("pause_ms") is None and (not segment.get("reaction") or
+        return any(folder.glob("raw-*.parts.json")) or any(segment.get("pause_ms") is None and (not segment.get("reaction") or
                    (folder / f"render-{index:06d}.json").is_file()) and
                    any((folder / f"{prefix}-{index:06d}.json").is_file() for prefix in ("segment", "raw"))
                    for index, segment in enumerate(project.get("segments", [])))
@@ -140,6 +142,7 @@ class Worker:
             folder = s.DATA / "jobs" / ident
             saved = sum(any((folder / f"{prefix}-{index:06d}.json").is_file() for prefix in ("segment", "raw"))
                         for index in range(len(project.get("segments", []))))
+            saved += len(list(folder.glob("raw-*.part-*.json")))
             previous = job.get("consecutive_retries", 0) if saved <= job.get("retry_checkpoint_count", -1) else 0
             consecutive = previous + 1
             delay = min(300, 5 * 2**min(consecutive-1, 6))
@@ -229,6 +232,8 @@ class Worker:
                 self.retry(ident, exc, project, {"required_gib": exc.required, "available_gib": round(exc.available, 1)})
             except ProcessInterrupted as exc:
                 self.retry(ident, exc)
+            except TextCapacityExceeded as exc:
+                self.retry(ident, exc)
             except Exception as exc:
                 failed = self.update(ident, status="failed", stage=str(exc), error=str(exc))
                 notify_job(failed)
@@ -274,6 +279,57 @@ class Worker:
             self._execute(job)
         finally:
             self.close_clone()
+
+    def synthesize(self, ident, request, folder):
+        """Try one whole utterance; split only an overloaded, unfinished part."""
+        output = Path(request["output"])
+        plan_path = output.with_suffix(".parts.json")
+        project = s.get("job", ident)["snapshot"]
+        request["dtype"] = project.get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
+        context = {key: request.get(key) for key in ("text", "engine", "dtype", "language", "reference_text", "voice_style", "expressiveness", "reaction")}
+        context["reference_sha256"] = s.digest(request["reference"])
+        fingerprint = hashlib.sha256(json.dumps(context, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        try:
+            plan = json.loads(plan_path.read_text())
+            if (plan.get("fingerprint") != fingerprint or
+                    "".join(part["text"] for part in plan["parts"]) != request["text"] or
+                    not all(re.fullmatch(r"0(?:-\d+)*", part["key"]) for part in plan["parts"])):
+                raise ValueError("Plano de síntese incompatível.")
+        except (OSError, ValueError, KeyError, TypeError):
+            plan = {"fingerprint": fingerprint, "parts": [{"key":"0", "text":request["text"]}]}
+            for stale in folder.glob(output.stem+".part-*"):
+                stale.unlink(missing_ok=True)
+            plan_path.unlink(missing_ok=True)
+        paths = []
+        for index, part in enumerate(plan["parts"]):
+            self.check(ident)
+            target = output if part["key"] == "0" else output.with_name(output.stem+".part-"+part["key"]+".wav")
+            if not audio_valid(target):
+                try:
+                    self.engine(ident, {**request, "text":part["text"], "output":str(target)}, folder)
+                except (MemoryUnavailable, TextCapacityExceeded) as exc:
+                    # A failure while loading the model is not caused by text.
+                    # A confirmed WAV is already complete even if its reply failed.
+                    divided = False
+                    if (self.clone_session is not None or isinstance(exc, TextCapacityExceeded)) and not audio_valid(target) and not request.get("reaction") and len(part["text"]) > 64:
+                        smaller = list(split_text(part["text"], maximum=max(32, len(part["text"])//2)))
+                        if len(smaller) > 1:
+                            plan["parts"][index:index+1] = [{"key":part["key"]+"-"+str(i), "text":text} for i, text in enumerate(smaller)]
+                            s.atomic_json(plan_path, plan)
+                            divided = True
+                    if isinstance(exc, TextCapacityExceeded) and not divided:
+                        raise ValueError("Um trecho ultrapassa a capacidade do modelo e não pode ser dividido sem cortar uma palavra. Revise esse trecho.") from exc
+                    raise
+                if not audio_valid(target):
+                    checkpoint_audio(target)
+            paths.append(target)
+        if plan_path.exists():
+            temporary = output.with_name(output.stem+".joining.wav")
+            with wave.open(str(paths[0]), "rb") as first:
+                sample_rate = first.getframerate()
+            self.concatenate(paths, temporary, ident, sample_rate)
+            os.replace(temporary, output)
+            checkpoint_audio(output)
 
     def prepare_references(self, ident, project, folder):
         # ASR exits before cloning; Chatterbox does not need a transcript.
@@ -404,7 +460,7 @@ class Worker:
                             text_file.write_text(text, encoding="utf-8")
                             self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
                         else:
-                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": text, "reaction": segment.get("reaction"), "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "expressiveness": project.get("expressiveness", 0.7), "voice_style": project.get("voice_style", "natural"), "output": str(raw), "checkpoint": True}, folder)
+                            self.synthesize(ident, {"engine": project["engine"], "language": segment["language"], "text": text, "reaction": segment.get("reaction"), "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "expressiveness": project.get("expressiveness", 0.7), "voice_style": project.get("voice_style", "natural"), "output": str(raw), "checkpoint": True}, folder)
                         if not audio_valid(raw):
                             checkpoint_audio(raw)
                     if index == last_speech:

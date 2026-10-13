@@ -3,31 +3,41 @@ import re
 from .reactions import reaction
 
 
-def split_text(text, maximum=350):
-    """Generate sentences separately, preserving punctuation and all whitespace."""
-    # Decimal numbers stay intact. Common titles/initials are not sentence ends.
+def split_text(text, maximum=None):
+    """Keep whole text by default; group sentences only after a capacity failure."""
+    if maximum is None or len(text) <= maximum:
+        if text:
+            yield text
+        return
+    if maximum < 1:
+        raise ValueError("O limite do trecho precisa ser positivo.")
     pattern = r'[!?…。！？]+["\'»”’)\]]*\s*|[.;:]["\'»”’)\]]*(?:\s+|$)|\n+'
-    cursor = 0
+    boundaries = []
     for match in re.finditer(pattern, text):
-        boundary = text[max(cursor, match.start()-32):match.end()].rstrip()
-        if match.end() < len(text) and re.search(r'(?i)\b(?:sr|sra|dr|dra|prof|profa|mr|mrs|ms|vs|etc)\.$', boundary):
+        preceding = text[max(0, match.start()-32):match.end()].rstrip()
+        if match.end() < len(text) and re.search(r'(?i)\b(?:sr|sra|dr|dra|prof|profa|mr|mrs|ms|vs|etc)\.$', preceding):
             continue
-        if match.end() < len(text) and re.search(r'\b[A-Z]\.$', boundary):
+        if match.end() < len(text) and re.search(r'\b[A-Z]\.$', preceding):
             continue
-        yield from bounded_text(text[cursor:match.end()], maximum)
-        cursor = match.end()
-    yield from bounded_text(text[cursor:], maximum)
-
-def bounded_text(text, maximum):
-    # A sentence without punctuation is still bounded, without cutting words
-    # unless a single word is longer than the engine's chunk limit.
-    while len(text) > maximum:
-        candidates = list(re.finditer(r"\s+", text[:maximum + 1]))
-        cut = candidates[-1].end() if candidates else maximum
-        yield text[:cut]
-        text = text[cut:]
-    if text:
-        yield text
+        boundaries.append(match.end())
+    cursor = 0
+    while len(text)-cursor > maximum:
+        limit = cursor+maximum
+        candidates = [end for end in boundaries if cursor+maximum//2 <= end <= limit]
+        if candidates:
+            cut = candidates[-1]
+        else:
+            spaces = list(re.finditer(r"\s+", text[cursor:limit+1]))
+            if spaces:
+                cut = cursor+spaces[-1].end()
+            else:
+                # Never cut a word just to satisfy a length estimate.
+                following = re.search(r"\s+", text[limit:])
+                cut = limit+following.end() if following else len(text)
+        yield text[cursor:cut]
+        cursor = cut
+    if cursor < len(text):
+        yield text[cursor:]
 
 
 def compile_script(source, language="pt-BR", character_id=None, rate=1.0):

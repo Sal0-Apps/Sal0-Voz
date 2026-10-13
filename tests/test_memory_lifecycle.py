@@ -230,23 +230,20 @@ def test_catalog_polling_pages_before_decoding_and_omits_snapshots(data, monkeyp
     assert s.job_state(records[0]["id"])["status"]=="completed"
 
 
-def test_telegram_streams_file_and_sets_exact_length(tmp_path, monkeypatch):
+def test_telegram_sends_only_small_json_message_without_attachments(monkeypatch):
     import app.telegram as module
-    path=tmp_path/"result.wav"; path.write_bytes(b"sample"*250000)
-    sizes=[]; seen=[]
-    def read_bytes_forbidden(*args):
-        pytest.fail("An output must be streamed, never read into one buffer")
-    monkeypatch.setattr(Path,"read_bytes",read_bytes_forbidden)
+    seen = []
     def urlopen(request, **options):
-        assert not isinstance(request.data,(bytes,bytearray))
-        for chunk in request.data:
-            sizes.append(len(chunk))
-            if len(sizes)==1:seen.append(chunk)
-        assert sum(sizes)==int(request.get_header("Content-length"))
+        seen.append(request)
+        assert request.full_url.endswith('/sendMessage')
+        assert isinstance(request.data, bytes)
+        assert request.get_header('Content-type') == 'application/json'
+        assert options['timeout'] == 30
         return contextlib.nullcontext(SimpleNamespace(status=200))
-    monkeypatch.setattr(module.urllib.request,"urlopen",urlopen)
-    assert module._request("dummy","sendDocument",{"chat_id":"local"},path)
-    assert max(sizes)<=256*1024 and len(sizes)>5 and b'result.wav' in seen[0]
+    monkeypatch.setattr(module.urllib.request, 'urlopen', urlopen)
+    assert module.send_message({'telegram_token':'dummy', 'telegram_chat_id':'local'}, 'Um link')
+    assert json.loads(seen[0].data)['link_preview_options'] == {'is_disabled':True}
+    assert not hasattr(module, 'send_document')
 
 
 @pytest.mark.parametrize("interrupted",[False,True])

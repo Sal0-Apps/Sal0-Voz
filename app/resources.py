@@ -25,6 +25,10 @@ class ProcessInterrupted(RuntimeError):
     """A subprocess exited unexpectedly and can restart from disk checkpoints."""
     pass
 
+class TextCapacityExceeded(ValueError):
+    """A native text/token limit requires smaller utterances, not lower precision."""
+    pass
+
 def is_memory_error(value):
     return isinstance(value, MemoryError) or any(term in str(value).lower() for term in (
         "defaultcpuallocator", "not enough memory", "out of memory", "std::bad_alloc",

@@ -6,7 +6,7 @@ from pathlib import Path
 from .audio_files import checkpoint_audio
 from .catalog import runtime_binary
 from .engine_policy import MEMORY_GIB, MemoryUnavailable
-from .resources import memory_available
+from .resources import memory_available, TextCapacityExceeded
 from .voice_styles import instruction
 
 
@@ -55,11 +55,14 @@ class VoxCPMEngine:
                 "--output", str(temporary), *(str(path) for path in self.weights)]
         try:
             with log.open("ab") as stream:
+                log_start = log.stat().st_size
                 result = subprocess.run(args, stdout=stream, stderr=subprocess.STDOUT, env=env, check=False)
             if result.returncode or not temporary.is_file() or temporary.stat().st_size <= 44:
                 with log.open("rb") as stream:
-                    stream.seek(max(0, log.stat().st_size - 4000))
+                    stream.seek(max(log_start, log.stat().st_size - 4000))
                     detail = stream.read().decode("utf-8", errors="replace")
+                if "SAL0_TEXT_CAPACITY" in detail:
+                    raise TextCapacityExceeded("O VoxCPM2 atingiu o limite nativo antes de terminar a fala.")
                 if result.returncode == -9:
                     raise MemoryUnavailable(MEMORY_GIB["voxcpm2", "float16"], memory_available()/1024**3)
                 if result.returncode == -4:

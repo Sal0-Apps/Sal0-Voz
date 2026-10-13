@@ -1,6 +1,6 @@
 // Real FastAPI startup and reload regression: no simulated API responses.
 const { chromium } = require('playwright');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -56,7 +56,9 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(()=>document.querySelector('#retry-connection').hidden&&!document.querySelector('#current-result').hidden,{},{timeout:12000});
     assert.equal(await page.locator('#script').inputValue(),'Um trabalho que permanece após atualizar.');
     await page.unroute('**/api/models');
-    // A later outage preserves visible jobs and a typed draft, then saves it.
+    await page.locator('#add-another').click();
+    assert.equal(await page.locator('#creation-editor').isVisible(),true);
+    // A later outage preserves the tracked job and a typed draft, then saves it.
     let disconnected=true;
     await page.route('**/api/**',route=>disconnected?route.fulfill({status:503,contentType:'application/json',body:'{"detail":"temporary connection failure"}'}):route.continue());
     await page.locator('#script').fill('Rascunho preservado durante a queda de conexão.');
@@ -66,6 +68,10 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('#queue-count').textContent(),'1');
     disconnected=false;
     await page.waitForFunction(()=>document.querySelector('#retry-connection').hidden&&document.querySelector('#save-state').textContent==='Projeto salvo no servidor',{},{timeout:15000});
+    assert.equal(await page.locator('#script').inputValue(),'Rascunho preservado durante a queda de conexão.');
+    await page.locator('#return-to-job').click();
+    assert.equal(await page.locator('#current-result').isVisible(),true);
+    await page.locator('#back-to-draft').click();
     assert.equal(await page.locator('#script').inputValue(),'Rascunho preservado durante a queda de conexão.');
     const saved=await page.evaluate(async()=>await(await fetch('/api/projects')).json());
     assert.equal(saved[0].text,'Rascunho preservado durante a queda de conexão.');
@@ -79,8 +85,19 @@ const assert = require('node:assert/strict');
     await page.evaluate(()=>globalThis.legacyStreams=Array.from({length:6},()=>new EventSource('/api/events/stream')));
     assert.equal(await page.evaluate(async()=>(await fetch('/health',{signal:AbortSignal.timeout(2000)})).ok),true);
     await page.evaluate(()=>globalThis.legacyStreams.forEach(stream=>stream.close()));
+    // A Telegram link opens an older job even outside the first results page.
+    const seeded=spawnSync(process.env.SAL0_TEST_PYTHON||'python',['-c',"from app import storage as s; [s.put('job',{'owner_username':'admin','status':'completed','name':str(i),'outputs':[]}) for i in range(55)]"],{cwd:path.join(__dirname,'..'),env:{...process.env,SAL0_DATA:data},encoding:'utf8'});
+    assert.equal(seeded.status,0,seeded.stderr);
+    await page.goto(base+'/?job='+before.jobs[0].id);
+    await page.waitForFunction(name=>!document.querySelector('#current-result').hidden&&document.querySelector('#current-result h2')?.textContent===name,before.jobs[0].name);
+    assert.equal(await page.locator('#script').inputValue(),'Rascunho preservado durante a queda de conexão.');
+    await page.locator('#back-to-draft').click();
+    assert.equal(await page.locator('#script').inputValue(),'Rascunho preservado durante a queda de conexão.');
+    await page.locator('#return-to-job').click();
+    await page.locator('#add-another').click();
+    assert.equal(new URL(page.url()).searchParams.has('job'),false);
     assert.deepEqual(errors,[]);
-    console.log('PASS: real API/reload, partial failures preserve jobs, automatic recovery saves draft, seven tabs and legacy streams remain responsive');
+    console.log('PASS: real API/reload, partial failures preserve jobs, automatic recovery saves draft, seven tabs and legacy streams remain responsive; authenticated Telegram link opens older job and preserves draft');
   }finally{
     await browser?.close();server.kill('SIGTERM');await new Promise(r=>{if(server.exitCode!==null)return r();server.once('exit',r);setTimeout(()=>{server.kill('SIGKILL');r();},3000).unref();});fs.rmSync(data,{recursive:true,force:true});
   }

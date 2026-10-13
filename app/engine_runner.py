@@ -49,11 +49,12 @@ class QwenEngine:
     def generate(self, request):
         import torch
         import soundfile as sf
+        from .generation_limits import qwen_capacity
         from qwen_tts.inference.qwen3_tts_model import VoiceClonePromptItem
         transcript = (request.get("reference_text") or "").strip()
         if not transcript:
             raise ValueError("A gravação precisa ser transcrita antes da clonagem. Confira a preparação da referência.")
-        with torch.inference_mode(), torch.autocast(device_type="cpu", dtype=torch.bfloat16, enabled=self.dtype == "bfloat16"):
+        with torch.inference_mode(), torch.autocast(device_type="cpu", dtype=torch.bfloat16, enabled=self.dtype == "bfloat16"), qwen_capacity(self.model.model.talker):
             prompt = self.prompts.get(request["reference"], transcript,
                                      lambda: self.model.create_voice_clone_prompt(
                                          ref_audio=request["reference"], ref_text=transcript, x_vector_only_mode=False),
@@ -109,13 +110,15 @@ def reply(value):
 
 def error_reply(exc, request, retryable=False):
     from .engine_policy import MemoryUnavailable, MEMORY_GIB
-    from .resources import memory_available
+    from .resources import memory_available, TextCapacityExceeded
     value = {"error": str(exc)}
     memory_error = isinstance(exc, MemoryUnavailable) or is_memory_error(exc)
     if memory_error:
         from .catalog import CATALOG
         dtype = request.get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
         value.update(kind="memory", required=getattr(exc, "required", MEMORY_GIB[(request["engine"], dtype)]), available=getattr(exc, "available", memory_available()/1024**3))
+    elif isinstance(exc, TextCapacityExceeded):
+        value["kind"] = "text_capacity"
     elif retryable and isinstance(exc, (RuntimeError, InterruptedError, TimeoutError)):
         value["kind"] = "interrupted"
     reply(value)

@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.9
+# Manual — Sal0 Voz 0.4.0
 
 ## Primeira instalação
 
@@ -8,16 +8,16 @@ O entrypoint prepara a pasta e inicia o serviço como usuário não privilegiado
 
 Crie a senha do proprietário na primeira abertura. A aplicação deve ficar na rede doméstica. HTTPS local permite gravar o microfone de um celular; pelo IP via HTTP, use upload de uma gravação.
 
-A tela inicial usa **Clonar uma voz**, no perfil **Maior fidelidade · Qwen 1.7B**. A voz simples de diagnóstico continua disponível no seletor Tipo de voz para testar instalação e exportação.
+A tela inicial é **Criar → Texto em voz**, com o modelo **Qwen 1.7B**. Escolha ou envie a voz, escreva o texto e gere. **Voz de teste** continua disponível no seletor Modelo para conferir instalação e exportação.
 
-A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e `whisper-large-v3-turbo` são preparados automaticamente em segundo plano, em `/data/models`, com revisões fixas e verificação dos arquivos. O navegador recebe somente o status. Você já pode criar a senha, enviar arquivos e preparar textos enquanto espera. A geração aguarda o modelo necessário ficar pronto; não bloqueia a abertura do aplicativo. Em **Ajustes → Modelos do aplicativo**, confira a fila, o progresso e os controles de preparação.
+A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e `whisper-large-v3-turbo` são preparados automaticamente em segundo plano, em `/data/models`, com revisões fixas e verificação dos arquivos. O navegador recebe somente o status. Você já pode criar a senha, enviar arquivos e preparar textos enquanto espera. A geração aguarda o modelo necessário ficar pronto; não bloqueia a abertura do aplicativo. Em **Ajustes → Modelos**, confira a fila, o progresso e os controles de preparação.
 
 `qwen-0.6b`, OmniVoice, VoxCPM2, Chatterbox e os Whisper opcionais são baixados quando você os prepara ou envia um trabalho que precisa deles. Arquivos completos são reutilizados e downloads interrompidos preservam os arquivos parciais para retomada. A preparação precisa de internet; a inferência usa arquivos locais mesmo com `HF_HUB_OFFLINE=1` e `TRANSFORMERS_OFFLINE=1` no Compose.
 
 ## OmniVoice e VoxCPM2 opcionais
 
-1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.3.9** em Ajustes. Atualizar somente a página não instala as correções do servidor.
-2. Abra **Ajustes → Modelos do aplicativo → Preparar este modelo**, ou escolha o modelo no passo 3 e clique em **Baixar no servidor**.
+1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.4.0** em Conta. Atualizar somente a página não instala as correções do servidor.
+2. Abra **Ajustes → Modelos → Preparar este modelo**, ou escolha o modelo no passo 3 e clique em **Baixar no servidor**.
 3. **Fidelidade e expressão · OmniVoice 0.6B** baixa cerca de 3,1 GiB, incluindo seu codec. Usa float32 em CPU, 32 passos completos e segue a interpretação da referência. Prefira 3 a 10 segundos de fala limpa. Uma gravação maior com transcrição vazia é recortada e transcrita automaticamente. Com transcrição manual, use uma gravação de até 10 segundos e o texto exato dela.
 4. **Clonagem e emoções · VoxCPM2 2B** baixa cerca de 4,8 GiB. Usa os dois componentes F16 completos no motor de CPU e 10 passos de difusão. A montagem preserva os 48 kHz. **Como interpretar a fala → Natural** mantém a continuação com áudio e transcrição; os demais tons usam somente a referência de voz, com a orientação no início do contexto próprio de controle. Essa separação corrige a instrução falada como parte do áudio. A intensidade pode variar entre gerações.
 5. Escolha a voz, escreva ou importe o texto, selecione o modelo e gere. Na dublagem, escolha a voz, envie o áudio/vídeo, selecione o modelo e gere; a transcrição do original é automática.
@@ -28,7 +28,7 @@ Os pesos não estão na imagem e permanecem no volume após atualizar. As depend
 
 Para avaliar uma clonagem mais expressiva no servidor com quatro núcleos e limite de 10 GiB:
 
-1. Abra **Ajustes → Modelos do aplicativo** e prepare **Expressiva · Chatterbox V3 pt-BR**, ou selecione-o no passo 3 e clique em **Baixar no servidor**.
+1. Abra **Ajustes → Modelos** e prepare **Expressiva · Chatterbox V3 pt-BR**, ou selecione-o no passo 3 e clique em **Baixar no servidor**.
 2. Aguarde o download de aproximadamente 3 GiB. O progresso fica salvo no servidor e downloads interrompidos podem ser retomados.
 3. Escolha sua voz salva ou envie áudio/vídeo, escreva o texto e selecione o novo modelo. Use **Português brasileiro** como idioma do texto.
 4. Comece com **Expressividade 0,70**. Reduza para 0,50 se o resultado exagerar; a amostra deve ter fala clara e a interpretação desejada.
@@ -40,16 +40,19 @@ O modelo e o decoder V3 são carregados localmente em float32, sem CUDA. A reser
 
 O primeiro acesso cria uma conta administradora. Em **Ajustes → Usuários**, o administrador cria ou remove contas comuns e administradoras. Cada conta possui seus projetos, mídias, personagens e configuração de Telegram.
 
-Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat ID do destino. O servidor envia a situação do trabalho e anexa os arquivos gerados quando a tarefa termina. O token fica somente no volume `/data`; ele nunca é enviado ao navegador além da máscara parcial.
+Em **Ajustes → Telegram**, informe o token criado pelo `@BotFather` e o Chat ID do destino. O servidor envia a situação do trabalho e um link para abrir o andamento ou os resultados. Nenhum arquivo é anexado ou transferido ao Telegram. Informe o Endereço do aplicativo que funciona no celular; o login normal continua obrigatório. Na ausência de um endereço configurado, novos trabalhos usam o endereço da página de envio. O token fica somente no volume `/data`; ele nunca é enviado ao navegador além da máscara parcial.
 
-## Criar sem configurar o motor
+## Interface e criação
 
-- **Voz simples:** escreva o texto e clique em Gerar voz. Disponível imediatamente, com timbre robótico para testar a instalação.
-- **Clonar uma voz:** envie uma gravação, informe o idioma dela, escreva o texto e clique em Gerar voz. O app salva a voz e prepara a transcrição automaticamente. O idioma do texto pode ser diferente do da gravação.
-- **Gerar legendas:** envie áudio ou vídeo na própria tela, escolha o idioma e gere.
-- O rascunho é salvo automaticamente no servidor e o projeto mais recente é reaberto ao entrar. O resultado aparece na tela Criar e na Biblioteca.
-- Qwen 1.7B e large-v3-turbo são preparados após iniciar o app; Qwen 0.6B, OmniVoice, VoxCPM2 e Chatterbox ficam disponíveis como downloads opcionais. Downloads interrompidos podem ser retomados; o botão Retomar preparação aparece na tela inicial quando necessário.
-- Uma tarefa enviada antes do modelo ficar pronto permanece na fila. Em caso de falha de rede ou espaço, Ajustes mostra o erro; retome o download e o trabalho.
+A interface segue a organização do Sal0-Karaoke, com conteúdo centralizado e três abas: **Criar**, **Biblioteca** e **Ajustes**. Na Biblioteca, vozes, arquivos, resultados e projetos ficam em listas separadas. Prévia e ações extras abrem quando você precisa delas. Adicionar ou editar uma voz usa uma janela própria.
+
+- **Texto em voz:** escolha uma voz salva ou clique em **+ Nova voz**, digite ou importe TXT/SRT, escolha o modelo e clique em **Gerar áudio**. A referência é salva e preparada automaticamente quando necessária.
+- **Dublar:** escolha a voz, envie áudio ou vídeo, escolha o modelo e clique em **Gerar vídeo dublado**. Não precisa de SRT.
+- **Legendar:** envie áudio ou vídeo, escolha o modelo de transcrição e clique em **Gerar legendas**.
+- **Personalizar** reúne reações, tom, ritmo, idioma, formato, nome do áudio e opções de revisão. Começa recolhido. Todos os painéis de Ajustes também começam recolhidos.
+- Ao enviar, a tela mostra carregamento até o servidor confirmar a tarefa; em seguida mostra andamento e resultados. **Adicionar outro** abre uma criação vazia e conserva voz, idioma, modelo e preferências. **Ver andamento** permite voltar à tarefa; **Voltar à criação** conserva o rascunho.
+- O rascunho salva automaticamente no servidor; um novo rascunho digitado durante uma falha de rede também é salvo após reconectar. Um envio já confirmado não é repetido automaticamente. Atualizar a página restaura os projetos e trabalhos persistentes.
+- Qwen 1.7B e Whisper Turbo são preparados após iniciar o app. Os modelos opcionais são baixados no servidor e preservados no volume. Uma tarefa aguarda os modelos necessários, sem bloquear a interface.
 
 ## Atualizar usando latest
 
@@ -70,7 +73,7 @@ A preparação transfere um arquivo por vez, com blocos de 256 KiB. O painel mos
 
 Quando um download fica três minutos sem avanço, o processo é encerrado e a conexão é renovada após um intervalo. Falhas temporárias de rede também agendam nova tentativa, inclusive para downloads iniciados manualmente. O intervalo cresce até cinco minutos. A conferência de hashes informa seu próprio progresso e não é confundida com transferência parada. Use **Pausar download** para suspender também uma nova tentativa já agendada. Arquivos e planos permanecem na pasta de dados.
 
-A tela consulta fila e modelos sem manter conexões abertas por aba. Consultas têm limite de tempo e recuperação automática; uma falha no catálogo não impede mostrar os trabalhos. O rascunho aberto é preservado. Alterações pendentes em um projeto já salvo são reenviadas após reconectar; envios de novos trabalhos não são repetidos automaticamente. A página verifica a conexão ao voltar para o primeiro plano ou recuperar a rede. O botão **Tentar conectar novamente** continua disponível.
+A tela consulta fila e modelos sem manter conexões abertas por aba. Consultas têm limite de tempo e recuperação automática; uma falha no catálogo não impede mostrar os trabalhos. O rascunho aberto é preservado. Alterações pendentes, inclusive em novos rascunhos, são reenviadas após reconectar; envios de novos trabalhos não são repetidos automaticamente. A página verifica a conexão ao voltar para o primeiro plano ou recuperar a rede. O botão **Reconectar** continua disponível.
 
 ## Instalar modelos explicitamente (opcional)
 
@@ -94,13 +97,13 @@ Troque o identificador por `omnivoice`, `voxcpm2`, `whisper-medium`, `whisper-la
 
 Os ambientes Python já vêm na imagem. Todos os pesos são baixados pelo servidor após a instalação, sem passar pelo navegador. Um modelo instalado não é sobrescrito automaticamente. Trocar uma cópia persistente exige preservar os pesos antigos e atualizar a instalação explicitamente.
 
-Na interface, use Ajustes → Atualizar diagnóstico.
+Na interface, use Ajustes → Modelos → Atualizar; a memória aparece em Ajustes → Servidor.
 
 ## Personagens e clonagem
 
-1. Envie áudio ou vídeo com fala limpa diretamente em Minhas vozes, ou escolha um arquivo da Biblioteca. O app extrai e converte o áudio automaticamente.
+1. Envie áudio ou vídeo com fala limpa em Biblioteca → Vozes → Adicionar voz, ou escolha um arquivo da Biblioteca. O app extrai e converte o áudio automaticamente.
 2. Crie um personagem, informe a origem, selecione o áudio; a transcrição é opcional.
-3. Em Criar voz, selecione o personagem, idioma e Qwen instalado.
+3. Em Criar → Texto em voz, selecione o personagem, idioma e Qwen instalado.
 4. Comece com uma frase curta. Ouça e avalie conteúdo, semelhança e naturalidade.
 
 Editar um personagem cria nova versão. Trabalhos já enviados preservam a versão anterior. O Qwen Base clona por referência; nesta versão não há controles de emoção nativos nem treinamento.
@@ -109,7 +112,7 @@ A implementação segue a API oficial [Qwen3-TTS](https://github.com/QwenLM/Qwen
 
 Prefira de 6 a 30 segundos de fala clara, de uma pessoa e sem música. A duração mínima aceita é 3 segundos. Na preparação automática, o app usa os primeiros 30 segundos, converte para mono/24 kHz e transcreve com large-v3-turbo. Se informar a transcrição manual, use um áudio de até 30 segundos e escreva o texto correspondente ao áudio inteiro.
 
-A clonagem usa o áudio **e** a transcrição (`x_vector_only_mode=False`). A preparação fica em cache e não altera a versão salva da voz. Confira o texto em Minhas vozes → Conferir transcrição; se houver erro, edite a voz e informe o texto correto. O Whisper termina antes de carregar Qwen. Qwen permanece carregado enquanto há falas para gerar e encerra logo após a última, antes da conversão final e montagem. Adicionar outro texto preserva a voz selecionada.
+A clonagem usa o áudio **e** a transcrição (`x_vector_only_mode=False`). A preparação fica em cache e não altera a versão salva da voz. Confira o texto em Biblioteca → Vozes → ⋯ → Ver transcrição; se houver erro, edite a voz e informe o texto correto. O Whisper termina antes de carregar Qwen. Qwen permanece carregado enquanto há falas para gerar e encerra logo após a última, antes da conversão final e montagem. Adicionar outro texto preserva a voz selecionada.
 
 Na 0.3.3, áudio longo do Whisper e espectrogramas ficam no disco, com FFT calculada em blocos sobre a mesma linha do tempo. O cálculo preserva contexto das janelas, padding e normalização global. Não muda o áudio enviado, VAD, beam size ou tempos da transcrição. Prompts completos da clonagem guardam codec, embedding, transcrição e precisão original; somente a voz atual permanece na RAM e as outras são relidas do disco quando necessárias.
 
@@ -142,7 +145,7 @@ Importe um SRT para editar início, fim, texto e personagem. A API permite baixa
 
 ## Dublagem
 
-1. Abra Criar voz → Dublar vídeo e escolha ou envie a voz.
+1. Abra Criar → Dublar e escolha ou envie a voz.
 2. Envie o vídeo ou áudio original e escolha o idioma da fala. O SRT é opcional. Sem SRT, o app transcreve com Faster-Whisper large-v3-turbo e dubla o texto detectado. Não traduz a mídia. Com SRT, usa o texto/tempos revisados e permite personagem por fala.
 3. Selecione o modelo de clonagem. Para manter música e efeitos, importe uma faixa de ambiente já separada.
 4. Gere o vídeo e ouça o resultado.
@@ -215,7 +218,7 @@ Conversão direta, tradução automática, separação/diarização, emoção au
 
 ## Reações e nomes dos áudios
 
-Em Detalhado, escolha uma das 33 reações e clique em Inserir com a voz escolhida. Por exemplo:
+Em Personalizar → Roteiro, escolha uma das 33 reações e clique em Inserir com a voz escolhida. Por exemplo:
 
 ```text
 Olá! [reacao=risada] Isso doeu. [reacao=gemido]
@@ -233,25 +236,25 @@ Preencha Nome do áudio para escolher o nome de download. Vazio usa o nome da vo
 
 Baixe [Sal0 Voz Android](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.3.1) e configure o endereço local do servidor. Endereço externo e SSID são opcionais. Uploads e downloads usam o servidor; fechar o APK não cancela trabalhos. Consulte [instruções do cliente](android/README.md).
 
-## Geração por frases e memória
+## Texto inteiro e divisão adaptativa
 
-O texto é dividido em `.`, `!`, `?`, `;`, `:`, reticências e quebras de linha. A pontuação e as palavras são preservadas; números decimais e títulos comuns não são divididos no meio. Frases longas continuam subdivididas por palavras em blocos de até cerca de 350 caracteres.
+O app prioriza **o texto inteiro em uma geração**, sem separar automaticamente cada frase. Controles explícitos de personagem, idioma, ritmo, volume, pausa e reação continuam delimitando os trechos, pois precisam de interpretações diferentes. Na dublagem, cada fala mantém os tempos próprios.
 
-Cada frase é gerada e salva em disco antes da próxima. O modelo é carregado uma vez e mantém a mesma voz e precisão em todo o trabalho. Buffers temporários são liberados após cada geração; os WAVs são unidos por leitura de um segundo por vez. Na dublagem, frases da mesma legenda são agrupadas antes do ajuste aos tempos do vídeo.
+Quando há falta de memória durante a síntese, apenas o trecho ainda incompleto é reduzido em blocos aproximadamente pela metade. A divisão usa a pontuação e agrupa várias frases; uma frase muito longa usa limites entre palavras. Nenhuma palavra é cortada para cumprir uma estimativa de tamanho. Se necessário, a redução se repete no bloco que falhar. Falta de memória ao carregar os pesos aguarda RAM, pois dividir texto não resolve esse caso. Os limites nativos dos modelos continuam respeitados; Qwen, Chatterbox e VoxCPM2 detectam a geração que atinge o limite nativo sem concluir; Chatterbox também detecta contexto excedido, para tentar blocos menores em vez de apresentar uma fala cortada.
 
-Dividir o texto reduz memória temporária de inferência, mas não reduz o espaço necessário para manter os pesos do modelo. Se Qwen 1.7B ainda não couber, a fila aguarda RAM. Para escolher 0.6B, altere explicitamente o perfil antes de gerar um novo trabalho.
+O plano de divisão e cada WAV confirmado são salvos em disco. A retomada reaproveita os blocos prontos, inclusive se o motor salvar o WAV e perder a resposta. Modelo, voz e precisão ficam preservados após a divisão. A união lê um segundo de áudio por vez, sem manter todos os resultados na RAM. Trabalhos antigos conservam seus trechos e checkpoints; a nova política vale para novas gerações.
 
 ## Fluxo simplificado e exclusão de vários itens
 
-1. Escolha uma voz salva; para uma nova voz, abra Usar uma nova gravação e envie a referência.
+1. Escolha uma voz salva; para uma nova voz, clique em + Nova voz e envie a referência.
 2. Para criar áudio, digite o texto ou importe TXT/SRT. Para dublar, envie áudio/vídeo ou escolha da biblioteca. O áudio original é transcrito automaticamente, sem SRT obrigatório.
 3. Escolha o modelo, visível na tela. Ajustes de memória, ritmo e formato ficam recolhidos. Com o limite de 10 GiB, o padrão usa o modo econômico de Qwen 1.7B antes de começar; mantém o modelo durante todo o trabalho.
-4. Gere. O nome do arquivo é opcional; fica nas opções finais.
+4. Gere. O nome do arquivo é opcional; fica em Personalizar → Nome do áudio e projeto.
 
 Dublar vídeo preserva a imagem e substitui a faixa de voz. Dublar áudio gera um MP4 com fundo simples. Revisar falas, importar SRT e adicionar ambiente são opções avançadas, recolhidas por padrão. Escolher outro arquivo limpa as falas revisadas do anterior.
 
-Marque as caixas em Minhas vozes ou Biblioteca e clique em Excluir selecionados. Selecionar todos marca apenas os itens carregados; Carregar mais permite ampliar a seleção. O app confirma a lista antes de excluir. Arquivos usados por vozes salvas ou trabalhos retomáveis são preservados, com indicação de como liberar. Um trabalho em execução deve ser cancelado e encerrado antes de excluir seus resultados.
+Em Biblioteca → Vozes, Arquivos ou Resultados, clique em Selecionar, marque os itens e clique em Excluir selecionados. Todas/Todos marca apenas os itens carregados; Carregar mais permite ampliar a seleção. O app confirma a lista antes de excluir. Arquivos usados por vozes salvas ou trabalhos retomáveis são preservados, com indicação de como liberar. Um trabalho em execução deve ser cancelado e encerrado antes de excluir seus resultados.
 
 Excluir uma voz mantém o arquivo original e as vozes usadas nos trabalhos já enviados. Excluir resultados remove as exportações e o progresso, preservando o projeto e os originais. Seleções removidas são limpas dos projetos; o texto continua salvo.
 
-O aviso Not Found ao recarregar foi corrigido na 0.3.2. Atualizar a página restaura os projetos e trabalhos gravados em /data. Se uma conexão falhar, use Tentar conectar novamente. Ao atualizar o container, mantenha o mesmo volume de dados.
+O aviso Not Found ao recarregar foi corrigido na 0.3.2. Atualizar a página restaura os projetos e trabalhos gravados em /data. Se uma conexão falhar, use Reconectar. Ao atualizar o container, mantenha o mesmo volume de dados.

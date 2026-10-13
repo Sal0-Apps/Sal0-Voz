@@ -206,6 +206,7 @@ def prepare_models():
 class TelegramConfig(BaseModel):
     telegram_token: str = Field(default="", max_length=256)
     telegram_chat_id: str = Field(default="", max_length=128)
+    telegram_base_url: str = Field(default="", max_length=2048)
 
 
 @app.get("/api/telegram")
@@ -215,7 +216,8 @@ def get_telegram(request: Request):
 
 @app.put("/api/telegram")
 def put_telegram(body: TelegramConfig, request: Request):
-    save_telegram(current_user(request), body.telegram_token, body.telegram_chat_id)
+    save_telegram(current_user(request), body.telegram_token, body.telegram_chat_id,
+                  body.telegram_base_url or str(request.base_url))
     return masked_telegram(current_user(request))
 
 
@@ -595,7 +597,7 @@ def generate(ident: str, request: Request):
         if model.get("available") is False:
             waiting = True
             model_manager.request(engine, accept_license=True, automatic=True)
-    job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "name": project["output_name"], "snapshot": project, "status": "queued", "stage": "Aguardando modelo — o trabalho começará automaticamente" if waiting else "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
+    job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "app_url": str(request.base_url).rstrip("/"), "name": project["output_name"], "snapshot": project, "status": "queued", "stage": "Aguardando modelo — o trabalho começará automaticamente" if waiting else "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
     threading.Thread(target=notify_job, args=(job,), daemon=True).start()
     (s.DATA / "jobs" / job["id"]).mkdir(parents=True, exist_ok=True)
     worker.wake.set()
@@ -620,6 +622,14 @@ def job_action(ident: str, action: str, request: Request):
         job = worker.update(ident, status=status, stage={"paused": "Pausado", "queued": "Aguardando retomada", "cancelled": "Cancelado"}[status], error=None, retry_at=None, consecutive_retries=0)
     worker.wake.set()
     return {"id": ident, "status": status}
+
+@app.get("/api/jobs/{ident}")
+def get_job(ident: str, request: Request):
+    job = s.get("job", ident)
+    if not visible(job, current_user(request)):
+        raise HTTPException(403, "Trabalho pertence a outro usuário.")
+    return {key: value for key, value in job.items() if key != "snapshot"}
+
 
 @app.get("/api/jobs/{ident}/output/{index}")
 def output(ident: str, index: int, request: Request):
