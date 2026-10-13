@@ -26,7 +26,7 @@ android {
         versionCode = appVersionCode.get().toInt()
         versionName = appVersionName.get()
 
-        testInstrumentationRunner = "android.test.InstrumentationTestRunner"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -74,4 +74,7 @@ android {
 dependencies {
     implementation("androidx.activity:activity:1.13.0")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

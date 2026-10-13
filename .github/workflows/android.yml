@@ -36,7 +36,7 @@ jobs:
           key: sal0-voz-android-install-signing-v1
       - name: Compilar e validar Android
         working-directory: android
-        run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:assembleDebugAndroidTest
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

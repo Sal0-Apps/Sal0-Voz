@@ -4,7 +4,15 @@ import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.os.SystemClock;
-import android.test.ActivityInstrumentationTestCase2;
+import android.app.Instrumentation;
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import org.junit.Before;
+import org.junit.After;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import static org.junit.Assert.*;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,21 +26,26 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** The real APK/WebView against a disposable FastAPI server, with no worker. */
-@SuppressWarnings("deprecation")
-public final class WebInterfaceTest extends ActivityInstrumentationTestCase2<MainActivity> {
+@RunWith(AndroidJUnit4.class)
+public final class WebInterfaceTest {
     private WebView web;
 
-    public WebInterfaceTest() { super(MainActivity.class); }
+    private MainActivity activity;
+    private ActivityScenario<MainActivity> scenario;
+    private Instrumentation getInstrumentation() { return InstrumentationRegistry.getInstrumentation(); }
+    private MainActivity getActivity() { return activity; }
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
+    @After
+    public void tearDown() { if (scenario != null) scenario.close(); }
+
+    @Before
+    public void setUp() throws Exception {
         Context context = getInstrumentation().getTargetContext();
         new ServerConfig("", "http://10.0.2.2:17870", "").save(context);
         context.getSharedPreferences("sal0_web_runtime", Context.MODE_PRIVATE)
             .edit().putInt("asset_cache_version", 301).commit();
-        MainActivity activity = getActivity();
-        getInstrumentation().runOnMainSync(() -> web = findWeb(activity.getWindow().getDecorView()));
+        scenario = ActivityScenario.launch(MainActivity.class);
+        scenario.onActivity(launched -> { activity = launched; web = findWeb(activity.getWindow().getDecorView()); });
         assertNotNull(web);
     }
 
@@ -107,6 +120,7 @@ public final class WebInterfaceTest extends ActivityInstrumentationTestCase2<Mai
         return null;
     }
 
+    @Test
     public void testLibrarySettingsAndReloadOnActualWebView() throws Exception {
         until("document.querySelector('#auth')&&!document.querySelector('#auth').hidden");
         js("(document.querySelector('#password').value='android-ui-test-password',true)");
