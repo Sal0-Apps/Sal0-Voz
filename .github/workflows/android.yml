@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SAL0_DATA: ${{ runner.temp }}/sal0-android-ui-${{ github.run_id }}
+      SAL0_DATA: /tmp/sal0-android-ui-${{ github.run_id }}
       SAL0_DISABLE_WORKER: "1"
       SAL0_AUTO_DOWNLOAD_MODELS: "0"
     steps:
