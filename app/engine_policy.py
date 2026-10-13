@@ -21,7 +21,7 @@ class MemoryUnavailable(ValueError):
 
 def choose_profile(project, available=None, locked=False, memory_limit=None):
     if project.get("mode") == "asr" or ("segments" in project and not project.get("automatic_dub") and not any(
-        x.get("pause_ms") is None and not x.get("reaction") for x in project["segments"]
+        x.get("pause_ms") is None for x in project["segments"]
     )):
         return None
     requested = project.get("requested_engine", project.get("engine", "qwen-1.7b"))

@@ -494,7 +494,7 @@ def project_revisions(ident: str, request: Request):
 
 @app.post("/api/script/validate")
 def validate_script(body: Project):
-    return {"segments": compile_script(body.text, body.language, body.character_id, body.rate), "capabilities": {"pause": "exact", "rate": "postprocessing", "volume": "postprocessing", "emotion": "unavailable", "reactions": "audio_clips"}}
+    return {"segments": compile_script(body.text, body.language, body.character_id, body.rate), "capabilities": {"pause": "exact", "rate": "postprocessing", "volume": "postprocessing", "emotion": "model_dependent", "reactions": "selected_voice"}}
 
 @app.get("/api/reactions")
 def get_reactions():
@@ -503,8 +503,9 @@ def get_reactions():
 
 @app.get("/api/reactions/{ident}/file")
 def get_reaction_file(ident: str):
-    from .reactions import reaction_file
-    return FileResponse(reaction_file(ident), media_type="audio/wav", content_disposition_type="inline")
+    from .reactions import reaction
+    reaction(ident)
+    raise HTTPException(410, "As reações agora são geradas com a voz escolhida. Insira a reação no roteiro e gere o áudio.")
 
 def model_for_job(ident, kind):
     if ident not in CATALOG or CATALOG[ident]["kind"] != kind:
@@ -563,18 +564,13 @@ def snapshot(project, owner=None):
         if char_id:
             character = owned("character", char_id)
             segment["character"] = character["versions"][-1]
-        if segment.get("reaction"):
-            media = segment.get("character", {}).get("reaction_media", {}).get(segment["reaction"])
-            if media:
-                segment["reaction_media"] = owned("media", media["id"])
-            continue
         if is_clone(project["engine"]):
             character = segment.get("character")
             if not character or not character.get("reference"):
                 raise ValueError("Selecione um áudio de referência para clonar a voz.")
     if models_needed(value):
         languages = CATALOG.get(project["engine"], {}).get("languages")
-        if languages and any(segment.get("pause_ms") is None and not segment.get("reaction") and segment["language"] not in languages for segment in value["segments"]):
+        if languages and any(segment.get("pause_ms") is None and segment["language"] not in languages for segment in value["segments"]):
             raise ValueError("Escolha Português brasileiro para usar o Chatterbox pt-BR.")
         if languages and value.get("automatic_dub") and project["language"] not in languages:
             raise ValueError("Escolha Português brasileiro para usar o Chatterbox pt-BR.")

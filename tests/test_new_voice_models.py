@@ -84,6 +84,15 @@ def test_models_need_whisper_only_when_reference_or_original_needs_transcription
     assert models_needed(project) == [engine]
     assert models_needed({**project, "automatic_dub": True}) == [engine, "whisper-large-v3-turbo"]
 
+def test_voxcpm_styles_and_reaction_only_jobs_skip_reference_transcription():
+    voice={'reference':{'id':'sample'},'reference_text':''}
+    project={'mode':'tts','engine':'voxcpm2','segments':[{'text':'Olá!','character':voice}]}
+    assert models_needed({**project,'voice_style':'excited'})==['voxcpm2']
+    assert models_needed({**project,'voice_style':'excited','automatic_dub':True})==['voxcpm2','whisper-large-v3-turbo']
+    project['segments']=[{'reaction':'risada','character':voice,'text':''}]
+    assert models_needed(project)==['voxcpm2']
+    assert models_needed({**project,'engine':'omnivoice'})==['omnivoice','whisper-large-v3-turbo']
+
 
 @pytest.mark.parametrize("engine", ["omnivoice", "voxcpm2"])
 def test_catalog_download_and_job_freeze_model_style_and_precision(owner, engine):
@@ -146,7 +155,8 @@ def test_omnivoice_full_steps_and_prompt_survive_engine_reload(data, monkeypatch
     assert (data / "jobs" / "raw.json").is_file()
 
 
-def test_voxcpm_cpu_full_weights_style_and_atomic_checkpoint(data, monkeypatch):
+@pytest.mark.parametrize('style,reaction', [('natural',None),('happy',None),('excited',None),('natural','risada')])
+def test_voxcpm_cpu_full_weights_style_and_atomic_checkpoint(data, monkeypatch, style, reaction):
     import app.voxcpm_engine as module
     binary = data / "native-cli"
     binary.write_text("#!" + sys.executable + "\n" + '''import sys,json,wave,pathlib
@@ -163,11 +173,20 @@ with wave.open(str(out),'wb') as wav:
     for name in CATALOG["voxcpm2"]["files"]: (folder / name).write_bytes(b"substitute")
     reference = data / "media" / "reference.wav"; recording(reference, rate=16000)
     request = {"model_path": str(folder), "dtype": "float16", "reference": str(reference), "reference_text": "Texto da voz.",
-               "text": "Que alegria!", "voice_style": "happy", "output": str(data / "jobs" / "raw.wav"), "checkpoint": True}
+               "text": "[laughing]" if reaction else "Que alegria!", "voice_style": style, "reaction": reaction,
+               "output": str(data / "jobs" / "raw.wav"), "checkpoint": True}
+    if reaction: request['reference_text']=''
     engine = module.VoxCPMEngine(request); engine.generate(request)
     args = json.loads((data / "jobs" / "raw.partial.args.json").read_text())
-    assert "--cpu" in args and args[args.index("--prompt-text")+1] == "Texto da voz."
-    assert args[args.index("--text")+1] == "(cheerful, joyful tone)Que alegria!"
+    assert "--cpu" in args and args[args.index('--reference')+1]==str(reference)
+    if style=='natural' and not reaction:
+        assert args[args.index('--prompt-text')+1]=='Texto da voz.'
+        assert args[args.index('--prompt-wav')+1]==str(reference)
+        assert args[args.index('--text')+1]=='Que alegria!'
+    else:
+        assert '--prompt-text' not in args and '--prompt-wav' not in args
+        expected = '[laughing]' if reaction else '(cheerful, joyful tone)Que alegria!' if style=='happy' else '(excited, enthusiastic tone)Que alegria!'
+        assert args[args.index('--text')+1]==expected
     assert args[args.index("--timesteps")+1] == "10"
     assert all("Q8" not in arg for arg in args)
     assert (data / "jobs" / "raw.json").is_file() and not (data / "jobs" / "raw.partial.wav").exists()

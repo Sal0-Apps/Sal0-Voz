@@ -33,7 +33,7 @@
     <div class="sidebar-bottom">
       <div class="local-status"><i></i> Processamento local</div><small>CPU · uma tarefa por vez</small>
       <div class="sidebar-actions"><button id="theme" class="quiet">◐ Tema</button><button id="logout" class="quiet">Sair</button></div>
-      <small>Sal0 Voz <span id="version">0.3.8</span></small>
+      <small>Sal0 Voz <span id="version">0.3.9</span></small>
     </div>
   </aside>
   <main>
@@ -83,9 +83,8 @@
               <div id="direction-tools" hidden>
                 <div class="tag-buttons"><button type="button" data-insert="[pausa=450ms]">+ Pausa</button><button type="button" data-insert="[ritmo=0.95]texto[/ritmo]">+ Ritmo</button><button type="button" data-insert="[volume=-3]texto[/volume]">+ Volume</button><button type="button" id="validate-script">Validar roteiro</button></div>
                 <label>Reações e sons<select id="reaction-choice"></select></label>
-                <div class="tag-buttons"><button type="button" id="insert-reaction">+ Inserir reação</button><button type="button" id="preview-reaction">Ouvir exemplo</button></div>
-                <audio id="reaction-preview" controls preload="none" hidden></audio>
-                <p class="hint">As reações inserem sons no ponto marcado no roteiro. Os exemplos são gravações prontas e podem ter outra voz. Substitua-os por gravações suas em Minhas vozes para manter a identidade da voz.</p>
+                <div class="tag-buttons"><button type="button" id="insert-reaction">+ Inserir com a voz escolhida</button></div>
+                <p id="reaction-hint" class="hint">Geradas com a voz e o modelo escolhidos. Opções marcadas como “vocalização” são aproximações por sons escritos; duração e interpretação variam conforme o modelo.</p>
               </div>
             </div>
             <div id="dub-fields" hidden>
@@ -108,7 +107,7 @@
             <button type="button" id="download-selected-model" class="secondary" hidden>Baixar modelo no servidor</button>
             <div id="voice-style-settings" hidden>
               <label>Como interpretar a fala<select id="voice-style"><option value="natural">Natural · seguir a gravação</option><option value="happy">Alegre</option><option value="sad">Triste</option><option value="angry">Com raiva</option><option value="afraid">Com medo</option><option value="surprised">Surpreso</option><option value="calm">Calmo</option><option value="excited">Entusiasmado</option><option value="affectionate">Carinhoso</option><option value="serious">Sério</option><option value="whisper">Sussurrando</option><option value="shouting">Gritando</option></select></label>
-              <p class="hint">O VoxCPM2 recebe esta orientação junto com a referência da sua voz. A intensidade da interpretação pode variar entre gravações.</p>
+              <p class="hint">O tom usa sua gravação para preservar a voz. Natural segue também a interpretação da referência; os demais tons orientam a fala separadamente. A intensidade pode variar entre gerações.</p>
             </div>
             <div id="expression-settings" hidden>
               <label>Expressividade <output id="expression-value">0.70</output><input id="expressiveness" type="range" min="0.25" max="1.2" step="0.05" value="0.7"></label>
@@ -150,7 +149,7 @@
           <p id="character-upload-status" class="hint" role="status">O áudio será extraído e convertido automaticamente, sem alterar o arquivo original.</p>
           <label>Ou use um arquivo da biblioteca<select id="character-reference"></select></label>
           <details><summary>Transcrição da gravação</summary><label>Texto exato, se você já tiver<textarea id="reference-text" rows="3" placeholder="Vazio: o app transcreve automaticamente na primeira geração"></textarea></label><p class="hint">Ao informar o texto, use uma gravação de até 30 segundos. A transcrição deve corresponder ao áudio inteiro.</p></details>
-          <details><summary>Reações com esta voz</summary><p class="hint">Envie uma gravação por reação. Use um áudio ou vídeo curto com o som desejado. Sem gravação própria, o roteiro usa o exemplo incluído no app.</p><label>Reação<select id="character-reaction"></select></label><label class="reference-picker">Enviar som desta reação<input id="reaction-upload" type="file"></label><label>Ou selecionar na biblioteca<select id="reaction-media"></select></label><div class="tag-buttons"><button type="button" id="assign-reaction">Usar este arquivo</button><button type="button" id="remove-reaction">Usar exemplo do app</button></div><p id="reaction-upload-status" class="hint" role="status"></p><div id="character-reactions" class="stack"></div></details>
+          <p class="hint">As reações do roteiro usam esta mesma voz. A gravação de referência identifica quem fala; o modelo escolhido gera a fala e as vocalizações.</p>
           <p class="hint">Edições criam novas versões. Os trabalhos enviados preservam a versão que você escolheu.</p>
           <button class="primary" type="submit">Salvar voz</button><button class="secondary" id="new-character" type="button">Nova voz</button>
         </form>

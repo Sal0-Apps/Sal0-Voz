@@ -40,7 +40,7 @@ const assert = require('node:assert/strict');
       if (pathname === '/api/auth/status') return json({ configured: true, authenticated: true, username: 'admin', role: 'admin' });
       if (pathname === '/api/events/stream') return route.fulfill({ contentType: 'text/event-stream', body: '' });
       if (pathname === '/api/models') return json(models);
-      if (pathname === '/api/reactions') return json(JSON.parse(fs.readFileSync(path.join(__dirname, '../app/assets/reactions/catalog.json'), 'utf8')));
+      if (pathname === '/api/reactions') return json(JSON.parse(fs.readFileSync(path.join(__dirname, '../app/assets/reactions/catalog.json'), 'utf8')).map(x=>({...x,native_models:['risada','suspiro'].includes(x.id)?['omnivoice','voxcpm2']:[]})));
       if (pathname === '/api/models/prepare') return json({ status: 'queued' });
       if (['/api/models/qwen-0.6b/download','/api/models/chatterbox-pt-br/download','/api/models/omnivoice/download','/api/models/voxcpm2/download'].includes(pathname)) {
         downloads++;
@@ -130,6 +130,8 @@ const assert = require('node:assert/strict');
     await page.locator('#insert-reaction').click();
     assert.equal(await page.locator('#script').inputValue(), '[reacao=gemido]');
     assert.equal(await page.locator('#reaction-choice option').count(), 33);
+    assert.equal(await page.locator('#preview-reaction').count(),0);
+    assert.ok((await page.locator('#reaction-choice option:checked').textContent()).includes('vocalização'));
     await page.locator('#output-options > summary').click();
     await page.locator('#audio-name').fill('Cena de teste');
     await page.locator('#save-project').click();
@@ -140,14 +142,11 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(() => document.querySelector('#character-upload-status').textContent.startsWith('Arquivo enviado'));
     assert.equal(await page.locator('#character-reference').inputValue(), 'ref-2');
     assert.equal(await page.locator('#character-name').inputValue(), 'uploaded-video');
-    await page.locator('#character-form summary').filter({hasText:'Reações com esta voz'}).click();
-    await page.locator('#character-reaction').selectOption('gemido');
-    await page.locator('#reaction-upload').setInputFiles({name:'my-reaction.mp4',mimeType:'video/mp4',buffer:Buffer.from('fixture reaction')});
-    await page.waitForFunction(() => document.querySelector('#reaction-upload-status').textContent.startsWith('Som enviado'));
+    assert.equal(await page.locator('#reaction-upload').count(),0);
     await page.locator('#character-form button[type="submit"]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-character]').length === 2);
     assert.equal(characters[1].reference_id, 'ref-2');
-    assert.deepEqual(characters[1].reactions, {gemido:'ref-3'});
+    assert.deepEqual(characters[1].reactions, {});
     await page.locator('nav [data-view="create"]').click();
     await page.locator('[data-mode="dub"]').click();
     assert.equal(await page.locator('#dub-advanced').evaluate(x=>x.open),false);
@@ -162,7 +161,7 @@ const assert = require('node:assert/strict');
     await page.locator('#source-upload').setInputFiles({name:'audio-to-dub.wav',mimeType:'audio/wav',buffer:Buffer.from('fixture audio')});
     await page.waitForFunction(()=>document.querySelector('#source-status').textContent.includes('fundo simples'));
     await page.locator('#generate').click();await page.waitForFunction(()=>!document.querySelector('#generate').disabled);
-    assert.equal(generated.at(-1).media_id,'ref-4');
+    assert.equal(generated.at(-1).media_id,'ref-3');
     for (const width of [1366, 390]) {
       await page.setViewportSize({ width, height: 900 });
       for (const view of ['create', 'characters', 'projects', 'library', 'settings']) {
@@ -200,6 +199,10 @@ const assert = require('node:assert/strict');
       assert.equal(downloads,engine==='omnivoice'?3:4);
       assert.equal(await page.locator('#expression-settings').isVisible(),false);
       assert.equal(await page.locator('#voice-style-settings').isVisible(),engine==='voxcpm2');
+      await page.locator('#reaction-choice').selectOption('risada');
+      assert.equal(await page.locator('#reaction-choice option:checked').textContent(),'Risada');
+      await page.locator('#reaction-choice').selectOption('gemido');
+      assert.ok((await page.locator('#reaction-choice option:checked').textContent()).includes('vocalização'));
       await page.locator('#character').selectOption('voice-1');
       assert.equal(await page.locator('#engine').inputValue(),engine);
     }
@@ -234,7 +237,7 @@ const assert = require('node:assert/strict');
     assert.equal(jobs.length,3);
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
-    console.log('PASS: four creation steps, TXT import, audio/video dubbing without SRT, bulk selection and deletion, persistent selections during polling, desktop and mobile views');
+    console.log('PASS: selected-voice reactions and native/vocalization labels, no recorded previews/uploads, four creation steps, TXT import, audio/video dubbing without SRT, bulk deletion, persistent selections, desktop and mobile views');
   } finally {
     await browser.close();
   }

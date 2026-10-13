@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.3.8
+# Manual — Sal0 Voz 0.3.9
 
 ## Primeira instalação
 
@@ -16,10 +16,10 @@ A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e 
 
 ## OmniVoice e VoxCPM2 opcionais
 
-1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.3.8** em Ajustes. Atualizar somente a página não instala os motores novos.
+1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.3.9** em Ajustes. Atualizar somente a página não instala as correções do servidor.
 2. Abra **Ajustes → Modelos do aplicativo → Preparar este modelo**, ou escolha o modelo no passo 3 e clique em **Baixar no servidor**.
 3. **Fidelidade e expressão · OmniVoice 0.6B** baixa cerca de 3,1 GiB, incluindo seu codec. Usa float32 em CPU, 32 passos completos e segue a interpretação da referência. Prefira 3 a 10 segundos de fala limpa. Uma gravação maior com transcrição vazia é recortada e transcrita automaticamente. Com transcrição manual, use uma gravação de até 10 segundos e o texto exato dela.
-4. **Clonagem e emoções · VoxCPM2 2B** baixa cerca de 4,8 GiB. Usa os dois componentes F16 completos no motor de CPU, áudio e transcrição da referência e 10 passos de difusão. A montagem preserva os 48 kHz do modelo. Escolha **Como interpretar a fala** para orientar a emoção ou o estilo. A intensidade pode variar entre gravações.
+4. **Clonagem e emoções · VoxCPM2 2B** baixa cerca de 4,8 GiB. Usa os dois componentes F16 completos no motor de CPU e 10 passos de difusão. A montagem preserva os 48 kHz. **Como interpretar a fala → Natural** mantém a continuação com áudio e transcrição; os demais tons usam somente a referência de voz, com a orientação no início do contexto próprio de controle. Essa separação corrige a instrução falada como parte do áudio. A intensidade pode variar entre gerações.
 5. Escolha a voz, escreva ou importe o texto, selecione o modelo e gere. Na dublagem, escolha a voz, envie o áudio/vídeo, selecione o modelo e gere; a transcrição do original é automática.
 
 Os pesos não estão na imagem e permanecem no volume após atualizar. As dependências e o motor de CPU vêm instalados. Whisper encerra antes de carregar a voz. Os modelos mantêm a precisão escolhida durante o trabalho e retomam dos trechos salvos após interrupção. OmniVoice usa prompts persistentes; VoxCPM2 encerra seu processo pesado após gerar cada trecho. As reservas iniciais de 5,5/7,5 GiB são políticas de preparação, não medições no servidor. Os testes neurais serão feitos pelo proprietário.
@@ -215,15 +215,17 @@ Conversão direta, tradução automática, separação/diarização, emoção au
 
 ## Reações e nomes dos áudios
 
-Em Detalhado, escolha uma das 33 reações e clique em Inserir reação. Use Ouvir exemplo para conferir o som. Por exemplo:
+Em Detalhado, escolha uma das 33 reações e clique em Inserir com a voz escolhida. Por exemplo:
 
 ```text
 Olá! [reacao=risada] Isso doeu. [reacao=gemido]
 ```
 
-A tag insere áudio não verbal na posição marcada. Ela não é enviada ao TTS. Ritmo, volume, pausas e personagem continuam valendo. As legendas identificam o som, como [risada]. Também é possível gerar apenas reações, sem carregar modelos neurais.
+A tag solicita uma reação ao mesmo modelo e com a mesma referência de voz da fala naquele ponto. Ritmo, volume, pausas e personagem continuam valendo. As legendas identificam a reação, como [risada]. Também é possível gerar apenas reações: escolha primeiro uma voz com referência e o modelo; ele será carregado normalmente.
 
-Os exemplos são gravações de terceiros com CC0; não recebem o timbre da voz clonada automaticamente. Em Minhas vozes → Reações com esta voz, escolha uma reação e envie sua gravação em áudio ou vídeo, ou associe um arquivo da Biblioteca. Salve a voz para preservar a versão. O servidor converte o som para mono/24 kHz e usa até 30 segundos. Trabalhos enviados mantêm as gravações escolhidas, mesmo se você editar a voz depois. [Lista e créditos](app/assets/reactions/SOURCES.md).
+OmniVoice e VoxCPM2 recebem apenas os símbolos não verbais documentados para cada motor, como suas formas de riso e suspiro. As outras opções, inclusive nos demais modelos, aparecem com “vocalização”: usam sons escritos curtos, como “Ah...” para dor, sem ler o nome da reação. São aproximações; não há garantia de tosse, assobio, gemido ou outros efeitos exatos. Duração e intensidade também variam com a geração. A avaliação auditiva fica para o teste no servidor.
+
+A geração não usa exemplos prontos nem as antigas gravações associadas às reações. Esses arquivos permanecem na biblioteca, com suas versões históricas preservadas. Em trabalhos antigos retomados, as reações e as falas com tons do VoxCPM2 são refeitas uma vez com a lógica atual; os demais trechos válidos são reutilizados. Novos checkpoints dessas reações também são reutilizados após interrupção. Tons e reações do VoxCPM2 dispensam a transcrição da referência, mantendo apenas um processo de voz ativo. O modelo, a precisão e os passos não são reduzidos.
 
 Preencha Nome do áudio para escolher o nome de download. Vazio usa o nome da voz e um número crescente, como Minha voz 1.wav e Minha voz 2.wav. Os nomes são preservados ao retomar; a numeração continua após reinício. O nome do projeto permanece separado.
 

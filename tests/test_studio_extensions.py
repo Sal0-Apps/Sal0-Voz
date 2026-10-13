@@ -11,7 +11,7 @@ from app.catalog import models_needed
 from app.engine_policy import choose_profile, MemoryUnavailable
 from app.media import ffargs, probe
 from app.output_names import output_name, safe_name
-from app.reactions import catalog, reaction_file
+from app.reactions import catalog, synthesis_text
 from app.script import compile_script
 from app.worker import Worker
 
@@ -22,17 +22,19 @@ def audio_bytes(seconds=6):
         wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000); wav.writeframes(samples.tobytes())
     return out.getvalue()
 
-def test_every_bundled_reaction_is_real_audio_and_matches_manifest():
+def test_reaction_catalog_exposes_generation_and_only_supported_native_tags():
     items = catalog()
     assert len(items) >= 30 and len({x['id'] for x in items}) == len(items)
     for item in items:
-        source = reaction_file(item['id'])
-        assert s.digest(source) == item['sha256']
-        with wave.open(str(source)) as wav:
-            assert (wav.getnchannels(), wav.getsampwidth(), wav.getframerate()) == (1, 2, 24000)
-            samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype='<i2')
-            assert len(samples) > 720 and np.abs(samples.astype(float)).mean() > 10
-        assert item['license'] == 'CC0-1.0' and item['author'] and item['source'].startswith('https://')
+        assert item['generation'] == 'selected_voice' and 'file' not in item
+        for engine in ('omnivoice', 'voxcpm2', 'qwen-1.7b', 'qwen-0.6b', 'chatterbox-pt-br', 'diagnostic'):
+            text = synthesis_text(item['id'], engine)
+            assert text and item['name'].lower() not in text.lower()
+            assert text.startswith('[') == (engine in item['native_models'])
+    assert synthesis_text('risada', 'omnivoice') == '[laughter]'
+    assert synthesis_text('risada', 'voxcpm2') == '[laughing]'
+    assert synthesis_text('gemido', 'omnivoice') == 'Ah... mmh...'
+    assert synthesis_text('espirro', 'qwen-1.7b', 'en-US') == 'Achoo!'
 
 def test_reactions_preserve_speech_and_never_become_tts_labels():
     result = compile_script('Olá! [reacao=risada][pausa=100ms][volume=-3][reacao=gemido][/volume] Fim.')
@@ -43,22 +45,108 @@ def test_reactions_preserve_speech_and_never_become_tts_labels():
     with pytest.raises(ValueError, match='Reação desconhecida'):
         compile_script('[reacao=impossivel]')
 
-def test_reaction_only_export_uses_no_models(owner, data, monkeypatch):
+def test_reaction_only_export_uses_selected_voice_and_reuses_checkpoints(owner, data, monkeypatch):
     import app.worker as module
-    project = owner.post('/api/projects', json={'name':'Reações','text':'[reacao=risada][pausa=100ms][reacao=gemido]', 'audio_name':'Cena'}).json()
+    ref = owner.post('/api/media', files={'file':('ref.wav',audio_bytes())}).json()
+    voice = owner.post('/api/characters', json={'name':'Minha voz','reference_id':ref['id'],'reference_text':'Minha gravação.'}).json()
+    project = owner.post('/api/projects', json={'name':'Reações','engine':'omnivoice','character_id':voice['id'],'text':'[reacao=risada][pausa=100ms][reacao=gemido]', 'audio_name':'Cena'}).json()
     response = owner.post('/api/projects/'+project['id']+'/generate')
     assert response.status_code == 200, response.text
     job = s.get('job', response.json()['id'])
-    assert models_needed(job['snapshot']) == [] and choose_profile(job['snapshot'], available=1) is None
-    assert s.listing('model_download', limit=-1) == []
+    assert models_needed(job['snapshot']) == ['omnivoice']
+    assert choose_profile(job['snapshot'], available=10*1024**3)['engine'] == 'omnivoice'
+    assert [x['id'] for x in s.listing('model_download', limit=-1)] == ['omnivoice']
+    assert s.listing('model_download', limit=-1)[0]['status'] == 'queued'
     worker = Worker()
-    monkeypatch.setattr(worker, 'engine', lambda *args: pytest.fail('Reaction labels must not be synthesized'))
+    calls=[]
+    def engine(ident,request,folder):
+        calls.append(request)
+        type(data)(request['output']).write_bytes(audio_bytes(1))
+    monkeypatch.setattr(worker, 'engine', engine)
     worker.update(job['id'], status='running'); worker.execute(job)
     result = s.get('job',job['id'])
     assert [x['text'] for x in result['cues']] == ['[risada]','[gemido de dor]']
     assert result['outputs'][0]['name'] == 'Cena.wav'
     assert probe(s.safe_path(result['outputs'][0]['path']))['duration'] > 2
-    assert owner.get('/api/reactions/risada/file').content[:4] == b'RIFF'
+    assert [x['text'] for x in calls] == ['[laughter]','Ah... mmh...']
+    assert all(x['engine']=='omnivoice' and x['reference_text']=='Minha gravação.' for x in calls)
+    assert calls[0]['reference']==calls[1]['reference']
+    assert Worker.speech_started(result['snapshot'], data/'jobs'/job['id'])
+    worker.execute(s.get('job',job['id']))
+    assert len(calls)==2
+    assert owner.get('/api/reactions/risada/file').status_code == 410
+
+def test_reaction_only_requires_voice_reference(owner):
+    project=owner.post('/api/projects',json={'name':'Reação','engine':'omnivoice','text':'[reacao=risada]'}).json()
+    response=owner.post('/api/projects/'+project['id']+'/generate')
+    assert response.status_code==400 and 'referência' in response.text
+
+def test_reactions_follow_each_selected_character_and_ignore_legacy_audio(owner,data,monkeypatch):
+    ref1=owner.post('/api/media',files={'file':('one.wav',audio_bytes())}).json()
+    ref2=owner.post('/api/media',files={'file':('two.wav',audio_bytes(4))}).json()
+    voices=[owner.post('/api/characters',json={'name':name,'reference_id':ref['id'],'reference_text':text}).json()
+            for name,ref,text in [('Um',ref1,'Referência um.'),('Dois',ref2,'Referência dois.')]]
+    script='Olá! [reacao=risada][personagem='+voices[1]['id']+'][reacao=suspiro] Fim.'
+    project=owner.post('/api/projects',json={'name':'Duas vozes','engine':'omnivoice','character_id':voices[0]['id'],'text':script}).json()
+    job=s.get('job',owner.post('/api/projects/'+project['id']+'/generate').json()['id'])
+    folder=data/'jobs'/job['id'];folder.mkdir(exist_ok=True)
+    from app.audio_files import checkpoint_audio
+    # Reuse good speech; discard old clip-based reactions without opening them.
+    for index in (0,1,2):
+        for prefix in ('raw','segment'):
+            path=folder/f'{prefix}-{index:06d}.wav';path.write_bytes(audio_bytes(1));checkpoint_audio(path)
+    good=s.digest(folder/'segment-000000.wav')
+    job['snapshot']['segments'][1]['reaction_media']={'path':'media/missing-old-clip.wav'}
+    job['snapshot']['segments'][2]['reaction_media']={'path':'media/missing-own-recording.wav'}
+    s.put('job',job)
+    calls=[];worker=Worker()
+    def engine(ident,request,directory):
+        calls.append(request);type(data)(request['output']).write_bytes(audio_bytes(1))
+    monkeypatch.setattr(worker,'engine',engine)
+    worker.update(job['id'],status='running');worker.execute(job)
+    assert [x['text'] for x in calls]==['[laughter]','[sigh]',' Fim.']
+    assert calls[0]['reference_text']=='Referência um.'
+    assert calls[1]['reference_text']==calls[2]['reference_text']=='Referência dois.'
+    assert calls[0]['reference']!=calls[1]['reference']==calls[2]['reference']
+    assert s.digest(folder/'segment-000000.wav')==good
+    worker.execute(s.get('job',job['id']));assert len(calls)==3
+
+def test_reaction_raw_checkpoint_survives_interruption(owner,data,monkeypatch):
+    from app.audio_files import checkpoint_audio
+    from app.resources import ProcessInterrupted
+    ref=owner.post('/api/media',files={'file':('ref.wav',audio_bytes())}).json()
+    voice=owner.post('/api/characters',json={'name':'Voz','reference_id':ref['id'],'reference_text':'Minha gravação.'}).json()
+    project=owner.post('/api/projects',json={'name':'Reação','engine':'omnivoice','character_id':voice['id'],'text':'[reacao=risada]'}).json()
+    job=s.get('job',owner.post('/api/projects/'+project['id']+'/generate').json()['id'])
+    worker=Worker();calls=[]
+    def engine(ident,request,folder):
+        calls.append(request)
+        path=type(data)(request['output']);path.write_bytes(audio_bytes(1));checkpoint_audio(path)
+        raise ProcessInterrupted('Confirmação interrompida')
+    monkeypatch.setattr(worker,'engine',engine)
+    worker.update(job['id'],status='running')
+    with pytest.raises(ProcessInterrupted):worker.execute(job)
+    worker.execute(s.get('job',job['id']))
+    assert len(calls)==1 and s.get('job',job['id'])['outputs']
+
+def test_voxcpm_style_retries_regenerate_old_spoken_instructions(owner,data,monkeypatch):
+    from app.audio_files import checkpoint_audio
+    ref=owner.post('/api/media',files={'file':('ref.wav',audio_bytes())}).json()
+    voice=owner.post('/api/characters',json={'name':'Voz','reference_id':ref['id']}).json()
+    project=owner.post('/api/projects',json={'name':'Tom','engine':'voxcpm2','voice_style':'excited','character_id':voice['id'],'text':'Olá! Tudo bem?'}).json()
+    job=s.get('job',owner.post('/api/projects/'+project['id']+'/generate').json()['id'])
+    folder=data/'jobs'/job['id'];folder.mkdir(exist_ok=True)
+    for prefix in ('raw','segment'):
+        path=folder/(prefix+'-000000.wav');path.write_bytes(audio_bytes(1));checkpoint_audio(path)
+    calls=[];worker=Worker()
+    def engine(ident,request,directory):
+        assert request['engine']=='voxcpm2' # No unnecessary ASR for isolated style cloning.
+        calls.append(request);type(data)(request['output']).write_bytes(audio_bytes(1))
+    monkeypatch.setattr(worker,'engine',engine)
+    worker.update(job['id'],status='running');worker.execute(job)
+    assert [x['text'] for x in calls]==['Olá! ','Tudo bem?']
+    assert all(x['voice_style']=='excited' and x['reference_text']=='' for x in calls)
+    worker.execute(s.get('job',job['id']));assert len(calls)==2
 
 def test_video_reference_and_unusual_extensions_are_converted(owner, data):
     source = data/'media'/'source.mkv'
@@ -80,12 +168,14 @@ def test_video_reference_and_unusual_extensions_are_converted(owner, data):
 
 def test_voice_reactions_are_frozen_and_private(owner):
     media = owner.post('/api/media',files={'file':('own-reaction.wav',audio_bytes(1))}).json()
-    voice = owner.post('/api/characters',json={'name':'Minha voz','reactions':{'risada':media['id']}}).json()
+    ref = owner.post('/api/media',files={'file':('reference.wav',audio_bytes())}).json()
+    voice = owner.post('/api/characters',json={'name':'Minha voz','reference_id':ref['id'],'reference_text':'Minha gravação.','reactions':{'risada':media['id']}}).json()
     project = owner.post('/api/projects',json={'name':'Cena','character_id':voice['id'],'text':'[reacao=risada]'}).json()
     ident = owner.post('/api/projects/'+project['id']+'/generate').json()['id']
     owner.put('/api/characters/'+voice['id'],json={'name':'Minha voz nova','reactions':{}})
     segment = s.get('job',ident)['snapshot']['segments'][0]
-    assert segment['character']['name'] == 'Minha voz' and segment['reaction_media']['id'] == media['id']
+    assert segment['character']['name'] == 'Minha voz' and segment['character']['reference']['id'] == ref['id']
+    assert 'reaction_media' not in segment
     owner.post('/api/users',json={'username':'maria','password':'test-password'})
     owner.post('/api/auth/logout');owner.post('/api/auth/login',json={'username':'maria','password':'test-password'})
     assert owner.post('/api/characters',json={'name':'Outra','reactions':{'risada':media['id']}}).status_code == 403

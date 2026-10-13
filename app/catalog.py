@@ -48,7 +48,9 @@ CATALOG = {
 def is_clone(ident):
     return bool(CATALOG.get(ident, {}).get("clone"))
 
-def needs_reference_text(ident):
+def needs_reference_text(ident, voice_style="natural", reaction=False):
+    if ident == "voxcpm2" and (voice_style != "natural" or reaction):
+        return False
     return bool(CATALOG.get(ident, {}).get("reference_text"))
 
 def model_files(ident):
@@ -80,13 +82,14 @@ def models_needed(project):
     if project["mode"] == "asr":
         return [project.get("asr_engine", DEFAULT_ASR_MODEL)]
     engine = project.get("engine", DEFAULT_CLONE_MODEL)
-    if "segments" in project and not project.get("automatic_dub") and not any(x.get("pause_ms") is None and not x.get("reaction") for x in project["segments"]):
+    if "segments" in project and not project.get("automatic_dub") and not any(x.get("pause_ms") is None for x in project["segments"]):
         return []
     result = [engine]
     if project.get("automatic_dub"):
         result.append(project.get("asr_engine", DEFAULT_ASR_MODEL))
-    if needs_reference_text(engine) and any(
-        not segment.get("reaction") and segment.get("character", {}).get("reference")
+    if any(
+        segment.get("pause_ms") is None and needs_reference_text(engine, project.get("voice_style", "natural"), bool(segment.get("reaction")))
+        and segment.get("character", {}).get("reference")
         and not segment["character"].get("reference_text", "").strip()
         for segment in project.get("segments", []) + ([{"character": project["default_character"]}] if project.get("default_character") else [])
     ):

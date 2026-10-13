@@ -19,7 +19,7 @@ from .audio_files import audio_valid, checkpoint_audio
 from .model_manager import manager as model_manager
 from .media import ffargs, probe, input_args
 from .script import subtitles
-from .reactions import reaction_file, caption
+from .reactions import caption, synthesis_text, render_policy
 from .telegram import notify_job
 
 class Interrupted(Exception):
@@ -117,7 +117,8 @@ class Worker:
 
     @staticmethod
     def speech_started(project, folder):
-        return any(segment.get("pause_ms") is None and not segment.get("reaction") and
+        return any(segment.get("pause_ms") is None and (not segment.get("reaction") or
+                   (folder / f"render-{index:06d}.json").is_file()) and
                    any((folder / f"{prefix}-{index:06d}.json").is_file() for prefix in ("segment", "raw"))
                    for index, segment in enumerate(project.get("segments", [])))
 
@@ -276,14 +277,16 @@ class Worker:
 
     def prepare_references(self, ident, project, folder):
         # ASR exits before cloning; Chatterbox does not need a transcript.
-        needs_text = needs_reference_text(project["engine"])
         reference_seconds = CATALOG[project["engine"]].get("reference_seconds", 30)
         reference_hz = CATALOG[project["engine"]].get("reference_hz", 24000)
         source_hashes = {}
         for segment in project["segments"]:
-            if segment.get("pause_ms") is not None or segment.get("reaction"):
+            if segment.get("pause_ms") is not None:
                 continue
-            character = segment["character"]
+            needs_text = needs_reference_text(project["engine"], project.get("voice_style", "natural"), bool(segment.get("reaction")))
+            character = segment.get("character")
+            if not character or not character.get("reference"):
+                raise ValueError("Escolha uma voz com gravação de referência para gerar a fala e as reações.")
             source = s.safe_path(character["reference"]["path"])
             transcript = character.get("reference_text", "").strip()
             language = character.get("language", project["language"])
@@ -359,10 +362,24 @@ class Worker:
         timed_groups = {}
         segments = project["segments"]
         last_speech = max((i for i, segment in enumerate(segments)
-                           if segment.get("pause_ms") is None and not segment.get("reaction")), default=-1)
+                           if segment.get("pause_ms") is None), default=-1)
         for index, segment in enumerate(segments):
             self.check(ident)
             self.update(ident, progress=round(index/len(segments)*85), stage=f"Gerando trecho {index+1} de {len(segments)}")
+            policy = render_policy(project, segment)
+            if policy is not None:
+                marker = folder / f"render-{index:06d}.json"
+                try:
+                    current = json.loads(marker.read_text()) == policy
+                except (OSError, ValueError):
+                    current = False
+                if not current:
+                    for prefix in ("raw", "segment"):
+                        for suffix in ("wav", "json"):
+                            (folder / f"{prefix}-{index:06d}.{suffix}").unlink(missing_ok=True)
+                    # Save before rendering, so an interrupted confirmation
+                    # still reuses a new raw checkpoint on the next attempt.
+                    s.atomic_json(marker, policy)
             target = folder / f"segment-{index:06d}.wav"
             valid = audio_valid(target)
             if valid and index == last_speech:
@@ -381,15 +398,13 @@ class Worker:
                     raw = folder / f"raw-{index:06d}.wav"
                     character = segment.get("character")
                     if not audio_valid(raw):
-                        if segment.get("reaction"):
-                            source = s.safe_path(segment["reaction_media"]["path"]) if segment.get("reaction_media") else reaction_file(segment["reaction"])
-                            self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", "30", "-vn", "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", raw))
-                        elif project["engine"] == "diagnostic":
+                        text = synthesis_text(segment["reaction"], project["engine"], segment["language"]) if segment.get("reaction") else segment["text"]
+                        if project["engine"] == "diagnostic":
                             text_file = folder / "spoken.txt"
-                            text_file.write_text(segment["text"], encoding="utf-8")
+                            text_file.write_text(text, encoding="utf-8")
                             self.run(ident, [shutil.which("espeak-ng") or shutil.which("espeak"), "-v", "pt-br" if segment["language"]=="pt-BR" else "en-us", "-f", str(text_file), "-w", str(raw)])
                         else:
-                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": segment["text"], "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "expressiveness": project.get("expressiveness", 0.7), "voice_style": project.get("voice_style", "natural"), "output": str(raw), "checkpoint": True}, folder)
+                            self.engine(ident, {"engine": project["engine"], "language": segment["language"], "text": text, "reaction": segment.get("reaction"), "reference": str(s.safe_path(character["prepared_reference"])), "reference_text": character["prepared_reference_text"], "expressiveness": project.get("expressiveness", 0.7), "voice_style": project.get("voice_style", "natural"), "output": str(raw), "checkpoint": True}, folder)
                         if not audio_valid(raw):
                             checkpoint_audio(raw)
                     if index == last_speech:

@@ -33,9 +33,10 @@ class VoxCPMEngine:
     def generate(self, request):
         self.check_memory()
         transcript = (request.get("reference_text") or "").strip()
-        if not transcript:
-            raise ValueError("A gravação precisa ser transcrita antes da clonagem. Retome a preparação da referência.")
         style = instruction(request.get("voice_style", "natural"))
+        continuation = not style and not request.get("reaction")
+        if continuation and not transcript:
+            raise ValueError("A gravação precisa ser transcrita antes da clonagem. Retome a preparação da referência.")
         text = ("(" + style + ")" if style else "") + request["text"]
         output = Path(request["output"])
         temporary = output.with_name(output.stem + ".partial.wav")
@@ -45,7 +46,11 @@ class VoxCPMEngine:
         env["LD_LIBRARY_PATH"] = str(self.binary.parent) + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
         env["GGML_BACKEND_PATH"] = str(self.binary.parent)
         args = [str(self.binary), "--cpu", "--text", text, "--reference", request["reference"],
-                "--prompt-wav", request["reference"], "--prompt-text", transcript,
+                # Style control must start at the reference-only input. In
+                # continuation, the instruction follows spoken reference text
+                # and the model can read it aloud. Natural speech keeps its
+                # original continuation; reactions use the isolated speaker.
+                *(["--prompt-wav", request["reference"], "--prompt-text", transcript] if continuation else []),
                 "--timesteps", "10", "--cfg", "2.0", "--steps", "1024",
                 "--output", str(temporary), *(str(path) for path in self.weights)]
         try:
