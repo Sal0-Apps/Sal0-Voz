@@ -13,6 +13,10 @@ jobs:
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SAL0_DATA: ${{ runner.temp }}/sal0-android-ui-${{ github.run_id }}
+      SAL0_DISABLE_WORKER: "1"
+      SAL0_AUTO_DOWNLOAD_MODELS: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -33,6 +37,38 @@ jobs:
       - name: Compilar e validar Android
         working-directory: android
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Preparar servidor temporário da interface
+        run: |
+          pip install -r requirements.txt
+          python -m scripts.seed_ui_smoke
+          nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 17870 > "$RUNNER_TEMP/sal0-android-ui.log" 2>&1 &
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:17870/health; then break; fi
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:17870/health
+          sudo chmod 666 /dev/kvm
+      - name: Validar toques no APK e WebView
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          script: bash scripts/android_ui_smoke.sh
+      - name: Guardar diagnóstico da interface Android
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sal0-Voz-Android-UI
+          path: |
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
+            android-ui-evidence/
       - name: Preparar APK e checksum
         run: |
           mkdir -p dist
@@ -46,13 +82,15 @@ jobs:
       - name: Publicar APK para instalação direta
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-v0.3.1
+          tag_name: android-v0.4.1
           target_commitish: ${{ github.sha }}
-          name: Sal0 Voz Android 0.3.1
+          name: Sal0 Voz Android 0.4.1
           body: |
             App Android para acessar o seu servidor Sal0 Voz. Configure o endereço local (ex.: http://192.168.1.50:7886) e, opcionalmente, o endereço externo e o nome da rede Wi-Fi.
 
-            Inclui sessão persistente, seleção de arquivos de áudio e vídeo e downloads. A geração continua no servidor quando o app é fechado. Android 8 ou posterior.
+            Interface refinada seguindo o Sal0 Karaokê. Corrige a combinação de arquivos antigos da interface após atualizar o servidor, preserva a sessão e inclui Recarregar e Conexão no rodapé.
+
+            Atualize também o servidor Sal0 Voz para 0.4.1 ou posterior. A geração continua no servidor quando o app é fechado. Android 8 ou posterior.
 
             APK para instalação direta, com assinatura de desenvolvimento, como o cliente Karaokê. Confira o checksum SHA-256 publicado junto do arquivo.
           files: dist/*

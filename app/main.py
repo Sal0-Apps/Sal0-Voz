@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 import psutil
 from fastapi import FastAPI, Request, UploadFile, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
@@ -32,6 +32,12 @@ worker = Worker()
 auth_lock = threading.Lock()
 attempts = {}
 STATIC = Path(__file__).parent / "static"
+# One fingerprint covers the page and both of its runtime assets. A browser or
+# proxy retaining an older app.js must never combine it with a new DOM/CSS.
+UI_REVISION = hashlib.sha256(b"\0".join(
+    (STATIC / name).read_bytes() for name in ("index.html", "app.js", "style.css")
+)).hexdigest()[:20]
+UI_HTML = (STATIC / "index.html").read_text(encoding="utf-8").replace("__UI_REVISION__", UI_REVISION)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -69,7 +75,7 @@ async def guard(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    if path.startswith("/api"):
+    if path.startswith("/api") or path in ("/", "/static/index.html", "/static/app.js", "/static/style.css"):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -83,7 +89,7 @@ async def not_found(request, exc):
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
+    return HTMLResponse(UI_HTML, headers={"Cache-Control": "no-store"})
 
 @app.get("/health")
 def health():

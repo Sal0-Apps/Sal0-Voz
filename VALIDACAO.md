@@ -158,3 +158,17 @@ Telegram usa somente sendMessage com link e prévia desativada; o envio de docum
 O [CI 38411009771](https://github.com/Sal0-Apps/Sal0-Voz/actions/runs/38411009771), no commit `92371e1aa1c6d3fe6f7628025afe9ada5f5cfe04`, passou nos **174 testes**, nos dois testes Chromium, na construção e na verificação da imagem sem rede. A verificação incluiu HTTP, autenticação, fila persistente, WAV/SRT e voz de diagnóstico eSpeak NG. Os executores iniciaram nos cinco ambientes de CPU; os imports do Whisper/OmniVoice e a ajuda da CLI VoxCPM2 passaram. Não houve geração neural ou download de pesos. As camadas dos runtimes e do motor de CPU foram reutilizadas do cache na construção final.
 
 Foram publicadas as tags `ghcr.io/sal0-apps/sal0-voz:0.4.0`, `latest` e `sha-92371e1aa1c6d3fe6f7628025afe9ada5f5cfe04`. A consulta anônima confirmou HTTP 200 e o mesmo digest nas três: `sha256:d9dedaa063121e60888bb443ac587fc90b647770d1fc97d8d4b8e4195977af84`. A imagem tem **2.030.242.194 bytes** de camadas comprimidas (1,89 GiB), sem pesos. A imagem contém o código do commit acima; este registro é acrescentado depois, em um commit que altera somente documentação.
+
+
+# Revisão 0.4.1 — interface e APK
+
+A captura do proprietário foi reproduzida carregando o JavaScript 0.3.9 com HTML/CSS 0.4.0: os cartões antigos apareciam, as abas não alternavam, Adicionar voz não abria a janela e o cabeçalho ficava em Conectando. A reprodução registrou `Cannot set properties of null`. O proprietário confirmou que o defeito ocorria no APK.
+
+- HTML, JavaScript e CSS agora compartilham uma revisão calculada do conteúdo, com URLs novas e política `no-store`. Um ensaio de navegador com cache HTTP real confirma que os arquivos antigos continuam no cache mas não são usados após atualizar. Não depende de limpar cookies ou a sessão.
+- Interface refinada a partir do template `Sal0-Karaoke` no commit `c20a6a71039235805fa729bcc336e7e43fa0478c` e das três capturas enviadas: cabeçalho e controles alinhados; Criar, Ajustes e Biblioteca; Biblioteca em seções recolhíveis com Resultados primeiro; botões de download visíveis; Ajustes com Abrir ajustes/Recolher todos; progresso com percentual destacado; formulários e janelas adaptados ao celular.
+- Prévia de áudio/vídeo sob demanda, pausa ao recolher e um reprodutor de cada vez. Arquivos da Biblioteca podem abrir a dublagem ou importar o texto diretamente. Menus fecham após a ação e com Escape. Descrições dos modelos ficam recolhidas e permanecem abertas se o progresso de download atualizar.
+- APK 0.4.1 renova o cache HTTP da versão anterior, mantém cookies e endereços, honra o viewport e oferece Recarregar/Conexão em controles alinhados.
+- Local: **173 testes Python passaram, 2 testes eSpeak ignorados por ausência do executável**. Fluxos de navegador validam API real, recarga, recuperação, cache antigo, upload/edição/transcrição/prévia de voz, seleção/cancelamento/exclusão, download WAV, dublagem a partir da Biblioteca e controles com mesma altura em 320, 390, 768 e 1366 px. Não houve execução nem download de modelos neurais.
+- CI Android inclui ensaio no WebView do APK num emulador Android 15 contra servidor temporário com executor desativado. Os resultados de publicação serão registrados após a conclusão.
+
+O Compose privado do proprietário fica fora do GitHub. Os templates genéricos existentes não foram alterados. Modelos, qualidade de geração e dados do servidor não são modificados por esta revisão.

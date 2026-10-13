@@ -4,7 +4,9 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.4.0 — interface simplificada a partir do Sal0-Karaoke.** Três abas: Criar, Biblioteca e Ajustes. Criação em uma única tela: voz → texto/arquivo → modelo → gerar. Personalizar e todos os painéis de Ajustes começam recolhidos. Ao gerar, o andamento ocupa a tela; Adicionar outro permite preparar a próxima criação. O texto inteiro é priorizado e só o trecho sobrecarregado é dividido em blocos maiores por pontuação. Telegram envia somente links, sem anexos. Mantém a fila, as vozes e os pesos na pasta de dados, para quatro núcleos/16 GB físicos e limite de 10 GiB do container. A avaliação neural permanece com o proprietário no servidor.
+**Versão 0.4.1 — interface e APK refinados seguindo o Sal0 Karaokê.** Criar → voz → texto/arquivo → modelo → gerar. Cabeçalho e botões alinhados, Biblioteca com seções recolhíveis e downloads visíveis, Ajustes com “Abrir ajustes” e “Recolher todos”, andamento com percentual em destaque. A página, o JavaScript e o CSS usam uma revisão conjunta para evitar a mistura de versões no cache do APK. Atualize também o [APK Android 0.4.1](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1); ele renova o cache antigo sem apagar a sessão e oferece Recarregar e Conexão no rodapé.
+
+Mantém o texto inteiro primeiro, com divisão apenas por sobrecarga, Telegram somente com links e preservação da fila, das vozes e dos modelos na pasta de dados. A avaliação neural permanece com o proprietário, em CPU de quatro núcleos/16 GB físicos e limite de 10 GiB do container.
 
 ## Instalar no ZimaOS
 
@@ -16,7 +18,7 @@ Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, 
 6. Clique em **Gerar áudio**. O app prepara a referência automaticamente, usa o modelo escolhido e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Criar → Legendar**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.4.0` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.4.1` e o SHA do commit para rollback.
 
 **Os pesos são baixados pelo próprio aplicativo depois que ele inicia**, em segundo plano. Qwen3-TTS 1.7B Base e Faster-Whisper large-v3-turbo são preparados automaticamente em `/data/models`, com revisões fixas e hashes verificados. A interface e o healthcheck funcionam enquanto o download acontece; trabalhos que precisam desses modelos aguardam na fila. O progresso aparece em **Ajustes → Modelos**. As dependências de CPU continuam na imagem, sem precisar instalar CUDA.
 
@@ -63,7 +65,7 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - Dublagem direta do vídeo, com transcrição Turbo automática e ajuste de ritmo para manter os tempos. SRT revisado continua opcional; nesse modo, excesso de duração acima de 10% exige revisão.
 - 33 reações em Personalizar → Roteiro: geradas com a voz e o modelo escolhidos. Controles nativos em OmniVoice/VoxCPM2 quando disponíveis; demais opções são vocalizações aproximadas, identificadas na interface.
 - Nome do áudio opcional; vazio gera nome da voz e número crescente.
-- Cliente Android com configuração de rede, upload de áudio/vídeo e downloads: [APK](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.3.1).
+- Cliente Android com configuração de rede, upload de áudio/vídeo e downloads: [APK](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1).
 - Downloads dos modelos após iniciar o app, salvos no volume para reutilização; revisão fixa, licença, estimativa de tamanho e hashes. O navegador recebe apenas o status.
 - Backup/restauração portável por CLI, inventário de hardware e healthcheck.
 

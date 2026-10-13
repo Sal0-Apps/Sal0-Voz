@@ -2,7 +2,9 @@
 
 Cliente Android nativo baseado no cliente do Sal0 Karaokê (`c20a6a71039235805fa729bcc336e7e43fa0478c`). O processamento continua no servidor CPU; o APK abre o estúdio em WebView e mantém a sessão.
 
-Baixe o APK em [Releases](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.3.1). Requer Android 8 ou posterior. Na primeira abertura, informe o endereço local do Sal0 Voz, por exemplo `http://192.168.1.50:7886` ou `http://voz.server`. Endereço externo e nome da rede Wi-Fi são opcionais. O app testa os endereços e reconecta ao voltar para primeiro plano.
+Baixe o APK em [Releases](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1). Requer Android 8 ou posterior. Na primeira abertura, informe o endereço local do Sal0 Voz, por exemplo `http://192.168.1.50:7886` ou `http://voz.server`. Endereço externo e nome da rede Wi-Fi são opcionais. O app testa os endereços e reconecta ao voltar para primeiro plano.
+
+Na versão 0.4.1, o cache antigo da interface é renovado na atualização do APK sem remover cookies, sessão ou endereços. O servidor usa a mesma revisão no HTML, JavaScript e CSS. O rodapé oferece **Recarregar** e **Conexão**, com controles do mesmo tamanho. Atualize também o servidor para 0.4.1 ou posterior.
 
 O seletor de arquivos usa o Android Files para enviar áudio ou vídeo, inclusive arquivos que o provedor não identifica com MIME específico. A conversão acontece no servidor. Downloads preservam a sessão e usam o nome definido no estúdio. A geração continua se o app for fechado.
 
@@ -16,3 +18,5 @@ gradle :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 O workflow publica APK e SHA-256. Assim como o cliente Karaokê, o APK de instalação direta usa assinatura de desenvolvimento quando não há chave de distribuição. O cache do CI reutiliza essa chave; uma chave perdida exige reinstalação do cliente. Para distribuição com identidade permanente, configure `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` e `ANDROID_KEY_PASSWORD` no ambiente de build. Nunca publique a chave no repositório.
 
 HTTPS com certificado inválido é recusado. HTTP é aceito para o servidor local. A permissão de localização só é solicitada quando você configura o SSID para identificar a rede Wi-Fi. A telemetria de WebView foi desativada.
+
+O CI também abre o APK num emulador Android 15, contra um servidor temporário sem executor. Verifica toques, navegação, edição de voz, seleção/exclusão com cancelamento, painéis, resultados, recarga com sessão e rotação. Não baixa pesos nem executa modelos neurais.

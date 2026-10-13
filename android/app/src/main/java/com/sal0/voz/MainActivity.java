@@ -413,14 +413,25 @@ public class MainActivity extends ComponentActivity {
         webFrame.addView(webView, matchMatch());
         buildOfflineOverlay();
 
-        Button appSettings = secondaryButton("Configurações do app");
+        LinearLayout browserTools = new LinearLayout(this);
+        browserTools.setOrientation(LinearLayout.HORIZONTAL);
+        browserTools.setPadding(dp(12), dp(6), dp(12), dp(6));
+        Button reload = secondaryButton("Recarregar");
+        reload.setContentDescription("Recarregar a interface do servidor");
+        reload.setOnClickListener(view -> reevaluateRoute(true));
+        reload.setMinHeight(dp(44));
+        reload.setTextSize(13);
+        LinearLayout.LayoutParams reloadParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        reloadParams.setMargins(0, 0, dp(8), 0);
+        browserTools.addView(reload, reloadParams);
+
+        Button appSettings = secondaryButton("Conexão");
         appSettings.setContentDescription("Configurações do app: rede Wi-Fi e endereços do servidor");
         appSettings.setOnClickListener(view -> showSetup(false));
-        appSettings.setMinHeight(dp(48));
-        appSettings.setTextSize(14);
-        LinearLayout.LayoutParams appSettingsParams = new LinearLayout.LayoutParams(-1, -2);
-        appSettingsParams.setMargins(dp(8), dp(4), dp(8), dp(4));
-        browserContainer.addView(appSettings, appSettingsParams);
+        appSettings.setMinHeight(dp(44));
+        appSettings.setTextSize(13);
+        browserTools.addView(appSettings, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        browserContainer.addView(browserTools, matchWrap());
 
         currentBaseUrl = null;
         currentRoute = null;
@@ -434,6 +445,16 @@ public class MainActivity extends ComponentActivity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        // Expire legacy HTTP assets on APK upgrade without removing cookies,
+        // login, saved server addresses or DOM storage.
+        if (getSharedPreferences("sal0_web_runtime", MODE_PRIVATE)
+            .getInt("asset_cache_version", 0) != BuildConfig.VERSION_CODE) {
+            target.clearCache(true);
+            getSharedPreferences("sal0_web_runtime", MODE_PRIVATE).edit()
+                .putInt("asset_cache_version", BuildConfig.VERSION_CODE).apply();
+        }
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccessFromFileURLs(false);
@@ -643,7 +664,8 @@ public class MainActivity extends ComponentActivity {
         Map<String, String> headers = new HashMap<>();
         headers.put("Cache-Control", "no-cache, no-store, max-age=0");
         headers.put("Pragma", "no-cache");
-        webView.loadUrl(baseUrl + "/", headers);
+        webView.loadUrl(baseUrl + "/?apk=" + BuildConfig.VERSION_NAME
+            + "&open=" + System.currentTimeMillis(), headers);
     }
 
     private boolean handleNavigation(String url) {
@@ -1024,7 +1046,7 @@ public class MainActivity extends ComponentActivity {
         edit.setTextColor(COLOR_TEXT);
         edit.setTextSize(15);
         edit.setPadding(dp(14), 0, dp(14), 0);
-        edit.setBackground(rounded(Color.rgb(12, 10, 27), COLOR_BORDER, 13));
+        edit.setBackground(rounded(COLOR_BACKGROUND, COLOR_BORDER, 13));
         return edit;
     }
 

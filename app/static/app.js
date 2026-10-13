@@ -3,7 +3,7 @@ const defaultClone = "qwen-1.7b";
 const defaultAsr = "whisper-large-v3-turbo";
 const isClone = ident => !!state.models.find(model=>model.id===ident)?.clone;
 const state = {mode:"tts", projectId:null, characterId:null, models:[], characters:[], media:[], projects:[], jobs:[], cues:[], reactions:[], characterReactions:{}, configured:false, user:{}, uploads:0, submitting:false, jobsLimit:50, mediaLimit:100, charactersLimit:100};
-Object.assign(state,{libraryPane:"characters",createScreen:"editor",currentJobId:null,selectionMode:{media:false,characters:false,results:false}});
+Object.assign(state,{libraryPane:"results",createScreen:"editor",currentJobId:null,selectionMode:{media:false,characters:false,results:false}});
 const selections = {media:new Set(), characters:new Set(), results:new Set()};
 let deletePlan;
 let toastTimer, saveTimer, recorder, modelTimer, startPromise, polling=false, needsAuthCheck=false, retryDelay=3000, restorePending=true, draftPending=false;
@@ -33,9 +33,19 @@ function view(name){
   if(primary==="library")libraryPane(["characters","projects"].includes(name)?name:state.libraryPane);
   if(name==="settings") safe(async()=>{await loadDiagnostics();await loadTelegram();await loadUsers();})();
   if(primary==="library")renderResults();
+  document.querySelectorAll(".view[hidden] audio,.view[hidden] video").forEach(player=>player.pause());
 }
-function libraryPane(name){state.libraryPane=name;document.querySelectorAll(".library-pane").forEach(x=>x.hidden=x.dataset.pane!==name);document.querySelectorAll("[data-library-pane]").forEach(x=>{const selected=x.dataset.libraryPane===name;x.classList.toggle("active",selected);x.setAttribute("aria-selected",String(selected));x.tabIndex=selected?0:-1;});}
-document.querySelectorAll("[data-library-pane]").forEach(x=>x.onclick=()=>libraryPane(x.dataset.libraryPane));
+function libraryPane(name){
+  state.libraryPane=name;
+  const pane=document.querySelector('.library-pane[data-pane="'+name+'"]');
+  if(pane)pane.open=true;
+}
+document.querySelectorAll(".library-pane").forEach(panel=>panel.addEventListener("toggle",()=>{if(!panel.open)panel.querySelectorAll("audio,video").forEach(player=>player.pause());}));
+document.querySelectorAll("[data-library-pane]").forEach(summary=>summary.addEventListener("click",()=>{state.libraryPane=summary.dataset.libraryPane;}));
+document.querySelectorAll('.settings-section').forEach(panel=>panel.addEventListener('toggle',()=>{
+  panel.querySelector('.settings-trigger-text').textContent=panel.open?'Recolher ajustes':'Abrir ajustes';
+}));
+$("collapse-settings").onclick=()=>document.querySelectorAll('.settings-section').forEach(panel=>panel.open=false);
 document.querySelectorAll("[data-view]").forEach(x=>x.addEventListener("click",()=>view(x.dataset.view)));
 document.querySelectorAll('[role="tablist"]').forEach(group=>group.addEventListener("keydown",event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const tabs=[...group.querySelectorAll('[role="tab"]')].filter(x=>!x.disabled),index=tabs.indexOf(document.activeElement);if(index<0)return;event.preventDefault();const next=event.key==="Home"?0:event.key==="End"?tabs.length-1:(index+(event.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;tabs[next].focus();tabs[next].click();}));
 document.querySelectorAll('label.file-button[tabindex]').forEach(label=>label.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();label.querySelector('input[type="file"]').click();}}));
@@ -194,18 +204,18 @@ async function loadProject(p,options={}){
   const job=options.restore&&state.jobs.find(j=>j.project_id===state.projectId);state.trackRestore=!!options.restore&&!job;state.currentJobId=job?.id||null;state.createScreen=job?"job":"editor";renderCreationScreen();
 }
 function renderProjects(){
-  $("project-list").innerHTML=state.projects.length?state.projects.map(p=>'<article class="item-card"><div class="item-body"><div class="avatar">▤</div><div class="item-copy"><h3>'+escapeHTML(p.name)+'</h3><p>'+escapeHTML({tts:"Texto em voz",asr:"Legendas",dub:"Dublagem"}[p.mode])+' · '+new Date(p.updated*1000).toLocaleDateString("pt-BR")+'</p></div><div class="item-actions"><button class="secondary" data-open="'+p.id+'">Abrir</button><details class="item-more"><summary aria-label="Mais opções para '+escapeHTML(p.name)+'">⋯</summary><div><button data-duplicate="'+p.id+'">Duplicar projeto</button></div></details></div></div></article>').join(""):'<div class="empty">Os textos e as configurações que você salvar aparecem aqui.</div>';
+  $("project-list").innerHTML=state.projects.length?state.projects.map(p=>'<article class="item-card"><div class="item-body"><div class="avatar">▤</div><div class="item-copy"><h3>'+escapeHTML(p.name)+'</h3><p>'+escapeHTML({tts:"Texto em voz",asr:"Legendas",dub:"Dublagem"}[p.mode])+' · '+new Date(p.updated*1000).toLocaleDateString("pt-BR")+'</p></div><div class="item-actions"><button class="secondary" data-open="'+p.id+'">Abrir</button><details class="item-more"><summary aria-label="Mais opções para '+escapeHTML(p.name)+'">Mais</summary><div><button data-duplicate="'+p.id+'">Duplicar projeto</button></div></details></div></div></article>').join(""):'<div class="empty">Os textos e as configurações que você salvar aparecem aqui.</div>';
   $("more-projects").hidden=state.projects.length<100;
-  document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>loadProject(state.projects.find(p=>p.id===b.dataset.open)));
-  document.querySelectorAll("[data-duplicate]").forEach(b=>b.onclick=()=>{const project={...state.projects.find(p=>p.id===b.dataset.duplicate),id:null};project.name+=" · cópia";loadProject(project);});
+  document.querySelectorAll("[data-open]").forEach(b=>b.onclick=safe(()=>loadProject(state.projects.find(p=>p.id===b.dataset.open))));
+  document.querySelectorAll("[data-duplicate]").forEach(b=>b.onclick=safe(async()=>{const project={...state.projects.find(p=>p.id===b.dataset.duplicate),id:null};project.name+=" · cópia";await loadProject(project);}));
 }
 function renderCharacters(){
-  $("character-list").innerHTML=state.characters.length?state.characters.map(c=>'<article class="item-card" data-item-id="'+c.id+'">'+selectionHTML("characters",c)+'<div class="item-body"><div class="avatar">'+escapeHTML(c.name.slice(0,2).toUpperCase())+'</div><div class="item-copy"><h3>'+escapeHTML(c.name)+'</h3><p>'+escapeHTML(c.language==="en-US"?"English":"Português")+(c.reference_id?'':' · falta gravação')+'</p></div><div class="item-actions"><button class="primary" data-use-voice="'+c.id+'">Usar</button><details class="item-more"><summary aria-label="Mais opções para '+escapeHTML(c.name)+'">⋯</summary><div><button data-character="'+c.id+'">Editar voz</button><button data-reference-text="'+c.id+'">Ver transcrição</button>'+deleteHTML("characters",c)+'</div></details></div></div>'+(c.reference_id?'<details class="item-preview"><summary>Ouvir referência</summary><audio controls preload="none" src="/api/characters/'+c.id+'/reference-file"></audio></details>':'')+'</article>').join(""):'<div class="empty">Salve uma gravação para usar a mesma voz em novos textos.</div>';
+  $("character-list").innerHTML=state.characters.length?state.characters.map(c=>'<article class="item-card" data-item-id="'+c.id+'">'+selectionHTML("characters",c)+'<div class="item-body"><div class="avatar">'+escapeHTML(c.name.slice(0,2).toUpperCase())+'</div><div class="item-copy"><h3>'+escapeHTML(c.name)+'</h3><p>'+escapeHTML(c.language==="en-US"?"English":"Português")+(c.reference_id?'':' · falta gravação')+'</p></div><div class="item-actions"><button class="primary" data-use-voice="'+c.id+'">Usar</button>'+ (c.reference_id?previewButton('voice-'+c.id,'Ouvir'):'') +'<details class="item-more"><summary aria-label="Mais opções para '+escapeHTML(c.name)+'">Mais</summary><div><button data-character="'+c.id+'">Editar voz</button><button data-reference-text="'+c.id+'">Ver transcrição</button>'+deleteHTML("characters",c)+'</div></details></div></div>'+(c.reference_id?previewHTML('voice-'+c.id,'audio','/api/characters/'+c.id+'/reference-file'):'')+'</article>').join(""):'<div class="empty">Salve uma gravação para usar a mesma voz em novos textos.</div>';
   $("more-characters").hidden=state.characters.length<state.charactersLimit;
   renderSelection("characters");
   document.querySelectorAll("[data-use-voice]").forEach(b=>b.onclick=()=>{state.createScreen="editor";state.trackRestore=false;if(state.mode==="asr")setMode("tts");$("character").value=b.dataset.useVoice;chooseSavedVoice();view("create");renderCreationScreen();$("voice-step").scrollIntoView({behavior:"smooth",block:"start"});});
   document.querySelectorAll("[data-reference-text]").forEach(b=>b.onclick=safe(async()=>{const result=await api("/characters/"+b.dataset.referenceText+"/reference-text");showDetails("Transcrição da voz",result.text||"Será preparada quando o modelo precisar da transcrição. Você pode informá-la em Editar voz.");}));
-  document.querySelectorAll("[data-character]").forEach(b=>b.onclick=()=>{const c=state.characters.find(x=>x.id===b.dataset.character);state.characterId=c.id;$("character-form-title").textContent="Editar voz";for(const [key,id] of Object.entries({name:"character-name",description:"character-description",origin:"character-origin",language:"character-language",reference_id:"character-reference",reference_text:"reference-text"}))$(id).value=c[key]||"";state.characterReactions={...(c.reactions||{})};$("voice-dialog").showModal();});
+  document.querySelectorAll("[data-character]").forEach(b=>b.onclick=()=>{const c=state.characters.find(x=>x.id===b.dataset.character);$("new-character").click();state.characterId=c.id;$("character-form-title").textContent="Editar voz";for(const [key,id] of Object.entries({name:"character-name",description:"character-description",origin:"character-origin",language:"character-language",reference_id:"character-reference",reference_text:"reference-text"}))$(id).value=c[key]||"";state.characterReactions={...(c.reactions||{})};const reference=state.media.find(m=>m.id===c.reference_id);$("character-upload-status").textContent=reference?"Gravação atual: "+reference.name:"Escolha uma gravação para esta voz.";$("voice-dialog").showModal();});
 }
 $("add-voice").onclick=()=>{$("new-character").click();$("voice-dialog").showModal();$("character-name").focus();};
 $("close-voice-dialog").onclick=()=>$("voice-dialog").close();
@@ -246,10 +256,33 @@ $("script-import").addEventListener("change",safe(async e=>{
   $("script").dispatchEvent(new Event("input",{bubbles:true}));toast("Texto importado. Confira o conteúdo antes de gerar.");
   saveDraft();e.target.value="";
 }));
+function previewButton(id,label){return '<button type="button" class="secondary" data-preview="'+id+'" data-preview-label="'+label+'" aria-expanded="false" aria-controls="preview-'+id+'">'+label+'</button>';}
+function previewHTML(id,type,src){return '<div class="item-preview" id="preview-'+id+'" hidden><'+type+' controls preload="none" data-src="'+src+'"></'+type+'></div>';}
+document.addEventListener("click",event=>{
+  const button=event.target.closest('[data-preview]');
+  if(button){
+    const box=$("preview-"+button.dataset.preview),player=box.querySelector('audio,video');
+    box.hidden=!box.hidden;button.setAttribute("aria-expanded",String(!box.hidden));
+    button.textContent=box.hidden?button.dataset.previewLabel:"Fechar prévia";
+    if(box.hidden)player.pause();else if(!player.getAttribute("src"))player.src=player.dataset.src;
+  }
+  document.querySelectorAll('.item-more[open],.account-menu[open]').forEach(menu=>{
+    if(!menu.contains(event.target)||event.target.closest('button,a'))menu.open=false;
+  });
+});
+document.addEventListener("keydown",event=>{if(event.key==="Escape")document.querySelectorAll('.item-more[open],.account-menu[open]').forEach(menu=>{menu.open=false;menu.querySelector('summary').focus();});});
+document.addEventListener("play",event=>{if(event.target.matches('audio,video'))document.querySelectorAll('audio,video').forEach(player=>{if(player!==event.target)player.pause();});},true);
 function renderMedia(){
-  $("media-list").innerHTML=state.media.length?state.media.map(m=>'<article class="item-card" data-item-id="'+m.id+'">'+selectionHTML("media",m)+'<div class="item-body"><div class="avatar">'+(m.video?'▷':m.audio?'〰':'▤')+'</div><div class="item-copy"><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.video?"Vídeo":m.audio?"Áudio":"Texto")+' · '+((m.size||0)/1024**2).toFixed(1)+' MB</p></div><div class="item-actions"><details class="item-more"><summary aria-label="Mais opções para '+escapeHTML(m.name)+'">⋯</summary><div><a href="/api/media/'+m.id+'/file" download>Baixar original</a>'+deleteHTML("media",m)+'</div></details></div></div>'+(m.audio?'<details class="item-preview"><summary>'+(m.video?'Ver vídeo':'Ouvir áudio')+'</summary><'+(m.video?'video':'audio')+' controls preload="none" src="/api/media/'+m.id+'/file"></'+(m.video?'video':'audio')+'></details>':'')+'</article>').join(""):'<div class="empty">Envie áudio, vídeo, TXT ou SRT para sua biblioteca.</div>';
+  $("media-list").innerHTML=state.media.length?state.media.map(m=>'<article class="item-card" data-item-id="'+m.id+'">'+selectionHTML("media",m)+'<div class="item-body"><div class="avatar">'+(m.video?'▷':m.audio?'〰':'▤')+'</div><div class="item-copy"><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.video?"Vídeo":m.audio?"Áudio":"Texto")+' · '+((m.size||0)/1024**2).toFixed(1)+' MB</p></div><div class="item-actions">'+(m.audio||m.type==='script'?'<button class="secondary" data-use-media="'+m.id+'">'+(m.audio?'Dublar':'Usar texto')+'</button>':'')+(m.audio?previewButton('media-'+m.id,m.video?'Assistir':'Ouvir'):'')+'<details class="item-more"><summary aria-label="Mais opções para '+escapeHTML(m.name)+'">Mais</summary><div><a href="/api/media/'+m.id+'/file" download>Baixar original</a>'+deleteHTML("media",m)+'</div></details></div></div>'+(m.audio?previewHTML('media-'+m.id,m.video?'video':'audio','/api/media/'+m.id+'/file'):'')+'</article>').join(""):'<div class="empty">Envie áudio, vídeo, TXT ou SRT para sua biblioteca.</div>';
   $("more-media").hidden=state.media.length<state.mediaLimit;
   renderSelection("media");
+  document.querySelectorAll('[data-use-media]').forEach(button=>button.onclick=()=>{
+    const media=state.media.find(m=>m.id===button.dataset.useMedia);
+    state.createScreen="editor";state.trackRestore=false;
+    if(media.type==='script'){setMode('tts');$("script").value=media.cues?media.cues.map(c=>c.text).join("\n"):media.text||"";}
+    else{setMode('dub');$("source-media").value=media.id;state.sourceId=media.id;$("source-upload").value="";state.cues=[];renderCues();updateSourceStatus();}
+    view('create');renderCreationScreen();saveDraft();
+  });
 }
 function renderCues(){
   $("dub-cue-status").hidden=!state.cues.length;$("dub-cue-status").textContent="Serão usadas "+state.cues.length+" falas revisadas. Abra as opções abaixo para conferir ou voltar à transcrição automática.";
@@ -266,7 +299,7 @@ function outputHTML(job){
 }
 function renderJobs(){
   $("queue-count").textContent=state.jobs.filter(x=>["queued","running"].includes(x.status)).length;
-  $("queue-list").innerHTML=state.jobs.length?state.jobs.map(j=>'<article class="item-card queue-job"><span class="badge">'+statuses[j.status]+'</span><h3>'+escapeHTML(j.name)+'</h3><p class="hint">'+escapeHTML(j.stage)+'</p><progress max="100" value="'+j.progress+'" aria-label="'+j.progress+'%"></progress><div class="item-actions">'+(["queued","running"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="pause">Pausar</button>':"")+(["paused","failed","cancelled"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="resume">Retomar</button>':"")+(["queued","running","paused","failed"].includes(j.status)?'<button class="quiet" data-job="'+j.id+'" data-action="cancel">Cancelar</button>':"")+'<button class="secondary" data-follow-job="'+j.id+'">Ver andamento</button><details class="item-more"><summary aria-label="Detalhes do trabalho">⋯</summary><div><button class="quiet" data-log="'+j.id+'">Diagnóstico</button></div></details></div>'+(j.outputs?.length?'<div class="item-actions">'+outputHTML(j)+'</div>':"")+(j.cues?.length?'<button class="text-button" data-review="'+j.id+'">Revisar legendas</button>':"")+'</article>').join(""):'<div class="empty">Nenhum trabalho por aqui.<br>Crie sua primeira voz.</div>';
+  $("queue-list").innerHTML=state.jobs.length?state.jobs.map(j=>'<article class="item-card queue-job"><span class="badge">'+statuses[j.status]+'</span><h3>'+escapeHTML(j.name)+'</h3><p class="hint">'+escapeHTML(j.stage)+'</p><progress max="100" value="'+j.progress+'" aria-label="'+j.progress+'%"></progress><div class="item-actions">'+(["queued","running"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="pause">Pausar</button>':"")+(["paused","failed","cancelled"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="resume">Retomar</button>':"")+(["queued","running","paused","failed"].includes(j.status)?'<button class="quiet" data-job="'+j.id+'" data-action="cancel">Cancelar</button>':"")+'<button class="secondary" data-follow-job="'+j.id+'">Ver andamento</button><details class="item-more"><summary aria-label="Detalhes do trabalho">Mais</summary><div><button class="quiet" data-log="'+j.id+'">Diagnóstico</button></div></details></div>'+(j.outputs?.length?'<div class="item-actions">'+outputHTML(j)+'</div>':"")+(j.cues?.length?'<button class="text-button" data-review="'+j.id+'">Revisar legendas</button>':"")+'</article>').join(""):'<div class="empty">Nenhum trabalho por aqui.<br>Crie sua primeira voz.</div>';
   document.querySelectorAll("[data-job]").forEach(b=>b.onclick=safe(async()=>{await post("/jobs/"+b.dataset.job+"/"+b.dataset.action);await loadJobs();}));
   document.querySelectorAll("[data-log]").forEach(b=>b.onclick=safe(async()=>{showDetails("Diagnóstico do trabalho",(await api("/jobs/"+b.dataset.log+"/log")).text);}));
   document.querySelectorAll("[data-review]").forEach(b=>b.onclick=safe(async()=>{
@@ -287,7 +320,7 @@ async function loadJobs(){const jobs=await fetchRecords("jobs",state.jobsLimit);
 function renderResults(){
   const completed=state.jobs.filter(x=>!["queued","running"].includes(x.status));
   const signature=JSON.stringify(completed);if($("result-list").dataset.rendered===signature)return;$("result-list").dataset.rendered=signature;
-  $("result-list").innerHTML=completed.length?completed.map(j=>'<article class="item-card" data-item-id="'+j.id+'">'+selectionHTML("results",j)+'<div class="item-body"><div class="avatar">▷</div><div class="item-copy"><h3>'+escapeHTML(j.name)+'</h3><p>'+escapeHTML(statuses[j.status])+'</p></div><div class="item-actions"><button class="secondary" data-open-result="'+j.id+'">Abrir</button><details class="item-more"><summary aria-label="Mais opções para '+escapeHTML(j.name)+'">⋯</summary><div>'+outputHTML(j)+deleteHTML("results",j)+'</div></details></div></div></article>').join(""):'<div class="empty">Ouça e baixe os resultados concluídos aqui.</div>';
+  $("result-list").innerHTML=completed.length?completed.map(j=>'<article class="item-card" data-item-id="'+j.id+'">'+selectionHTML("results",j)+'<div class="item-body"><div class="avatar">▷</div><div class="item-copy"><h3>'+escapeHTML(j.name)+'</h3><p>'+escapeHTML(statuses[j.status])+'</p></div><div class="item-actions"><button class="secondary" data-open-result="'+j.id+'">Ver resultado</button>'+deleteHTML("results",j)+'</div></div>'+(j.outputs?.length?'<div class="result-downloads">'+outputHTML(j)+'</div>':'')+'</article>').join(""):'<div class="empty">Ouça e baixe os resultados concluídos aqui.</div>';
   $("more-results").hidden=state.jobs.length<state.jobsLimit;
   renderSelection("results");
   document.querySelectorAll("[data-open-result]").forEach(b=>b.onclick=()=>{state.currentJobId=b.dataset.openResult;state.createScreen="job";view("create");renderCurrentResult();});
@@ -295,11 +328,13 @@ function renderResults(){
 function renderModelList(){
   const active=state.models.filter(m=>["queued","downloading"].includes(m.download?.status)||m.download?.retry_at).length;
   $("model-auto-status").textContent=active?active+" modelo(s) sendo preparados no servidor. Você pode usar o estúdio enquanto aguarda.":"Os modelos são baixados após a instalação e ficam salvos na pasta de dados. Atualizar o app reutiliza os downloads concluídos; a geração funciona sem internet.";
-  $("model-list").innerHTML=state.models.map(m=>{
+  const list=$("model-list"),signature=JSON.stringify(state.models);if(list.dataset.rendered===signature)return;list.dataset.rendered=signature;
+  const expanded=new Set([...list.querySelectorAll("[data-model-details][open]")].map(x=>x.dataset.modelDetails));
+  list.innerHTML=state.models.map(m=>{
     const d=m.download||{},busy=["queued","downloading"].includes(d.status)||!!d.retry_at;
     const action=m.available||m.id==="diagnostic"?"":busy?'<button class="quiet" data-model-cancel="'+m.id+'">Pausar download</button>':'<button class="secondary" data-model-download="'+m.id+'">'+(d.status==="failed"||d.status==="cancelled"?'Tentar novamente':'Preparar este modelo')+'</button>';
     const label=m.available?(m.source==="bundled"?"Incluído no app":"Pronto"):d.retry_at?"Nova tentativa agendada":d.status==="failed"?"Precisa de atenção":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Não instalado";
-    return '<div class="model-row"><span class="badge">'+label+'</span><h3>'+escapeHTML(m.name)+'</h3><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Preparação pendente")+'</p>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(downloadText(d))+'</p>':'')+(d.error?'<details class="download-error"><summary>Ver o erro da preparação</summary><pre>'+escapeHTML(d.error)+'</pre></details>':'')+'<div class="item-actions">'+action+'</div></div>';
+    return '<div class="model-row"><div class="model-heading"><h3>'+escapeHTML(shortModelName(m))+'</h3><span class="badge">'+label+'</span></div><p>'+escapeHTML(m.kind==='asr'?'Transcrição':m.clone?'Clonagem de voz':'Voz de diagnóstico')+(m.download_gib?' · cerca de '+m.download_gib+' GiB':'')+'</p><details class="model-details" data-model-details="'+m.id+'"'+(expanded.has(m.id)?' open':'')+'><summary>Sobre o modelo</summary><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Preparação pendente")+'</p></details>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(downloadText(d))+'</p>':'')+(d.error?'<details class="download-error"><summary>Ver o erro da preparação</summary><pre>'+escapeHTML(d.error)+'</pre></details>':'')+'<div class="item-actions">'+action+'</div></div>';
   }).join("");
   document.querySelectorAll("[data-model-download]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelDownload+"/download",{accept_license:true});toast("O servidor vai preparar o modelo. Os trabalhos aguardando continuam automaticamente.");await loadModels();await loadDiagnostics();}));
   document.querySelectorAll("[data-model-cancel]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelCancel+"/cancel");await loadModels();await loadDiagnostics();}));
@@ -514,6 +549,7 @@ function renderPreparation(){
   $("retry-preparation").hidden=!missing.some(m=>m.id!=="diagnostic"&&!['queued','downloading'].includes(m.download?.status));
   const singleButton=missing.length===1&&!$("download-selected-model").hidden&&!active.length;
   $("preparation").hidden=!!needed.length&&(!missing.length||singleButton);
+  if(!$("preparation").hidden&&!$("retry-preparation").hidden)$("download-selected-model").hidden=true;
   $("preparation-text").textContent=!needed.length?"Conectando ao servidor…":!missing.length?"Pronto":active.length?active.map(m=>shortModelName(m)+" · "+(m.download.retry_at?"tentativa agendada":m.download.status==="queued"?"aguardando download":downloadText(m.download))).join(" · "):"Prepare os modelos para esta criação. Seu texto permanece salvo.";
 }
 $("retry-preparation").onclick=safe(async()=>{
@@ -546,7 +582,7 @@ function renderCurrentResult(){
   const signature=JSON.stringify([job,elapsed,canReturn]);if(box.dataset.rendered===signature)return;const expanded=box.querySelector('#result-details')?.open;box.dataset.rendered=signature;
   const index=(job.outputs||[]).findIndex(o=>["audio","video"].includes(o.type)),type=index>=0?job.outputs[index].type:null;
   const stage=job.status==="failed"?"A tarefa foi interrompida. Tente novamente ou abra os detalhes.":job.stage;
-  box.innerHTML='<span class="badge">'+escapeHTML(statuses[job.status])+'</span><h2>'+escapeHTML(job.name)+'</h2><p class="result-stage">'+escapeHTML(stage)+'</p><progress max="100" '+(job.status==="running"&&!job.progress?'':'value="'+(job.progress||0)+'"')+' aria-label="Progresso da tarefa"></progress><div class="result-meta"><span>'+Math.round(job.progress||0)+'%</span><span>'+elapsed+'</span></div>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+index+'"></'+type+'>':'')+'<div class="result-downloads">'+outputHTML(job)+'</div><div class="item-actions result-actions">'+(['queued','running'].includes(job.status)?'<button type="button" class="secondary" id="pause-current">Pausar</button><button type="button" class="quiet" id="cancel-current">Cancelar</button>':'')+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="primary" id="retry-current">Retomar</button>':'')+'<button type="button" class="secondary" id="add-another">Adicionar outro</button>'+(canReturn?'<button type="button" class="quiet" id="back-to-draft">Voltar à criação</button>':'')+'</div><details id="result-details" class="compact-details"><summary>Detalhes</summary>'+(job.profile?'<p class="hint">'+escapeHTML(job.profile.name)+'</p>':'')+(job.status==='failed'?'<p class="job-error">'+escapeHTML(job.stage)+'</p>':'')+'<button type="button" id="diagnose-current" class="text-button">Ver diagnóstico</button></details>';
+  box.innerHTML='<div class="result-heading"><h2>'+escapeHTML(statuses[job.status])+'</h2><strong>'+Math.round(job.progress||0)+'%</strong></div><h3 class="result-name">'+escapeHTML(job.name)+'</h3><p class="result-stage">'+escapeHTML(stage)+'</p><progress max="100" '+(job.status==="running"&&!job.progress?'':'value="'+(job.progress||0)+'"')+' aria-label="Progresso da tarefa"></progress><div class="result-meta"><span>'+Math.round(job.progress||0)+'%</span><span>'+elapsed+'</span></div>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+index+'"></'+type+'>':'')+'<div class="result-downloads">'+outputHTML(job)+'</div><div class="item-actions result-actions">'+(['queued','running'].includes(job.status)?'<button type="button" class="secondary" id="pause-current">Pausar</button><button type="button" class="danger" id="cancel-current">Cancelar</button>':'')+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="primary" id="retry-current">Retomar</button>':'')+'<button type="button" class="primary" id="add-another">Adicionar outro</button>'+(canReturn?'<button type="button" class="quiet" id="back-to-draft">Voltar à criação</button>':'')+'</div><details id="result-details" class="compact-details"><summary>Detalhes</summary>'+(job.profile?'<p class="hint">'+escapeHTML(job.profile.name)+'</p>':'')+(job.status==='failed'?'<p class="job-error">'+escapeHTML(job.stage)+'</p>':'')+'<button type="button" id="diagnose-current" class="text-button">Ver diagnóstico</button></details>';
   if(expanded)$("result-details").open=true;
   $("diagnose-current").onclick=safe(async()=>showDetails("Diagnóstico",(await api("/jobs/"+job.id+"/log")).text));
   $("add-another").onclick=()=>$("new-project").click();

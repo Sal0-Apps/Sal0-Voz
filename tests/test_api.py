@@ -65,6 +65,24 @@ def test_dom_assets_and_no_external_runtime(owner):
         assert result.status_code == 200
     assert "frame-ancestors 'none'" in owner.get("/").headers["Content-Security-Policy"]
 
+def test_ui_update_uses_one_content_revision_and_expires_legacy_cache(client):
+    import hashlib
+    import re
+    from app.main import STATIC
+
+    page = client.get("/")
+    expected = hashlib.sha256(b"\0".join(
+        (STATIC / name).read_bytes() for name in ("index.html", "app.js", "style.css")
+    )).hexdigest()[:20]
+    assets = re.findall(r'(?:href|src)="(/static/(?:app.js|style.css)\?v=[^"]+)"', page.text)
+    assert len(assets) == 2
+    assert "__UI_REVISION__" not in page.text
+    assert all(url.endswith("?v=" + expected) for url in assets)
+    for url in ["/", "/static/app.js", "/static/style.css", *assets]:
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.headers["Cache-Control"] == "no-store"
+
 def test_manual_subtitle_export(owner):
     p = owner.post("/api/projects", json={"name":"Legendas","cues":[{"start_ms":0,"end_ms":1000,"text":"Oi"}]}).json()
     output = owner.get("/api/projects/"+p["id"]+"/subtitles/srt")

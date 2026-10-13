@@ -12,6 +12,7 @@ const assert = require('node:assert/strict');
     page.on('pageerror', error => errors.push(error.message));
     const media = [], characters = [], projects = [], jobs = [], generated = [];
     let downloads = 0, failJobRead = false;
+    async function openLibrary(pane){await page.locator('#tab-library').click();const summary=page.locator('#library-'+pane);if(!(await summary.locator('..').evaluate(x=>x.open)))await summary.click();}
     async function openOptions(){if(!(await page.locator('#personalization').evaluate(x=>x.open)))await page.locator('#personalization > summary').click();}
     async function openNames(){await openOptions();if(!(await page.locator('#audio-options').evaluate(x=>x.open)))await page.locator('#audio-options > summary').click();}
     const models = [
@@ -38,7 +39,7 @@ const assert = require('node:assert/strict');
         const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
         return route.fulfill({ body: fs.readFileSync(file), contentType: mime[path.extname(file)] || 'application/octet-stream' });
       }
-      if (pathname === '/health') return json({ worker: true, version: '0.4.0' });
+      if (pathname === '/health') return json({ worker: true, version: '0.4.1' });
       if (pathname === '/api/auth/status') return json({ configured: true, authenticated: true, username: 'admin', role: 'admin' });
       if (pathname === '/api/events/stream') return route.fulfill({ contentType: 'text/event-stream', body: '' });
       if (pathname === '/api/models') return json(models);
@@ -92,7 +93,7 @@ const assert = require('node:assert/strict');
         const deleted=[];for(let i=items.length-1;i>=0;i--)if(ids.includes(items[i].id)){deleted.push(items[i].id);items.splice(i,1);}
         return json({deleted,blocked:[],missing:[],cleanup_pending:false});
       }
-      if (pathname === '/api/diagnostics') return json({ version: '0.4.0', memory_available: 12 * 1024**3, disk_free: 20 * 1024**3, threads: 4 });
+      if (pathname === '/api/diagnostics') return json({ version: '0.4.1', memory_available: 12 * 1024**3, disk_free: 20 * 1024**3, threads: 4 });
       if (pathname === '/api/telegram') return json({});
       if (pathname === '/api/users') return json([{ username: 'admin', role: 'admin' }]);
       unexpected.push(`${method} ${pathname}`);
@@ -156,7 +157,7 @@ const assert = require('node:assert/strict');
     await page.locator('#save-project').click();
     await page.waitForFunction(() => document.querySelector('#save-state').textContent === 'Projeto salvo no servidor');
     assert.equal(projects.at(-1).audio_name, 'Cena de teste');
-    await page.locator('#tab-library').click();await page.locator('#library-voices').click();
+    await page.locator('#tab-library').click();await openLibrary('voices');
     await page.screenshot({path:'/tmp/voice-library-desktop.png',fullPage:true});
     await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/voice-library-mobile.png',fullPage:true});
     await page.locator('#add-voice').click();
@@ -189,20 +190,20 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(()=>document.querySelector('#source-status').textContent.includes('fundo simples'));
     await page.locator('#generate').click();await page.waitForFunction(()=>!document.querySelector('#generate').disabled);
     assert.equal(generated.at(-1).media_id,'ref-3');
-    for (const width of [1366, 390]) {
+    for (const width of [1366, 768, 390, 320]) {
       await page.setViewportSize({ width, height: 900 });
       for (const view of ['create','library','settings']) {
         await page.locator(`nav [data-view="${view}"]`).click();
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${view}: overflow at ${width}`);
         assert.equal(await page.locator('#theme').isVisible(), true);
         assert.equal(await page.locator('#open-help').isVisible(),true);
-        if(view==='library')for(const pane of ['voices','media','results','projects']){await page.locator('#library-'+pane).click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
+        if(view==='library')for(const pane of ['voices','media','results','projects']){await openLibrary(pane);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}
       }
     }
     assert.equal(await page.locator('.settings-section').first().evaluate(element => element.open), false);
     await page.screenshot({path:'/tmp/voice-settings-mobile.png',fullPage:true});
     await page.locator('#tab-create').focus();await page.keyboard.press('End');
-    assert.equal(await page.locator('#tab-settings').getAttribute('aria-selected'),'true');
+    assert.equal(await page.locator('#tab-library').getAttribute('aria-selected'),'true');
     await page.keyboard.press('Home');
     await page.locator('#add-another').click();
     await page.locator('[data-mode="asr"]').click();
@@ -256,7 +257,7 @@ const assert = require('node:assert/strict');
     await page.locator('#script-import').setInputFiles({name:'texto.txt',mimeType:'text/plain',buffer:Buffer.from('Texto importado intacto.')});
     await page.waitForFunction(()=>document.querySelector('#script').value==='Texto importado intacto.');
     assert.equal(await page.locator('[data-mode="tts"]').evaluate(x=>x.classList.contains('selected')),true);
-    await page.locator('#tab-library').click();await page.locator('#library-voices').click();
+    await page.locator('#tab-library').click();await openLibrary('voices');
     await page.locator('[data-selection-start="characters"]').click();
     await page.locator('[data-select-all="characters"]').click();
     await page.locator('[data-delete-selected="characters"]').click();
@@ -266,7 +267,7 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(()=>document.querySelectorAll('[data-character]').length===0);
     assert.equal(characters.length,0);
     await page.locator('nav [data-view="library"]').click();
-    await page.locator('#library-media').click();
+    await openLibrary('media');
     await page.locator('[data-selection-start="media"]').click();
     await page.locator('[data-select-all="media"]').click();
     await page.locator('[data-delete-selected="media"]').click();await page.locator('#delete-confirm').click();
@@ -275,7 +276,7 @@ const assert = require('node:assert/strict');
     const activeJobs=jobs.length;
     jobs.push({id:'completed-1',name:'Resultado 1',status:'completed',outputs:[],updated:Date.now()/1000},{id:'completed-2',name:'Resultado 2',status:'failed',stage:'Teste',outputs:[],updated:Date.now()/1000});
     await page.waitForFunction(()=>document.querySelectorAll('#result-list [data-select-id]').length===2);
-    await page.locator('#library-results').click();
+    await openLibrary('results');
     await page.locator('[data-selection-start="results"]').click();
     await page.locator('[data-select-all="results"]').click();
     await page.waitForTimeout(5200);

@@ -94,7 +94,7 @@ const assert = require('node:assert/strict');
     const seeded=spawnSync(process.env.SAL0_TEST_PYTHON||'python',['-c',"from app import storage as s; [s.put('job',{'owner_username':'admin','status':'completed','name':str(i),'outputs':[]}) for i in range(55)]"],{cwd:path.join(__dirname,'..'),env:{...process.env,SAL0_DATA:data},encoding:'utf8'});
     assert.equal(seeded.status,0,seeded.stderr);
     await page.goto(base+'/?job='+before.jobs[0].id);
-    await page.waitForFunction(name=>!document.querySelector('#current-result').hidden&&document.querySelector('#current-result h2')?.textContent===name,before.jobs[0].name);
+    await page.waitForFunction(name=>!document.querySelector('#current-result').hidden&&document.querySelector('#current-result .result-name')?.textContent===name,before.jobs[0].name);
     assert.equal(await page.locator('#script').inputValue(),'Rascunho preservado durante a queda de conexão.');
     await page.locator('#back-to-draft').click();
     assert.equal(await page.locator('#script').inputValue(),'Rascunho preservado durante a queda de conexão.');
