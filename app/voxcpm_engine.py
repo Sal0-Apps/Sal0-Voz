@@ -1,5 +1,6 @@
 """Full F16 VoxCPM2 through the pinned CPU GGML engine; weights live on disk."""
 import os
+import errno
 import subprocess
 from pathlib import Path
 
@@ -71,5 +72,9 @@ class VoxCPMEngine:
             os.replace(temporary, output)
             if request.get("checkpoint"):
                 checkpoint_audio(output)
+        except OSError as exc:
+            if exc.errno == errno.E2BIG:
+                raise TextCapacityExceeded("O texto ultrapassa o limite de envio ao motor nativo. Será usado um bloco menor.") from exc
+            raise
         finally:
             temporary.unlink(missing_ok=True)

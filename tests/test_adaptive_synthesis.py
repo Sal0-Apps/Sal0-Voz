@@ -205,3 +205,18 @@ def test_voxcpm_capacity_signal_does_not_reuse_a_previous_log_error(data,monkeyp
     engine=module.VoxCPMEngine(req)
     with pytest.raises(TextCapacityExceeded if capacity else RuntimeError): engine.generate(req)
     assert not (folder/"raw.json").exists()
+
+
+def test_large_native_argument_is_a_text_capacity_error(data,monkeypatch):
+    import errno
+    import app.voxcpm_engine as module
+    binary=data/"unused-cli"; binary.write_text("unused"); binary.chmod(0o755)
+    monkeypatch.setattr(module,"runtime_binary",lambda _:binary)
+    monkeypatch.setattr(module,"memory_available",lambda:10*1024**3)
+    for name in ("VoxCPM2-BaseLM-F16.gguf","VoxCPM2-Acoustic-F16.gguf"):
+        (data/name).write_bytes(b"substitute, never loaded")
+    def fail(*args,**kwargs): raise OSError(errno.E2BIG,"Argument list too long")
+    monkeypatch.setattr(module.subprocess,"run",fail)
+    req={"model_path":str(data),"text":"Texto "*30000,"voice_style":"happy","reference":"unused.wav","output":str(data/"raw.wav")}
+    engine=module.VoxCPMEngine(req)
+    with pytest.raises(TextCapacityExceeded): engine.generate(req)

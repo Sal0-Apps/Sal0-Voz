@@ -49,7 +49,7 @@ def catalog():
 def reaction(ident):
     found = next((item for item in catalog() if item["id"] == ident), None)
     if found is None:
-        raise ValueError(f"Reação desconhecida: {ident}. Escolha uma opção do editor Detalhado.")
+        raise ValueError(f"Reação desconhecida: {ident}. Escolha uma opção em Personalizar → Roteiro.")
     return found
 
 def synthesis_text(ident, engine, language="pt-BR"):

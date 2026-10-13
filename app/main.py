@@ -501,7 +501,7 @@ def validate_script(body: Project):
 @app.get("/api/reactions")
 def get_reactions():
     from .reactions import catalog
-    return [{key: item[key] for key in ("id", "name", "category")} for item in catalog()]
+    return [{key: item[key] for key in ("id", "name", "category", "native_models", "generation")} for item in catalog()]
 
 @app.get("/api/reactions/{ident}/file")
 def get_reaction_file(ident: str):

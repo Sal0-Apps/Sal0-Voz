@@ -26,6 +26,11 @@ const assert = require('node:assert/strict');
     await page.locator('#password').fill('browser-test-password');await page.locator('#auth-submit').click();
     await page.waitForFunction(()=>document.querySelectorAll('#reaction-choice option').length===33&&document.querySelector('#preparation-text').textContent!=='Conectando ao seu servidor…');
     assert.equal(await page.locator('#retry-connection').isVisible(),false);
+    // Native reaction labels must come from the real API, not only fixtures.
+    await page.locator('#engine').selectOption('omnivoice');
+    assert.equal(await page.locator('#reaction-choice option[value="risada"]').textContent(),'Risada');
+    assert.ok((await page.locator('#reaction-choice option[value="gemido"]').textContent()).includes('vocalização'));
+    await page.locator('#engine').selectOption('qwen-1.7b');
     const samples=24000*4,wav=Buffer.alloc(44+samples*2);
     wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(24000,24);wav.writeUInt32LE(48000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(samples*2,40);
     for(let i=0;i<samples;i++)wav.writeInt16LE(Math.round(Math.sin(i/24000*180*2*Math.PI)*10000),44+i*2);
