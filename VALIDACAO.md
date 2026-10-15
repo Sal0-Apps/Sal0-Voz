@@ -191,4 +191,11 @@ O [APK Android 0.4.1](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android
 
 **183 testes Python passaram localmente e dois de eSpeak NG foram ignorados por ausência do executável.** Os dez casos novos verificam a API, o contexto nativo, o perfil congelado, a preservação da referência, a retomada com a mesma semente, picos/amostras inválidas, exportações WAV/FLAC/MP3/Opus, áudio de 24 bits em pausas e a dublagem AAC com ajuste de ritmo. Os bits inferiores a 16 bits foram comparados exatamente após decodificar WAV e FLAC pelo FFmpeg real. Os quatro fluxos Chromium passaram com Playwright 1.55.0: criação, API real/reconexão, cache de interface e Biblioteca em computador/celular. Sintaxe Python/JavaScript, YAML e diff passaram.
 
-Não houve download de pesos ou inferência neural. A qualidade auditiva, o pico real de RAM e o tempo no AMD A10 continuam sujeitos à avaliação no servidor do proprietário; mais passos não garantem melhora em toda voz. O limite de 10 GiB, o Compose personalizado, os templates de instalação e o APK 0.4.1 foram preservados. A publicação da imagem será registrada após o CI.
+Não houve download de pesos ou inferência neural. A qualidade auditiva, o pico real de RAM e o tempo no AMD A10 continuam sujeitos à avaliação no servidor do proprietário; mais passos não garantem melhora em toda voz. O limite de 10 GiB, o Compose personalizado, os templates de instalação e o APK 0.4.1 foram preservados. A publicação foi concluída e conferida conforme o registro abaixo.
+
+
+## Publicação confirmada da 0.4.2
+
+O [CI 38722655821](https://github.com/Sal0-Apps/Sal0-Voz/actions/runs/38722655821), no commit `42652a93c878c067d43492486ac3ab09414d10b1`, passou nos **185 testes Python**, nos quatro fluxos de navegador, na construção e no teste da imagem sem rede. O smoke conferiu HTTP, autenticação, fila persistente, WAV/SRT e fala de diagnóstico eSpeak NG. Os executores iniciaram nos cinco ambientes de CPU; os imports do Whisper/OmniVoice e a ajuda da CLI VoxCPM2 passaram. Nenhum peso neural foi baixado ou usado em inferência.
+
+Foram publicadas as tags `ghcr.io/sal0-apps/sal0-voz:0.4.2`, `latest` e `sha-42652a93c878c067d43492486ac3ab09414d10b1`, com digest `sha256:06615ed244c253551c7bcedc1b36677668822e6a9fffc20d1522f7a9a72bda1d`. A consulta anônima confirmou **HTTP 200** e o mesmo digest nas três tags; os metadados da imagem confirmaram versão **0.4.2**, Linux/amd64. O APK Android 0.4.1 permanece compatível. Esta atualização do relatório altera somente documentação.
