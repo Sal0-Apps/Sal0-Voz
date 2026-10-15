@@ -43,8 +43,11 @@ def test_transcriber_receives_decoded_audio_and_cpu_options(recording, tmp_path,
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=Whisper))
     monkeypatch.setenv("SAL0_THREADS", "4")
     output = tmp_path / "cues.json"
-    transcribe({"model_path": "/models/turbo", "source": str(recording),
-                "language": "pt-BR", "output": str(output)})
+    from app.engine_progress import progress_to
+    events = []
+    with progress_to(events.append):
+        transcribe({"model_path": "/models/turbo", "source": str(recording),
+                    "language": "pt-BR", "output": str(output)})
     assert calls["options"] == {"device": "cpu", "compute_type": "int8", "cpu_threads": 4,
                                 "num_workers": 1, "local_files_only": True}
     assert isinstance(calls["audio"], np.ndarray) and len(calls["audio"]) == 40000
@@ -52,6 +55,10 @@ def test_transcriber_receives_decoded_audio_and_cpu_options(recording, tmp_path,
     assert calls["transcribe"] == {"language": "pt", "beam_size": 5, "vad_filter": True,
                                    "word_timestamps": True, "condition_on_previous_text": False}
     assert json.loads(output.read_text()) == [{"start_ms": 500, "end_ms": 2250, "text": "Olá."}]
+    timeline = [event for event in events if event["phase"] == "transcribing"]
+    assert [event["completed"] for event in timeline] == [0, 2.25, 2.5, 2.5]
+    assert all(event["total"] == 2.5 and event["unit"] == "seconds" for event in timeline)
+    assert [event["phase"] for event in events[:2]] == ["reading", "loading"] and events[-1]["phase"] == "writing"
 
 
 def test_invalid_recording_has_a_useful_error(tmp_path):

@@ -1,5 +1,6 @@
 import json
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -37,6 +38,7 @@ class Worker:
         self.clone_session = None
         self.active_job_id = None
         self.processing_engine = None
+        self.progress_scope = (0, 0, "Preparando")
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -67,9 +69,58 @@ class Worker:
 
     def update(self, ident, **fields):
         with self.lock:
+            if "stage" in fields:
+                fields.setdefault("progress_detail", None)
             job = s.get("job", ident)
             job.update(fields)
             return s.put("job", job)
+
+    def begin_progress(self, ident, start, span, label):
+        self.progress_scope = (start, span, label)
+        self.update(ident, progress=round(start, 1), stage=label)
+
+    def engine_progress(self, ident, event):
+        """Persist measured activity; phase weights make the overall % an estimate."""
+        phases = {"loading": "Carregando o modelo na CPU", "reading": "Lendo o áudio",
+                  "reference": "Preparando a voz de referência", "generating": "Gerando a fala",
+                  "sampling": "Calculando a fala", "decoding": "Convertendo a fala em áudio",
+                  "writing": "Salvando o resultado", "transcribing": "Transcrevendo o áudio"}
+        phase = event.get("phase")
+        if phase not in phases:
+            return
+        with self.lock:
+            job = s.get("job", ident)
+            if job["status"] != "running":
+                return
+            start, span, label = self.progress_scope
+            now = time.time()
+            previous = job.get("progress_detail") or {}
+            same = previous.get("phase") == phase and previous.get("chunk") == event.get("chunk")
+            detail = {"phase": phase, "started": previous.get("started", now) if same else now,
+                      "updated": now, "chunk": event.get("chunk")}
+            message = phases[phase]
+            fraction = {"decoding": 0.94, "writing": 0.98}.get(phase)
+            completed, total = event.get("completed"), event.get("total")
+            if (isinstance(completed, (int, float)) and isinstance(total, (int, float))
+                    and math.isfinite(completed) and math.isfinite(total) and total > 0 and 0 <= completed <= total):
+                detail.update(completed=completed, total=total, unit=event.get("unit"))
+                if phase == "sampling" and event.get("unit") == "steps":
+                    step = min(int(completed)+1, int(total))
+                    message = f"Calculando passo {step} de {int(total)}" if completed < total else "Passos concluídos; preparando o áudio"
+                    if event.get("chunk", 1) > 1:
+                        message += f" · parte interna {event['chunk']}"
+                    measured = event.get("fraction", completed/total)
+                    if isinstance(measured, (int, float)) and math.isfinite(measured):
+                        fraction = 0.94 * max(0, min(1, measured))
+                    elapsed = event.get("elapsed_seconds")
+                    if isinstance(elapsed, (int, float)) and math.isfinite(elapsed) and elapsed > 0 and 2 <= completed < total:
+                        detail["eta_seconds"] = round(elapsed/completed*(total-completed))
+                elif phase == "transcribing":
+                    fraction = 0.98 * completed/total
+            fields = {"stage": label + " · " + message, "progress_detail": detail}
+            if fraction is not None:
+                fields["progress"] = round(min(99, start + span*fraction), 1)
+            self.update(ident, **fields)
 
     def check(self, ident):
         if self.stop_event.is_set():
@@ -90,7 +141,7 @@ class Worker:
         if memory.available < 256*1024**2:
             raise MemoryUnavailable(0.5, memory.available/1024**3)
 
-    def run(self, ident, args, cwd=None):
+    def run(self, ident, args, cwd=None, progress_file=None):
         self.check(ident)
         log = s.DATA / "jobs" / ident / "process.log"
         env = os.environ.copy()
@@ -98,10 +149,26 @@ class Worker:
         with log.open("ab") as output:
             log_start = log.stat().st_size
             process = subprocess.Popen(args, cwd=cwd, env=env, stdout=output, stderr=output, start_new_session=os.name == "posix")
+            stamp = None
+            def read_progress():
+                nonlocal stamp
+                if progress_file is None:
+                    return
+                try:
+                    current = progress_file.stat().st_mtime_ns
+                    if current != stamp:
+                        event = json.loads(progress_file.read_text(encoding="utf-8"))
+                        if isinstance(event, dict):
+                            self.engine_progress(ident, event)
+                        stamp = current
+                except (OSError, ValueError):
+                    pass
             try:
                 while process.poll() is None:
                     self.check(ident)
+                    read_progress()
                     self.stop_event.wait(0.4)
+                read_progress()
                 if process.returncode:
                     with log.open("rb") as stream:
                         stream.seek(max(log_start, log.stat().st_size - 4000))
@@ -251,9 +318,13 @@ class Worker:
             self.processing_engine = previous
 
     def _engine(self, ident, request, folder):
+        progress_file = None
         if request["engine"].startswith("whisper-"):
             self.close_clone()
             request["work_dir"] = str(folder / "asr-work")
+            progress_file = folder / "engine-progress.json"
+            progress_file.unlink(missing_ok=True)
+            request["progress_file"] = str(progress_file)
         if is_clone(request["engine"]):
             project = s.get("job", ident)["snapshot"]
             request["dtype"] = project.get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
@@ -267,14 +338,14 @@ class Worker:
         s.atomic_json(path, request)
         if is_clone(request["engine"]):
             if self.clone_session is None:
-                stage = s.get("job", ident)["stage"]
                 self.clone_session = EngineSession(self, ident, request, folder)
-                self.update(ident, stage=stage)
             self.clone_session.generate(request)
         else:
             try:
-                self.run(ident, [runtime(request["engine"]), "-m", "app.engine_runner", str(path)])
+                self.run(ident, [runtime(request["engine"]), "-m", "app.engine_runner", str(path)], progress_file=progress_file)
             finally:
+                if progress_file is not None:
+                    progress_file.unlink(missing_ok=True)
                 shutil.rmtree(folder / "asr-work", ignore_errors=True)
                 release_temporary_memory()
 
@@ -311,8 +382,13 @@ class Worker:
                 stale.unlink(missing_ok=True)
             plan_path.unlink(missing_ok=True)
         paths = []
+        start, span, label = self.progress_scope
+        total_chars = max(1, sum(len(part["text"]) for part in plan["parts"]))
+        done_chars = 0
         for index, part in enumerate(plan["parts"]):
             self.check(ident)
+            part_start, part_span = start+span*done_chars/total_chars, span*len(part["text"])/total_chars
+            self.begin_progress(ident, part_start, part_span, label+(f" · parte {index+1} de {len(plan['parts'])}" if len(plan["parts"]) > 1 else ""))
             target = output if part["key"] == "0" else output.with_name(output.stem+".part-"+part["key"]+".wav")
             if not audio_valid(target):
                 try:
@@ -333,6 +409,9 @@ class Worker:
                 if not audio_valid(target):
                     checkpoint_audio(target)
             paths.append(target)
+            done_chars += len(part["text"])
+            self.update(ident, progress=round(start+span*done_chars/total_chars, 1), stage=label+" · fala confirmada")
+        self.progress_scope = (start, span, label)
         if plan_path.exists():
             temporary = output.with_name(output.stem+".joining.wav")
             with wave.open(str(paths[0]), "rb") as first:
@@ -412,7 +491,9 @@ class Worker:
         project = job["snapshot"]
         folder = s.DATA / "jobs" / ident
         folder.mkdir(parents=True, exist_ok=True)
+        self.begin_progress(ident, 0, 0, "Preparando")
         if project["mode"] == "asr":
+            self.begin_progress(ident, 0, 95, "Transcrição")
             output = folder / "cues.json"
             self.engine(ident, {"engine": project["asr_engine"], "language": project["language"], "source": str(s.safe_path(project["media"]["path"])), "output": str(output)}, folder)
             cues = json.loads(output.read_text(encoding="utf-8"))
@@ -431,12 +512,15 @@ class Worker:
         cursor = 0
         timed_groups = {}
         segments = project["segments"]
+        weights = [max(1, len(segment.get("text", ""))) if segment.get("pause_ms") is None else 1 for segment in segments]
+        total_weight = max(1, sum(weights))
+        done_weight = 0
         last_speech = max((i for i, segment in enumerate(segments)
                            if segment.get("pause_ms") is None), default=-1)
         for index, segment in enumerate(segments):
             self.check(ident)
-            quality = " · OmniVoice 64 passos" if maximum_quality(project) else ""
-            self.update(ident, progress=round(index/len(segments)*85), stage=f"Gerando trecho {index+1} de {len(segments)}" + quality)
+            label = f"Trecho {index+1} de {len(segments)}"
+            self.begin_progress(ident, 85*done_weight/total_weight, 85*weights[index]/total_weight, label)
             policy = render_policy(project, segment)
             if policy is not None:
                 marker = folder / f"render-{index:06d}.json"
@@ -480,6 +564,7 @@ class Worker:
                             checkpoint_audio(raw)
                     if index == last_speech:
                         self.close_clone()
+                    self.update(ident, stage=label+" · Ajustando o áudio")
                     filters = []
                     if segment["rate"] != 1:
                         filters.append(f"atempo={segment['rate']}")
@@ -501,6 +586,8 @@ class Worker:
                 if caption(segment):
                     cues.append({"start_ms": cursor, "end_ms": cursor+duration_ms, "text": caption(segment)})
                 cursor += duration_ms
+            done_weight += weights[index]
+            self.update(ident, progress=round(85*done_weight/total_weight, 1), stage=label+" · concluído")
         self.close_clone()
         self.update(ident, progress=90, stage="Montando exportação")
         joined = folder / "joined.wav"
@@ -560,6 +647,7 @@ class Worker:
             # larger requests are silently limited by the encoders.
             encoding = {"mp3": ["-b:a", "160k", "-compression_level", "0"], "opus": ["-b:a", "192k", "-compression_level", "10"]}.get(extension, []) if maximum_quality(project) else []
             args = ffargs("-i", joined, "-c:a", codec, *encoding, temporary)
+        self.update(ident, progress=95, stage="Exportando o arquivo final")
         self.run(ident, args)
         os.replace(temporary, output)
         self.finish_subtitles(ident, cues, [{"path": output.relative_to(s.DATA).as_posix(), "name": f"{project.get('output_name', project['name'])}.{extension}", "type": "video" if extension=="mp4" else "audio"}])
@@ -658,6 +746,7 @@ class Worker:
                 n = min(frames-cursor, sample_rate); out.writeframesraw(b"\0"*(sample_width*n)); cursor += n
 
     def finish_subtitles(self, ident, cues, outputs=None):
+        self.update(ident, progress=99, stage="Salvando as legendas e os arquivos finais")
         outputs = outputs or []
         project = s.get("job", ident).get("snapshot", {})
         name = project.get("output_name", "legendas")

@@ -10,6 +10,7 @@ from . import storage as s
 from .resources import memory_available, release_temporary_memory, is_memory_error
 from .engine_policy import MEMORY_GIB, MemoryUnavailable
 from .generation_limits import chatterbox_capacity
+from .engine_progress import report
 
 
 def load_model(folder, torch):
@@ -111,7 +112,9 @@ class ChatterboxEngine:
         import torch
         import soundfile as sf
         with torch.inference_mode(), chatterbox_capacity(self.model):
+            report("reference")
             self.prepare_reference(request["reference"], expression)
+            report("generating")
             wav = self.model.generate(request["text"], language_id="pt", audio_prompt_path=None,
                                       exaggeration=expression, cfg_weight=0.3,
                                       temperature=0.8, repetition_penalty=1.2, min_p=0.05, top_p=1.0)
@@ -119,6 +122,7 @@ class ChatterboxEngine:
         if not len(audio):
             raise ValueError("O modelo não gerou áudio. Confira sua referência.")
         output = Path(request["output"])
+        report("writing")
         temporary = output.with_name(output.stem + ".partial.wav")
         sf.write(temporary, audio, self.model.sr)
         os.replace(temporary, output)

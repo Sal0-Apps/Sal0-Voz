@@ -251,8 +251,10 @@ def test_whisper_workspace_is_removed_before_clone_even_on_failure(data,monkeypa
     import app.worker as module
     job=speech_job(data); worker=Worker(); worker.update(job["id"],status="running")
     folder=data/"jobs"/job["id"]; folder.mkdir()
-    def run(ident,args):
+    def run(ident,args,progress_file=None):
         request=json.loads((folder/"request.json").read_text())
+        assert progress_file == folder/"engine-progress.json" and request["progress_file"] == str(progress_file)
+        progress_file.write_text('{"phase":"transcribing","completed":1,"total":2}')
         work=Path(request["work_dir"]); work.mkdir(); (work/"pcm.f32").write_bytes(b"temporary")
         if interrupted:raise ProcessInterrupted("ASR stopped")
         Path(request["output"]).write_text("[]")
@@ -263,6 +265,7 @@ def test_whisper_workspace_is_removed_before_clone_even_on_failure(data,monkeypa
     else:
         worker.engine(job["id"],request,folder)
     assert not (folder/"asr-work").exists() and worker.processing_engine is None
+    assert not (folder/"engine-progress.json").exists()
     class Session:
         def __init__(self,*args):assert not (folder/"asr-work").exists()
         def generate(self,request):pass

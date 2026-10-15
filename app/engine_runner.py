@@ -9,6 +9,7 @@ from pathlib import Path
 from .prompt_cache import PromptCache
 from .resources import release_temporary_memory, is_memory_error
 from .audio_files import checkpoint_audio
+from .engine_progress import progress_to, report
 
 LANGUAGES = {"pt-BR": "Portuguese", "en-US": "English"}
 
@@ -55,10 +56,12 @@ class QwenEngine:
         if not transcript:
             raise ValueError("A gravação precisa ser transcrita antes da clonagem. Confira a preparação da referência.")
         with torch.inference_mode(), torch.autocast(device_type="cpu", dtype=torch.bfloat16, enabled=self.dtype == "bfloat16"), qwen_capacity(self.model.model.talker):
+            report("reference")
             prompt = self.prompts.get(request["reference"], transcript,
                                      lambda: self.model.create_voice_clone_prompt(
                                          ref_audio=request["reference"], ref_text=transcript, x_vector_only_mode=False),
                                      VoiceClonePromptItem, torch)
+            report("generating")
             wavs, sr = self.model.generate_voice_clone(
                 text=request["text"], language=LANGUAGES[request["language"]],
                 voice_clone_prompt=prompt, non_streaming_mode=True, max_new_tokens=4096,
@@ -66,6 +69,7 @@ class QwenEngine:
         if not wavs or not len(wavs[0]):
             raise ValueError("O modelo não gerou áudio. Confira sua referência.")
         output = Path(request["output"])
+        report("writing")
         temporary = output.with_name(output.stem + ".partial.wav")
         sf.write(temporary, wavs[0], sr)
         os.replace(temporary, output)
@@ -83,19 +87,28 @@ def transcribe(request):
     root = Path(request.get("work_dir", Path(request["output"]).parent / "asr-work"))
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="whisper-", dir=root) as directory:
+        report("reading")
         with decode_audio(request["source"], directory) as audio:
+            report("loading")
             model = WhisperModel(request["model_path"], device="cpu", compute_type="int8",
                                  cpu_threads=threads, num_workers=1, local_files_only=True)
             features = DiskFeatures(model.feature_extractor, directory)
             model.feature_extractor = features
             segments = None
             try:
+                duration = len(audio) / 16000
+                report("transcribing", completed=0, total=duration, unit="seconds")
                 segments, _ = model.transcribe(
                     audio, language=request["language"].split("-")[0],
                     beam_size=5, vad_filter=True, word_timestamps=True, condition_on_previous_text=False,
                 )
-                cues = [{"start_ms": round(x.start*1000), "end_ms": round(x.end*1000), "text": x.text.strip()}
-                        for x in segments if x.text.strip()]
+                cues = []
+                for segment in segments:
+                    if segment.text.strip():
+                        cues.append({"start_ms": round(segment.start*1000), "end_ms": round(segment.end*1000), "text": segment.text.strip()})
+                    report("transcribing", completed=min(duration, segment.end), total=duration, unit="seconds")
+                report("transcribing", completed=duration, total=duration, unit="seconds")
+                report("writing")
                 from .storage import atomic_json
                 atomic_json(request["output"], cues)
             finally:
@@ -104,9 +117,10 @@ def transcribe(request):
                 features.close()
     release_temporary_memory()
 
-def reply(value):
-    sys.stdout.write(json.dumps(value, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+def reply(value, stream=None):
+    stream = stream or sys.stdout
+    stream.write(json.dumps(value, ensure_ascii=False) + "\n")
+    stream.flush()
 
 def error_reply(exc, request, retryable=False):
     from .engine_policy import MemoryUnavailable, MEMORY_GIB
@@ -136,9 +150,23 @@ def main():
         pass
     serving = sys.argv[1] == "--serve"
     request = json.loads(Path(sys.argv[2] if serving else sys.argv[1]).read_text(encoding="utf-8"))
+    # Retain the control stream before backend stdout is redirected to the log.
+    stream = sys.stdout
+    def send_progress(event):
+        if request.get("progress_file"):
+            from .storage import atomic_json
+            atomic_json(request["progress_file"], event)
+        else:
+            reply({"event": "progress", **event}, stream=stream)
+    with progress_to(send_progress):
+        run_request(request, serving)
+
+
+def run_request(request, serving):
     from .catalog import is_clone
     if is_clone(request["engine"]):
         try:
+            report("loading")
             with contextlib.redirect_stdout(sys.stderr):
                 if request["engine"] == "chatterbox-pt-br":
                     from .chatterbox_engine import ChatterboxEngine

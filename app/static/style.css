@@ -181,6 +181,11 @@ details:not([open])>summary{margin-bottom:0}
 .result-card audio,.result-card video{display:block;width:100%;margin:18px 0;max-height:480px}
 .result-stage{font-size:14px;overflow-wrap:anywhere}
 .result-meta{font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.result-heading .progress-pending{font-size:16px;max-width:45%;text-align:right}
+.progress-detail{border-left:3px solid var(--blue);padding:2px 0 2px 12px;margin:16px 0;overflow-wrap:anywhere}
+.progress-detail p{margin:6px 0}
+.progress-count{font-weight:700}
+.progress-eta{font-size:14px}
 .result-actions{padding-top:16px;border-top:1px solid var(--line);margin-top:16px}
 .result-downloads{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
 .job-error{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:35vh;overflow:auto}

@@ -17,6 +17,29 @@ function formatElapsed(seconds){
   const total=Math.max(0,Math.floor(seconds));
   return Math.floor(total/3600)+" h "+Math.floor(total%3600/60)+" min "+total%60+" s";
 }
+function jobProgress(job){
+  const percent=job.status==="completed"?100:Math.min(99,Math.max(0,Math.floor(job.progress||0)));
+  const detail=job.status==="running"?job.progress_detail:null;
+  const measured=detail?.total>0&&typeof detail.completed==="number";
+  const label=job.status==="completed"?"100%":percent>0?percent+"%":job.status==="running"?(detail?.phase==="sampling"?(detail.completed>0?"<1%":"Iniciando"):"Em andamento"):statuses[job.status];
+  let info="";
+  if(detail){
+    if(measured&&detail.unit==="steps"){
+      info='<p class="progress-count">'+Math.floor(detail.completed)+' de '+Math.floor(detail.total)+' passos concluídos</p>';
+      if(typeof detail.eta_seconds==="number")info+='<p class="progress-eta">Estimativa para os passos restantes: <strong>'+formatElapsed(detail.eta_seconds)+'</strong></p>';
+      else if(detail.completed<detail.total)info+='<p class="hint">Medindo a velocidade dos primeiros passos para estimar o tempo restante.</p>';
+      if(detail.completed>0&&detail.completed<detail.total)info+='<p class="hint">Último passo concluído há '+formatElapsed(Math.max(0,Date.now()/1000-detail.updated))+'.</p>';
+    }else if(measured&&detail.unit==="seconds"){
+      info='<p class="progress-count">Áudio analisado: '+formatElapsed(detail.completed)+' de '+formatElapsed(detail.total)+'</p>';
+    }else if(detail.phase==="generating"){
+      info='<p class="hint">Este motor não informa quantos passos faltam. O trecho será confirmado quando a fala terminar.</p>';
+    }
+    if(detail.started)info+='<p class="hint">Nesta etapa: '+formatElapsed(Math.max(0,Date.now()/1000-detail.started))+'.</p>';
+  }
+  const bar='<progress max="100" '+(percent||job.status!=="running"?'value="'+percent+'"':'')+' aria-label="Progresso estimado da tarefa"></progress>';
+  const summary=job.status==="completed"?"Concluído":percent>0?percent+"% da tarefa · estimativa":label==="<1%"?"<1% da tarefa · estimativa":label;
+  return {percent,label,summary,bar,info:info?'<div class="progress-detail">'+info+'</div>':""};
+}
 function toast(text){ $("toast").textContent=text; $("toast").hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$("toast").hidden=true,7000); }
 function showDetails(title,text){$("log-dialog").querySelector("h2").textContent=title;$("job-log").textContent=text;$("log-dialog").showModal();}
 async function api(path, options={}){
@@ -304,7 +327,7 @@ function outputHTML(job){
 }
 function renderJobs(){
   $("queue-count").textContent=state.jobs.filter(x=>["queued","running"].includes(x.status)).length;
-  $("queue-list").innerHTML=state.jobs.length?state.jobs.map(j=>'<article class="item-card queue-job"><span class="badge">'+statuses[j.status]+'</span><h3>'+escapeHTML(j.name)+'</h3><p class="hint">'+escapeHTML(j.stage)+'</p><progress max="100" value="'+j.progress+'" aria-label="'+j.progress+'%"></progress><div class="item-actions">'+(["queued","running"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="pause">Pausar</button>':"")+(["paused","failed","cancelled"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="resume">Retomar</button>':"")+(["queued","running","paused","failed"].includes(j.status)?'<button class="quiet" data-job="'+j.id+'" data-action="cancel">Cancelar</button>':"")+'<button class="secondary" data-follow-job="'+j.id+'">Ver andamento</button><details class="item-more"><summary aria-label="Detalhes do trabalho">Mais</summary><div><button class="quiet" data-log="'+j.id+'">Diagnóstico</button></div></details></div>'+(j.outputs?.length?'<div class="item-actions">'+outputHTML(j)+'</div>':"")+(j.cues?.length?'<button class="text-button" data-review="'+j.id+'">Revisar legendas</button>':"")+'</article>').join(""):'<div class="empty">Nenhum trabalho por aqui.<br>Crie sua primeira voz.</div>';
+  $("queue-list").innerHTML=state.jobs.length?state.jobs.map(j=>{const p=jobProgress(j);return '<article class="item-card queue-job"><span class="badge">'+statuses[j.status]+'</span><h3>'+escapeHTML(j.name)+'</h3><p class="hint">'+escapeHTML(j.stage)+'</p>'+p.bar+p.info+'<div class="item-actions">'+(["queued","running"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="pause">Pausar</button>':"")+(["paused","failed","cancelled"].includes(j.status)?'<button class="secondary" data-job="'+j.id+'" data-action="resume">Retomar</button>':"")+(["queued","running","paused","failed"].includes(j.status)?'<button class="quiet" data-job="'+j.id+'" data-action="cancel">Cancelar</button>':"")+'<button class="secondary" data-follow-job="'+j.id+'">Ver andamento</button><details class="item-more"><summary aria-label="Detalhes do trabalho">Mais</summary><div><button class="quiet" data-log="'+j.id+'">Diagnóstico</button></div></details></div>'+(j.outputs?.length?'<div class="item-actions">'+outputHTML(j)+'</div>':"")+(j.cues?.length?'<button class="text-button" data-review="'+j.id+'">Revisar legendas</button>':"")+'</article>';}).join(""):'<div class="empty">Nenhum trabalho por aqui.<br>Crie sua primeira voz.</div>';
   document.querySelectorAll("[data-job]").forEach(b=>b.onclick=safe(async()=>{await post("/jobs/"+b.dataset.job+"/"+b.dataset.action);await loadJobs();}));
   document.querySelectorAll("[data-log]").forEach(b=>b.onclick=safe(async()=>{showDetails("Diagnóstico do trabalho",(await api("/jobs/"+b.dataset.log+"/log")).text);}));
   document.querySelectorAll("[data-review]").forEach(b=>b.onclick=safe(async()=>{
@@ -583,11 +606,12 @@ function renderCurrentResult(){
   renderCreationScreen();if(!job||state.createScreen!=="job")return;
   const box=$("current-result"),seconds=job.status==="running"&&job.started?Math.max(0,Math.floor(Date.now()/1000-job.started)):job.elapsed_seconds;
   const elapsed=formatElapsed(seconds);
+  const progress=jobProgress(job);
   const canReturn=state.projectId!==job.project_id;
-  const signature=JSON.stringify([job,elapsed,canReturn]);if(box.dataset.rendered===signature)return;const expanded=box.querySelector('#result-details')?.open;box.dataset.rendered=signature;
+  const signature=JSON.stringify([job,elapsed,progress.info,canReturn]);if(box.dataset.rendered===signature)return;const expanded=box.querySelector('#result-details')?.open;box.dataset.rendered=signature;
   const index=(job.outputs||[]).findIndex(o=>["audio","video"].includes(o.type)),type=index>=0?job.outputs[index].type:null;
   const stage=job.status==="failed"?"A tarefa foi interrompida. Tente novamente ou abra os detalhes.":job.stage;
-  box.innerHTML='<div class="result-heading"><h2>'+escapeHTML(statuses[job.status])+'</h2><strong>'+Math.round(job.progress||0)+'%</strong></div><h3 class="result-name">'+escapeHTML(job.name)+'</h3><p class="result-stage">'+escapeHTML(stage)+'</p><progress max="100" '+(job.status==="running"&&!job.progress?'':'value="'+(job.progress||0)+'"')+' aria-label="Progresso da tarefa"></progress><div class="result-meta"><span>'+Math.round(job.progress||0)+'%</span><span>'+elapsed+'</span></div>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+index+'"></'+type+'>':'')+'<div class="result-downloads">'+outputHTML(job)+'</div><div class="item-actions result-actions">'+(['queued','running'].includes(job.status)?'<button type="button" class="secondary" id="pause-current">Pausar</button><button type="button" class="danger" id="cancel-current">Cancelar</button>':'')+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="primary" id="retry-current">Retomar</button>':'')+'<button type="button" class="primary" id="add-another">Adicionar outro</button>'+(canReturn?'<button type="button" class="quiet" id="back-to-draft">Voltar à criação</button>':'')+'</div><details id="result-details" class="compact-details"><summary>Detalhes</summary>'+(job.profile?'<p class="hint">'+escapeHTML(job.profile.name)+'</p>':'')+(job.status==='failed'?'<p class="job-error">'+escapeHTML(job.stage)+'</p>':'')+'<button type="button" id="diagnose-current" class="text-button">Ver diagnóstico</button></details>';
+  box.innerHTML='<div class="result-heading"><h2>'+escapeHTML(statuses[job.status])+'</h2><strong'+(progress.percent===0?' class="progress-pending"':'')+'>'+escapeHTML(progress.label)+'</strong></div><h3 class="result-name">'+escapeHTML(job.name)+'</h3><p class="result-stage">'+escapeHTML(stage)+'</p>'+progress.info+progress.bar+'<div class="result-meta"><span>'+escapeHTML(progress.summary)+'</span><span>'+elapsed+'</span></div>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+index+'"></'+type+'>':'')+'<div class="result-downloads">'+outputHTML(job)+'</div><div class="item-actions result-actions">'+(['queued','running'].includes(job.status)?'<button type="button" class="secondary" id="pause-current">Pausar</button><button type="button" class="danger" id="cancel-current">Cancelar</button>':'')+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="primary" id="retry-current">Retomar</button>':'')+'<button type="button" class="primary" id="add-another">Adicionar outro</button>'+(canReturn?'<button type="button" class="quiet" id="back-to-draft">Voltar à criação</button>':'')+'</div><details id="result-details" class="compact-details"><summary>Detalhes</summary>'+(job.profile?'<p class="hint">'+escapeHTML(job.profile.name)+'</p>':'')+(job.status==='failed'?'<p class="job-error">'+escapeHTML(job.stage)+'</p>':'')+'<button type="button" id="diagnose-current" class="text-button">Ver diagnóstico</button></details>';
   if(expanded)$("result-details").open=true;
   $("diagnose-current").onclick=safe(async()=>showDetails("Diagnóstico",(await api("/jobs/"+job.id+"/log")).text));
   $("add-another").onclick=()=>$("new-project").click();

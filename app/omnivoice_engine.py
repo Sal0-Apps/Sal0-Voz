@@ -11,6 +11,7 @@ from .audio_files import checkpoint_audio
 from .catalog import CATALOG
 from .engine_policy import MEMORY_GIB, MemoryUnavailable
 from .generation_limits import omnivoice_capacity
+from .engine_progress import report, omnivoice_progress
 from .omnivoice_quality import LEGACY_PROFILE, MAXIMUM_PROFILE, generation_options
 from .resources import memory_available, release_temporary_memory, is_memory_error
 
@@ -86,13 +87,15 @@ class OmniVoiceEngine:
         profile = request.get("omnivoice_profile", LEGACY_PROFILE)
         options = generation_options(profile)
         maximum = profile == MAXIMUM_PROFILE
+        report("reference")
         with torch.inference_mode():
             prompt = self.reference_prompt(request["reference"], transcript, options["preprocess_prompt"])
         # A retry of the same unfinished part keeps its random seed even after
         # reloading the model. A newly submitted job receives a different seed.
         seed = request.get("omnivoice_seed")
         random_state = torch.random.fork_rng(devices=[]) if maximum and seed is not None else nullcontext()
-        with torch.inference_mode(), random_state, omnivoice_capacity(self.model) if maximum else nullcontext():
+        report("generating")
+        with torch.inference_mode(), random_state, omnivoice_capacity(self.model) if maximum else nullcontext(), omnivoice_progress(self.model):
             if maximum and seed is not None:
                 material = json.dumps([seed, self.current_key, request["text"], language], ensure_ascii=False)
                 torch.manual_seed(int(hashlib.sha256(material.encode()).hexdigest()[:15], 16))
@@ -102,6 +105,7 @@ class OmniVoiceEngine:
             raise ValueError("O modelo não gerou áudio. Confira sua referência.")
         output = Path(request["output"])
         temporary = output.with_name(output.stem + ".partial.wav")
+        report("writing")
         audio = wavs[0]
         if maximum:
             import numpy as np

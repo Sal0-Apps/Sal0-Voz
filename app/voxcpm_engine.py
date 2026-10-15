@@ -9,6 +9,7 @@ from .catalog import runtime_binary
 from .engine_policy import MEMORY_GIB, MemoryUnavailable
 from .resources import memory_available, TextCapacityExceeded
 from .voice_styles import instruction
+from .engine_progress import report
 
 
 class VoxCPMEngine:
@@ -55,6 +56,7 @@ class VoxCPMEngine:
                 "--timesteps", "10", "--cfg", "2.0", "--steps", "1024",
                 "--output", str(temporary), *(str(path) for path in self.weights)]
         try:
+            report("generating")
             with log.open("ab") as stream:
                 log_start = log.stat().st_size
                 result = subprocess.run(args, stdout=stream, stderr=subprocess.STDOUT, env=env, check=False)
@@ -69,6 +71,7 @@ class VoxCPMEngine:
                 if result.returncode == -4:
                     raise ValueError("O motor encontrou uma instrução incompatível com a CPU. " + detail)
                 raise RuntimeError("O VoxCPM2 interrompeu a geração do trecho. " + detail)
+            report("writing")
             os.replace(temporary, output)
             if request.get("checkpoint"):
                 checkpoint_audio(output)

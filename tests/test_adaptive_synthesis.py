@@ -34,7 +34,7 @@ def test_only_overloaded_parts_split_and_saved_parts_resume_with_same_profile(da
     request = {"engine":"qwen-1.7b", "language":"pt-BR", "text":text, "reference":str(ref),
                "reference_text":"Referência", "voice_style":"natural", "expressiveness":0.7,
                "output":str(folder/"raw-000000.wav"), "checkpoint":True}
-    calls, sessions = [], []
+    calls, sessions, progress = [], [], []
     lost = [False]
     class Session:
         def __init__(self, *_):
@@ -45,12 +45,15 @@ def test_only_overloaded_parts_split_and_saved_parts_resume_with_same_profile(da
             calls.append(dict(req))
             if len(req["text"]) > len(text)//2+1:
                 raise failure(9.5, 8) if failure is MemoryUnavailable else failure("Text limit")
+            worker.engine_progress(job["id"], {"phase":"sampling", "completed":2, "total":4, "unit":"steps", "elapsed_seconds":10})
+            progress.append(s.get("job",job["id"])["progress"])
             recording(Path(req["output"]))
             if not lost[0]:
                 lost[0] = True
                 raise ProcessInterrupted("Reply lost after checkpoint")
     monkeypatch.setattr(module, "EngineSession", Session)
     worker = Worker()
+    worker.begin_progress(job["id"],0,85,"Trecho 1 de 1")
     with pytest.raises(failure): worker.synthesize(job["id"], request, folder)
     assert calls[0]["text"] == text
     plan = json.loads((folder/"raw-000000.parts.json").read_text())
@@ -58,15 +61,19 @@ def test_only_overloaded_parts_split_and_saved_parts_resume_with_same_profile(da
     assert "".join(p["text"] for p in plan["parts"]) == text
     assert Worker.speech_started(project, folder)
     worker.close_clone()
+    worker.begin_progress(job["id"],0,85,"Trecho 1 de 1")
     with pytest.raises(ProcessInterrupted): worker.synthesize(job["id"], request, folder)
     saved = next(folder.glob("raw-*.part-*.wav")); digest = s.digest(saved)
     worker.close_clone()
+    worker.begin_progress(job["id"],0,85,"Trecho 1 de 1")
     worker.synthesize(job["id"], request, folder); worker.close_clone()
     assert len(calls) == 3 and all(x.closed for x in sessions)
     assert "".join(c["text"] for c in calls[1:]) == text
     assert {(c["engine"],c["dtype"]) for c in calls} == {("qwen-1.7b","float32")}
     assert all(c["reference"] == str(ref) for c in calls)
     assert s.digest(saved) == digest and audio_valid(request["output"])
+    assert 0 < progress[0] < progress[1] < 85 and progress[1] > 40
+    assert s.get("job",job["id"])["progress"] == 85
     with wave.open(request["output"]) as out:
         assert out.getnframes() == 4800
 

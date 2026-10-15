@@ -30,7 +30,7 @@ class EngineSession:
             )
             self.reader = threading.Thread(target=self._read, daemon=True)
             self.reader.start()
-            self.worker.update(ident, stage="Preparando o motor de clonagem na CPU" if request["engine"] == "voxcpm2" else "Carregando o modelo de voz na CPU; uma vez por trabalho")
+            self.worker.engine_progress(ident, {"phase": "loading"})
             if not self.wait().get("ready"):
                 raise ValueError("O modelo não ficou pronto.")
         except BaseException:
@@ -68,6 +68,11 @@ class EngineSession:
                 value = json.loads(line)
             except ValueError:
                 continue
+            if not isinstance(value, dict):
+                continue
+            if value.get("event") == "progress":
+                self.worker.engine_progress(self.ident, value)
+                continue
             if value.get("error"):
                 if value.get("kind") == "memory":
                     raise MemoryUnavailable(value["required"], value["available"])
@@ -76,7 +81,8 @@ class EngineSession:
                 if value.get("kind") == "text_capacity":
                     raise TextCapacityExceeded(value["error"])
                 raise ValueError(value["error"])
-            return value
+            if value.get("ready") or value.get("ok"):
+                return value
 
     def generate(self, request):
         self.worker.check(self.ident)

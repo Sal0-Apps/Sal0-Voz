@@ -122,6 +122,23 @@ const assert = require('node:assert/strict');
     assert.equal(generated.length,1);
     await page.waitForFunction(()=>document.querySelector('#connection-notice').hidden);
     assert.match(await page.locator('#current-result .result-meta span').last().textContent(),/^\d+ h \d+ min \d+ s$/);
+    assert.equal(await page.locator('#current-result .result-heading strong').textContent(),'Em andamento');
+    assert.equal(await page.locator('#current-result progress').getAttribute('value'),null);
+    Object.assign(jobs[0],{progress:30,started:Date.now()/1000-3600,stage:'Trecho 1 de 1 · Calculando passo 25 de 64',progress_detail:{phase:'sampling',completed:24,total:64,unit:'steps',eta_seconds:6000,started:Date.now()/1000-3600,updated:Date.now()/1000-20}});
+    await page.waitForFunction(()=>document.querySelector('#current-result .progress-count')?.textContent==='24 de 64 passos concluídos');
+    assert.equal(await page.locator('#current-result .result-heading strong').textContent(),'30%');
+    assert.ok((await page.locator('#current-result .progress-eta').textContent()).includes('1 h 40 min 0 s'));
+    assert.equal(await page.locator('#current-result progress').getAttribute('value'),'30');
+    for(const width of [390,320]){
+      await page.setViewportSize({width,height:900});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`progress: overflow at ${width}`);
+    }
+    await page.screenshot({path:'/tmp/voice-progress-mobile.png',fullPage:true});
+    await page.setViewportSize({width:1366,height:900});
+    Object.assign(jobs[0],{progress:79.9,stage:'Trecho 1 de 1 · Convertendo a fala em áudio',progress_detail:{phase:'decoding',started:Date.now()/1000,updated:Date.now()/1000}});
+    await page.waitForFunction(()=>document.querySelector('#current-result .result-stage').textContent.includes('Convertendo'));
+    assert.equal(await page.locator('#current-result .progress-eta').count(),0);
+    assert.equal(await page.locator('#current-result .result-heading strong').textContent(),'79%');
     assert.equal(characters[0].language, 'en-US');
     assert.equal(characters[0].reference_text, '');
     assert.equal(generated[0].language, 'pt-BR');
