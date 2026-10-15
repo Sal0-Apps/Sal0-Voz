@@ -121,6 +121,7 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('#creation-editor').isVisible(),false);
     assert.equal(generated.length,1);
     await page.waitForFunction(()=>document.querySelector('#connection-notice').hidden);
+    assert.match(await page.locator('#current-result .result-meta span').last().textContent(),/^\d+ h \d+ min \d+ s$/);
     assert.equal(characters[0].language, 'en-US');
     assert.equal(characters[0].reference_text, '');
     assert.equal(generated[0].language, 'pt-BR');

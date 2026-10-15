@@ -199,3 +199,9 @@ Não houve download de pesos ou inferência neural. A qualidade auditiva, o pico
 O [CI 38722655821](https://github.com/Sal0-Apps/Sal0-Voz/actions/runs/38722655821), no commit `42652a93c878c067d43492486ac3ab09414d10b1`, passou nos **185 testes Python**, nos quatro fluxos de navegador, na construção e no teste da imagem sem rede. O smoke conferiu HTTP, autenticação, fila persistente, WAV/SRT e fala de diagnóstico eSpeak NG. Os executores iniciaram nos cinco ambientes de CPU; os imports do Whisper/OmniVoice e a ajuda da CLI VoxCPM2 passaram. Nenhum peso neural foi baixado ou usado em inferência.
 
 Foram publicadas as tags `ghcr.io/sal0-apps/sal0-voz:0.4.2`, `latest` e `sha-42652a93c878c067d43492486ac3ab09414d10b1`, com digest `sha256:06615ed244c253551c7bcedc1b36677668822e6a9fffc20d1522f7a9a72bda1d`. A consulta anônima confirmou **HTTP 200** e o mesmo digest nas três tags; os metadados da imagem confirmaram versão **0.4.2**, Linux/amd64. O APK Android 0.4.1 permanece compatível. Esta atualização do relatório altera somente documentação.
+
+# Revisão 0.4.3 — duração no app e no Telegram
+
+O tempo de processamento no painel e nos resultados usa horas, minutos e segundos, sem limitar a apresentação a minutos. A duração nas notificações do Telegram usa o mesmo formato. O exemplo de 6.537 segundos aparece como **1 h 48 min 57 s**, em vez de **108 min 57 s** ou **6537.0s**. Valores desconhecidos ficam sem duração; o cálculo e os registros do processamento continuam em segundos.
+
+Os **oito testes existentes do Telegram passaram**, verificando também o texto completo da duração sem contatar bot ou grupo. Os dois fluxos Chromium afetados passaram: criação/processamento em andamento e Biblioteca com API real, resultado concluído de 6.537 segundos, computador/celular e recarga. Sintaxe Python/JavaScript e diff passaram. A publicação da imagem 0.4.3 será registrada após o CI.

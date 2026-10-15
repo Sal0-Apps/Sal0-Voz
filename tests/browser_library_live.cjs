@@ -28,6 +28,7 @@ const assert=require('node:assert/strict');
     assert.equal(fs.readFileSync(await download.path()).subarray(0,4).toString(),'RIFF');
     await tap('[data-open-result="33333333333333333333333333333333"]');
     assert.equal(await page.locator('#current-result .result-heading strong').textContent(),'100%');
+    assert.equal(await page.locator('#current-result .result-meta span').last().textContent(),'1 h 48 min 57 s');
     await screenshot('result-mobile');
     await library('voices');await tap('#add-voice');
     await page.locator('#character-upload').setInputFiles(path.join(data,'media/11111111111111111111111111111111.wav'));

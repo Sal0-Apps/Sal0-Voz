@@ -44,4 +44,4 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health',timeout=5)"
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["python","-m","uvicorn","app.main:app","--host","0.0.0.0","--port","7860","--workers","1"]
-LABEL org.opencontainers.image.version="0.4.2"
+LABEL org.opencontainers.image.version="0.4.3"

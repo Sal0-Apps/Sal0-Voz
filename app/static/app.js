@@ -12,6 +12,11 @@ let saveChain=Promise.resolve();
 let linkedJobId=new URLSearchParams(location.search).get("job");
 const escapeHTML = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const bytes = n => (n/1024**3).toFixed(1)+" GiB";
+function formatElapsed(seconds){
+  if(typeof seconds!=="number"||!Number.isFinite(seconds))return "";
+  const total=Math.max(0,Math.floor(seconds));
+  return Math.floor(total/3600)+" h "+Math.floor(total%3600/60)+" min "+total%60+" s";
+}
 function toast(text){ $("toast").textContent=text; $("toast").hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$("toast").hidden=true,7000); }
 function showDetails(title,text){$("log-dialog").querySelector("h2").textContent=title;$("job-log").textContent=text;$("log-dialog").showModal();}
 async function api(path, options={}){
@@ -577,7 +582,7 @@ function renderCurrentResult(){
   if(state.createScreen==="job"&&!job){state.createScreen="editor";delete $("current-result").dataset.rendered;}
   renderCreationScreen();if(!job||state.createScreen!=="job")return;
   const box=$("current-result"),seconds=job.status==="running"&&job.started?Math.max(0,Math.floor(Date.now()/1000-job.started)):job.elapsed_seconds;
-  const elapsed=seconds!==undefined?Math.floor(seconds/60)+" min "+Math.floor(seconds%60)+" s":"";
+  const elapsed=formatElapsed(seconds);
   const canReturn=state.projectId!==job.project_id;
   const signature=JSON.stringify([job,elapsed,canReturn]);if(box.dataset.rendered===signature)return;const expanded=box.querySelector('#result-details')?.open;box.dataset.rendered=signature;
   const index=(job.outputs||[]).findIndex(o=>["audio","video"].includes(o.type)),type=index>=0?job.outputs[index].type:null;

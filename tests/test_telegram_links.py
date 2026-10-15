@@ -10,10 +10,11 @@ def test_completed_job_only_sends_one_authenticated_link_without_reading_files(d
     monkeypatch.setattr(telegram, "send_message", lambda cfg,text:messages.append((cfg,text)))
     monkeypatch.setattr(s, "safe_path", lambda *_:pytest.fail("Output files must never be opened for Telegram"))
     telegram.notify_job({"id":"abc", "owner_username":"admin", "name":"Voz & teste", "status":"completed", "stage":"Concluído",
-        "outputs":[{"path":"exports/large.mp4", "name":"large.mp4"},{"path":"exports/voice.wav"}], "elapsed_seconds":30})
+        "outputs":[{"path":"exports/large.mp4", "name":"large.mp4"},{"path":"exports/voice.wav"}], "elapsed_seconds":6537})
     assert len(messages)==1
     assert 'href="https://voz.example/voz/?job=abc"' in messages[0][1]
     assert "Voz &amp; teste" in messages[0][1] and "Abrir resultados" in messages[0][1]
+    assert "Concluído · 1 h 48 min 57 s" in messages[0][1]
 
 
 def test_existing_config_preserves_token_and_new_jobs_use_the_app_address(data, monkeypatch):

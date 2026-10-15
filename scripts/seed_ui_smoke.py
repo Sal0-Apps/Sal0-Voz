@@ -30,7 +30,7 @@ def seed():
     character["versions"] = [{**character, "number": 1, "reference": reference, "reaction_media": {}}]
     s.put("character", character)
     s.put("job", {"id": "33333333333333333333333333333333", "name": "Resultado de teste.wav", "status": "completed",
-                 "progress": 100, "stage": "Concluído", "elapsed_seconds": 8,
+                 "progress": 100, "stage": "Concluído", "elapsed_seconds": 6537,
                  "snapshot": {}, "owner_username": "admin", "outputs": [
                      {"name": "Resultado de teste.wav", "type": "audio", "path": "jobs/33333333333333333333333333333333/result.wav"}
                  ]})

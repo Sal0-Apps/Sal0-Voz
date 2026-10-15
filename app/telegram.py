@@ -1,6 +1,7 @@
 """Telegram notifications contain authenticated app links, never attachments."""
 import html
 import json
+import math
 import os
 import urllib.request
 from urllib.parse import urlencode, urlsplit
@@ -77,6 +78,15 @@ def send_message(config, text):
     })
 
 
+def format_elapsed(seconds):
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds):
+        return ""
+    total = max(0, math.floor(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours} h {minutes} min {seconds} s"
+
+
 def notify_job(job, status=None):
     config = load_config({"username":job.get("owner_username") or "admin"})
     if not config.get("telegram_token") or not config.get("telegram_chat_id"):
@@ -85,8 +95,8 @@ def notify_job(job, status=None):
     icon = {"completed":"✅", "failed":"⚠️", "cancelled":"⛔", "running":"🔄"}.get(current, "📌")
     name = html.escape(str(job.get("name", "trabalho"))[:160])
     stage = html.escape(str(job.get("stage", current))[:1200])
-    elapsed = job.get("elapsed_seconds")
-    suffix = f" · {elapsed:.1f}s" if isinstance(elapsed, (int, float)) else ""
+    elapsed = format_elapsed(job.get("elapsed_seconds"))
+    suffix = f" · {elapsed}" if elapsed else ""
     text = f"{icon} <b>Sal0 Voz</b>\n<b>{name}</b>\n{stage}{suffix}"
     base = config.get("telegram_base_url") or os.getenv("SAL0_PUBLIC_URL") or job.get("app_url")
     try:
