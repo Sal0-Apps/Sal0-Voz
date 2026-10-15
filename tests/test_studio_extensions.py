@@ -92,6 +92,9 @@ def test_reactions_follow_each_selected_character_and_ignore_legacy_audio(owner,
     folder=data/'jobs'/job['id'];folder.mkdir(exist_ok=True)
     from app.audio_files import checkpoint_audio
     # Reuse good speech; discard old clip-based reactions without opening them.
+    # This is a pre-0.4.2 job, before the maximum-quality profile was frozen.
+    for field in ('omnivoice_profile','omnivoice_seed','output_sample_width'):
+        job['snapshot'].pop(field,None)
     for index in (0,1,2):
         for prefix in ('raw','segment'):
             path=folder/f'{prefix}-{index:06d}.wav';path.write_bytes(audio_bytes(1));checkpoint_audio(path)

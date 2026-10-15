@@ -22,6 +22,7 @@ from .model_manager import manager as model_manager
 from .media import ffargs, probe, input_args
 from .script import subtitles, split_text
 from .reactions import caption, synthesis_text, render_policy
+from .omnivoice_quality import LEGACY_PROFILE, maximum_quality
 from .telegram import notify_job
 
 class Interrupted(Exception):
@@ -254,7 +255,11 @@ class Worker:
             self.close_clone()
             request["work_dir"] = str(folder / "asr-work")
         if is_clone(request["engine"]):
-            request["dtype"] = s.get("job", ident)["snapshot"].get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
+            project = s.get("job", ident)["snapshot"]
+            request["dtype"] = project.get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
+            if request["engine"] == "omnivoice":
+                request["omnivoice_profile"] = project.get("omnivoice_profile", LEGACY_PROFILE)
+                request["omnivoice_seed"] = project.get("omnivoice_seed")
         path = folder / "request.json"
         model, manifest, _ = model_files(request["engine"])
         request["model_path"] = str(model or (s.DATA / "models" / request["engine"]))
@@ -286,7 +291,12 @@ class Worker:
         plan_path = output.with_suffix(".parts.json")
         project = s.get("job", ident)["snapshot"]
         request["dtype"] = project.get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
+        if request["engine"] == "omnivoice":
+            request["omnivoice_profile"] = project.get("omnivoice_profile", LEGACY_PROFILE)
+            request["omnivoice_seed"] = project.get("omnivoice_seed")
         context = {key: request.get(key) for key in ("text", "engine", "dtype", "language", "reference_text", "voice_style", "expressiveness", "reaction")}
+        if maximum_quality(request):
+            context.update(omnivoice_profile=request["omnivoice_profile"], omnivoice_seed=request["omnivoice_seed"])
         context["reference_sha256"] = s.digest(request["reference"])
         fingerprint = hashlib.sha256(json.dumps(context, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         try:
@@ -335,6 +345,7 @@ class Worker:
         # ASR exits before cloning; Chatterbox does not need a transcript.
         reference_seconds = CATALOG[project["engine"]].get("reference_seconds", 30)
         reference_hz = CATALOG[project["engine"]].get("reference_hz", 24000)
+        sample_width = 3 if maximum_quality(project) else 2
         source_hashes = {}
         for segment in project["segments"]:
             if segment.get("pause_ms") is not None:
@@ -354,6 +365,8 @@ class Worker:
                               "reference-v2" if needs_text else "reference-audio-v1"])
             if reference_seconds != 30 or reference_hz != 24000:
                 key += json.dumps([reference_seconds, reference_hz])
+            if sample_width != 2:
+                key += json.dumps(["reference-pcm", sample_width])
             import hashlib
             cache = s.DATA / "cache" / "voice-reference" / hashlib.sha256(key.encode()).hexdigest()
             cache.mkdir(parents=True, exist_ok=True)
@@ -369,7 +382,7 @@ class Worker:
                 if needs_text and transcript and duration > reference_seconds + 0.1:
                     raise ValueError(f"Com transcrição manual, use uma referência de até {reference_seconds} segundos. Deixe a transcrição vazia para preparar um trecho automaticamente.")
                 temporary = cache / "reference.partial.wav"
-                self.run(ident, ffargs(*input_args(source), "-map", "0:a:0", "-t", str(reference_seconds), "-vn", "-ac", "1", "-ar", str(reference_hz), "-c:a", "pcm_s16le", temporary))
+                self.convert_audio(ident, source, temporary, "-map", "0:a:0", "-t", str(reference_seconds), "-vn", sample_rate=reference_hz, sample_width=sample_width)
                 with wave.open(str(temporary)) as wav:
                     seconds = wav.getnframes() / wav.getframerate()
                 if seconds < 3:
@@ -413,6 +426,7 @@ class Worker:
             self.prepare_references(ident, project, folder)
         parts = []
         sample_rate = project.get("output_sample_rate", CATALOG[project["engine"]].get("sample_rate", 24000))
+        sample_width = project.get("output_sample_width", 2)
         cues = []
         cursor = 0
         timed_groups = {}
@@ -421,7 +435,8 @@ class Worker:
                            if segment.get("pause_ms") is None), default=-1)
         for index, segment in enumerate(segments):
             self.check(ident)
-            self.update(ident, progress=round(index/len(segments)*85), stage=f"Gerando trecho {index+1} de {len(segments)}")
+            quality = " · OmniVoice 64 passos" if maximum_quality(project) else ""
+            self.update(ident, progress=round(index/len(segments)*85), stage=f"Gerando trecho {index+1} de {len(segments)}" + quality)
             policy = render_policy(project, segment)
             if policy is not None:
                 marker = folder / f"render-{index:06d}.json"
@@ -444,12 +459,12 @@ class Worker:
                 tmp = folder / f"temporary-{index}.wav"
                 if segment.get("pause_ms") is not None:
                     with wave.open(str(tmp), "wb") as wav:
-                        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(sample_rate)
+                        wav.setnchannels(1); wav.setsampwidth(sample_width); wav.setframerate(sample_rate)
                         frames = round(segment["pause_ms"]*sample_rate/1000)
                         while frames:
                             self.check(ident)
                             chunk = min(frames, sample_rate)
-                            wav.writeframesraw(b"\0\0"*chunk); frames -= chunk
+                            wav.writeframesraw(b"\0"*(sample_width*chunk)); frames -= chunk
                 else:
                     raw = folder / f"raw-{index:06d}.wav"
                     character = segment.get("character")
@@ -470,7 +485,7 @@ class Worker:
                         filters.append(f"atempo={segment['rate']}")
                     if segment["volume"] != 0:
                         filters.append(f"volume={segment['volume']}dB")
-                    self.run(ident, ffargs("-i", raw, *( ["-af", ",".join(filters)] if filters else [] ), "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", tmp))
+                    self.convert_audio(ident, raw, tmp, *( ["-af", ",".join(filters)] if filters else [] ), sample_rate=sample_rate, sample_width=sample_width)
                 os.replace(tmp, target)
                 checkpoint_audio(target)
             with wave.open(str(target), "rb") as wav:
@@ -492,7 +507,7 @@ class Worker:
         if project["mode"] == "dub":
             for index, group in enumerate(timed_groups.values()):
                 target = folder / f"cue-{index:06d}.wav"
-                self.concatenate(group["paths"], target, ident, sample_rate)
+                self.concatenate(group["paths"], target, ident, sample_rate, sample_width)
                 with wave.open(str(target), "rb") as wav:
                     duration_ms = wav.getnframes()*1000/wav.getframerate()
                 window = group["end_ms"]-group["start_ms"]
@@ -509,7 +524,7 @@ class Worker:
                         while factor > 2:
                             factors.append("atempo=2"); factor /= 2
                         factors.append(f"atempo={factor}")
-                        self.run(ident, ffargs("-i", target, "-af", ",".join(factors), "-c:a", "pcm_s16le", fitted))
+                        self.convert_audio(ident, target, fitted, "-af", ",".join(factors), sample_rate=sample_rate, sample_width=sample_width)
                         target = fitted
                         with wave.open(str(target), "rb") as wav:
                             ratio = wav.getnframes()*1000/wav.getframerate()/window
@@ -519,9 +534,9 @@ class Worker:
                         raise ValueError(f"Trecho {index+1} não coube no intervalo. Revise os tempos; nenhuma palavra foi cortada.")
                 parts.append((target, group["start_ms"]))
                 cues.append({"start_ms": group["start_ms"], "end_ms": group["end_ms"], "text": " ".join(group["text"])})
-            self.timeline(parts, joined, round(project["media"]["duration"]*sample_rate), ident, sample_rate)
+            self.timeline(parts, joined, round(project["media"]["duration"]*sample_rate), ident, sample_rate, sample_width)
         else:
-            self.concatenate(parts, joined, ident, sample_rate)
+            self.concatenate(parts, joined, ident, sample_rate, sample_width)
         extension = "mp4" if project["mode"] == "dub" else project.get("format", "wav")
         output = s.DATA / "exports" / f"{ident}.{extension}"
         temporary = output.with_name(ident + ".partial." + extension)
@@ -538,10 +553,13 @@ class Worker:
                 args += ["-c:v", "copy"]
             else:
                 args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-threads", os.getenv("SAL0_THREADS", "4")]
-            args += ["-c:a", "aac", "-t", str(project["media"]["duration"]), "-movflags", "+faststart", str(temporary)]
+            args += ["-c:a", "aac", *(["-b:a", "144k"] if maximum_quality(project) else []), "-t", str(project["media"]["duration"]), "-movflags", "+faststart", str(temporary)]
         else:
             codec = {"wav": "pcm_s24le", "flac": "flac", "mp3": "libmp3lame", "opus": "libopus"}[extension]
-            args = ffargs("-i", joined, "-c:a", codec, temporary)
+            # MPEG-2 MP3 and AAC-LC at native 24 kHz mono top out at 160/144k;
+            # larger requests are silently limited by the encoders.
+            encoding = {"mp3": ["-b:a", "160k", "-compression_level", "0"], "opus": ["-b:a", "192k", "-compression_level", "10"]}.get(extension, []) if maximum_quality(project) else []
+            args = ffargs("-i", joined, "-c:a", codec, *encoding, temporary)
         self.run(ident, args)
         os.replace(temporary, output)
         self.finish_subtitles(ident, cues, [{"path": output.relative_to(s.DATA).as_posix(), "name": f"{project.get('output_name', project['name'])}.{extension}", "type": "video" if extension=="mp4" else "audio"}])
@@ -581,32 +599,63 @@ class Worker:
         project["cues"] = cues
         self.update(ident, snapshot=project, cues=cues)
 
-    def concatenate(self, paths, output, ident, sample_rate=24000):
+    def convert_audio(self, ident, source, output, *filters, sample_rate=24000, sample_width=2):
+        if sample_width == 2:
+            self.run(ident, ffargs(*input_args(source), *filters, "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s16le", output))
+            return
+        if sample_width != 3:
+            raise ValueError("Precisão de áudio não suportada.")
+        # FFmpeg writes extensible WAV headers for 24-bit audio; Python 3.11's
+        # wave module cannot read them. Wrap raw PCM in a standard RIFF header,
+        # keeping every 24-bit sample and reading at most one second at a time.
+        raw = Path(output).with_suffix(".pcm")
+        try:
+            self.run(ident, ffargs(*input_args(source), *filters, "-ar", str(sample_rate), "-ac", "1", "-c:a", "pcm_s24le", "-f", "s24le", raw))
+            if raw.stat().st_size % sample_width:
+                raise ValueError("Áudio de 24 bits incompleto; o trecho não foi confirmado.")
+            with raw.open("rb") as source_pcm, wave.open(str(output), "wb") as out:
+                out.setnchannels(1); out.setsampwidth(sample_width); out.setframerate(sample_rate)
+                while block := source_pcm.read(sample_rate*sample_width):
+                    self.check(ident)
+                    out.writeframesraw(block)
+        finally:
+            raw.unlink(missing_ok=True)
+
+    def concatenate(self, paths, output, ident, sample_rate=24000, sample_width=None):
+        if sample_width is None:
+            with wave.open(str(paths[0]), "rb") as first:
+                sample_width = first.getsampwidth()
         with wave.open(str(output), "wb") as out:
-            out.setnchannels(1); out.setsampwidth(2); out.setframerate(sample_rate)
+            out.setnchannels(1); out.setsampwidth(sample_width); out.setframerate(sample_rate)
             for path in paths:
                 self.check(ident)
                 with wave.open(str(path), "rb") as inp:
+                    if (inp.getnchannels(), inp.getsampwidth(), inp.getframerate()) != (1, sample_width, sample_rate):
+                        raise ValueError("Os trechos de áudio têm formatos incompatíveis.")
                     while block := inp.readframes(sample_rate):
+                        self.check(ident)
                         out.writeframesraw(block)
 
-    def timeline(self, parts, output, frames, ident, sample_rate=24000):
+    def timeline(self, parts, output, frames, ident, sample_rate=24000, sample_width=2):
         # Disk-based timeline, constant memory. Overlap is rejected during submission.
         with wave.open(str(output), "wb") as out:
-            out.setnchannels(1); out.setsampwidth(2); out.setframerate(sample_rate)
+            out.setnchannels(1); out.setsampwidth(sample_width); out.setframerate(sample_rate)
             cursor = 0
             for path, start in parts:
                 self.check(ident)
                 gap = round(start*sample_rate/1000)-cursor
                 while gap > 0:
                     self.check(ident)
-                    n = min(gap, sample_rate); out.writeframesraw(b"\0\0"*n); gap -= n; cursor += n
+                    n = min(gap, sample_rate); out.writeframesraw(b"\0"*(sample_width*n)); gap -= n; cursor += n
                 with wave.open(str(path), "rb") as inp:
+                    if (inp.getnchannels(), inp.getsampwidth(), inp.getframerate()) != (1, sample_width, sample_rate):
+                        raise ValueError("Os trechos de áudio têm formatos incompatíveis.")
                     while block := inp.readframes(sample_rate):
-                        out.writeframesraw(block); cursor += len(block)//2
+                        self.check(ident)
+                        out.writeframesraw(block); cursor += len(block)//sample_width
             while cursor < frames:
                 self.check(ident)
-                n = min(frames-cursor, sample_rate); out.writeframesraw(b"\0\0"*n); cursor += n
+                n = min(frames-cursor, sample_rate); out.writeframesraw(b"\0"*(sample_width*n)); cursor += n
 
     def finish_subtitles(self, ident, cues, outputs=None):
         outputs = outputs or []
