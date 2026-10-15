@@ -4,7 +4,9 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.4.1 — interface e APK refinados seguindo o Sal0 Karaokê.** Criar → voz → texto/arquivo → modelo → gerar. Cabeçalho e botões alinhados, Biblioteca com seções recolhíveis e downloads visíveis, Ajustes com “Abrir ajustes” e “Recolher todos”, andamento com percentual em destaque. A página, o JavaScript e o CSS usam uma revisão conjunta para evitar a mistura de versões no cache do APK. Atualize também o [APK Android 0.4.1](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1); ele renova o cache antigo sem apagar a sessão e oferece Recarregar e Conexão no rodapé.
+**Versão 0.4.2 — qualidade máxima do OmniVoice.** Novos trabalhos usam FP32, 64 passos, pausas naturais preservadas e 24 bits desde a preparação até a exportação sem perdas. A fala inteira é tentada antes de qualquer divisão por sobrecarga ou limite de contexto. A retomada mantém perfil, semente e trechos já confirmados; trabalhos antigos conservam sua configuração. O perfil prioriza qualidade e pode levar mais tempo; a avaliação auditiva permanece no servidor do proprietário.
+
+A interface segue o fluxo Criar → voz → texto/arquivo → modelo → gerar. A página, o JavaScript e o CSS usam uma revisão conjunta para evitar a mistura de versões no cache do APK. O [APK Android 0.4.1](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1) continua compatível e recebe a interface ao atualizar o servidor.
 
 Mantém o texto inteiro primeiro, com divisão apenas por sobrecarga, Telegram somente com links e preservação da fila, das vozes e dos modelos na pasta de dados. A avaliação neural permanece com o proprietário, em CPU de quatro núcleos/16 GB físicos e limite de 10 GiB do container.
 
@@ -18,7 +20,7 @@ Mantém o texto inteiro primeiro, com divisão apenas por sobrecarga, Telegram s
 6. Clique em **Gerar áudio**. O app prepara a referência automaticamente, usa o modelo escolhido e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Criar → Legendar**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.4.1` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.4.2` e o SHA do commit para rollback.
 
 **Os pesos são baixados pelo próprio aplicativo depois que ele inicia**, em segundo plano. Qwen3-TTS 1.7B Base e Faster-Whisper large-v3-turbo são preparados automaticamente em `/data/models`, com revisões fixas e hashes verificados. A interface e o healthcheck funcionam enquanto o download acontece; trabalhos que precisam desses modelos aguardam na fila. O progresso aparece em **Ajustes → Modelos**. As dependências de CPU continuam na imagem, sem precisar instalar CUDA.
 
@@ -32,10 +34,12 @@ Após atualizar e recriar o container, abra **Ajustes → Modelos**. Também é 
 
 | Opção | Download | Perfil |
 |---|---|---|
-| Fidelidade e expressão · OmniVoice 0.6B | Cerca de 3,1 GiB | CPU float32, 32 passos completos; referência de 3 a 10 segundos com transcrição automática |
+| Fidelidade e expressão · OmniVoice 0.6B | Cerca de 3,1 GiB | CPU float32, 64 passos, pausas preservadas e 24 bits; referência de 3 a 10 segundos com transcrição automática |
 | Clonagem e emoções · VoxCPM2 2B | Cerca de 4,8 GiB | Motor GGML em CPU, F16 completo, referência isolada para tons/reações e continuação para fala natural, 48 kHz |
 
 Os dois funcionam em Criar → Texto em voz e Criar → Dublar. VoxCPM2 oferece **Personalizar → Interpretação**, com alegria, tristeza, raiva, medo, surpresa, calma, entusiasmo, carinho, seriedade, sussurro e grito. A orientação fica congelada no trabalho e usa a referência isolada em todos os trechos; ela não é anexada ao texto de continuação. **Natural** preserva a continuação com áudio e transcrição. OmniVoice segue o estilo da referência; a gravação deve ter a interpretação que você quer reproduzir.
+
+O perfil máximo do OmniVoice usa 64 passos, o teto da demonstração oficial, mantendo os demais parâmetros de amostragem recomendados. Não remove pausas da referência ou da fala gerada, usa uma transição curta nas bordas e reduz somente picos que causariam saturação na gravação. A divisão interna padrão de 15 segundos fica desativada: texto, referência e tokens de áudio são conferidos contra o contexto nativo, e somente uma sobrecarga ou limite exige dividir o trecho incompleto. Referências preparadas, WAVs intermediários e montagem preservam 24 bits a 24 kHz; WAV/FLAC evitam perdas de codec, enquanto MP3 usa 160 kb/s com qualidade de codificação máxima, Opus 192 kb/s e a dublagem AAC 144 kb/s (limites adequados à saída mono de 24 kHz). A configuração e uma semente por trabalho ficam congeladas na fila. Os pesos existentes são reutilizados; não há novo download, mudança de modelo ou redução de precisão para este perfil. Mais passos não garantem melhora em toda voz: a comparação auditiva e o tempo real precisam ser avaliados no servidor.
 
 Whisper transcreve a referência quando necessária e encerra antes da clonagem; tons e reações do VoxCPM2 dispensam essa transcrição. OmniVoice mantém um modelo por trabalho e guarda prompts no disco. VoxCPM2 carrega seus pesos no processo nativo de cada trecho e o encerra antes de montar o áudio. A memória e o tempo real ainda precisam ser avaliados no A10; as reservas iniciais são 5,5 GiB para OmniVoice e 7,5 GiB para VoxCPM2, com margem adicional. Esses modelos aguardam RAM em vez de trocar de modelo, precisão ou reduzir passos. Os pesos do OmniVoice têm licença não comercial; as licenças acompanham as fontes de download.
 

@@ -1,6 +1,27 @@
-"""Observe Chatterbox's native limits without changing sampling or model quality."""
+"""Observe native limits without changing sampling or model quality."""
 from contextlib import contextmanager
 from .resources import TextCapacityExceeded
+
+
+@contextmanager
+def omnivoice_capacity(model):
+    original = model._prepare_inference_inputs
+    maximum = model.config.llm_config.max_position_embeddings
+
+    def checked(*args, **kwargs):
+        target = kwargs.get("num_target_tokens", args[1] if len(args) > 1 else 0)
+        if target > maximum:
+            raise TextCapacityExceeded("O texto ultrapassa o contexto nativo do OmniVoice.")
+        result = original(*args, **kwargs)
+        if result["input_ids"].shape[-1] > maximum:
+            raise TextCapacityExceeded("O texto e a referência ultrapassam o contexto nativo do OmniVoice.")
+        return result
+
+    model._prepare_inference_inputs = checked
+    try:
+        yield
+    finally:
+        model._prepare_inference_inputs = original
 
 
 @contextmanager

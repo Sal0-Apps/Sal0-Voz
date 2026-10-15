@@ -27,6 +27,7 @@ from .model_manager import manager as model_manager
 from .script import compile_script, parse_srt, validate_cues, subtitles
 from .telegram import masked as masked_telegram, notify_job, save_config as save_telegram
 from .worker import Worker
+from .omnivoice_quality import MAXIMUM_PROFILE
 
 worker = Worker()
 auth_lock = threading.Lock()
@@ -533,6 +534,8 @@ def snapshot(project, owner=None):
         return item
     value = dict(project)
     value["output_sample_rate"] = CATALOG.get(project.get("engine"), {}).get("sample_rate", 24000)
+    if project.get("engine") == "omnivoice" and project["mode"] != "asr":
+        value.update(omnivoice_profile=MAXIMUM_PROFILE, omnivoice_seed=secrets.randbits(32), output_sample_width=3)
     if project["mode"] in ("asr", "dub"):
         if not project["media_id"]:
             raise ValueError("Selecione a mídia original.")

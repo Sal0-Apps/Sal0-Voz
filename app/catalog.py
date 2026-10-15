@@ -17,7 +17,7 @@ CATALOG = {
         "repo": "k2-fsa/OmniVoice", "revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
         "files": ["README.md", "config.json", "model.safetensors", "tokenizer.json", "tokenizer_config.json", "chat_template.jinja", "audio_tokenizer/LICENSE", "audio_tokenizer/README.md", "audio_tokenizer/config.json", "audio_tokenizer/model.safetensors", "audio_tokenizer/preprocessor_config.json"],
         "license": "CC-BY-NC (pesos); Apache-2.0 (código)", "memory_gib": 5.5, "download_gib": 3.1,
-        "notice": "Download opcional de cerca de 3,1 GiB. Clonagem com áudio e transcrição automática, CPU float32 e 32 passos completos. Prioriza fidelidade e interpretação; use 3 a 10 segundos de fala expressiva. Os pesos permitem uso não comercial. Qualidade, tempo e RAM real precisam ser avaliados no seu servidor.",
+        "notice": "Download opcional de cerca de 3,1 GiB. Qualidade máxima: CPU float32, 64 passos e áudio de 24 bits. Preserva as pausas e tenta a fala inteira; divide somente por sobrecarga ou limite do modelo. Leva mais tempo que o perfil anterior. Os pesos permitem uso não comercial. Qualidade, tempo e RAM real precisam ser avaliados no seu servidor.",
     },
     "voxcpm2": {
         "name": "Clonagem e emoções · VoxCPM2 2B", "kind": "tts", "clone": True,
