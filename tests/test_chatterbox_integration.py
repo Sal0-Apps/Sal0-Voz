@@ -48,7 +48,8 @@ def test_optional_download_selects_only_ptbr_v3_and_pinned_companions(data, monk
     folder.mkdir()
     s.atomic_json(folder / "download-plan.json", plan)
     downloads = []
-    def hf_hub_download(repo_id, revision, local_dir, filename, headers):
+    def hf_hub_download(repo_id, revision, local_dir, filename, headers, token=False):
+        assert token is False
         downloads.append((repo_id, revision, filename))
         (Path(local_dir) / filename).write_bytes(contents[repo_id, filename])
     monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(HfApi=lambda: api, hf_hub_download=hf_hub_download, constants=SimpleNamespace()))

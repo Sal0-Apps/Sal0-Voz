@@ -22,6 +22,9 @@ const assert = require('node:assert/strict');
       { id: 'chatterbox-pt-br', name: 'Expressiva · Chatterbox V3 pt-BR', kind: 'tts', clone: true, reference_text: false, expressiveness: true, available: false, download_gib: 3.0 },
       { id: 'omnivoice', name: 'Fidelidade e expressão · OmniVoice 0.6B', kind: 'tts', clone: true, reference_text: true, available: false, download_gib: 3.1 },
       { id: 'voxcpm2', name: 'Clonagem e emoções · VoxCPM2 2B', kind: 'tts', clone: true, reference_text: true, style_control: true, available: false, download_gib: 4.8 },
+      { id: 'pocket-pt', name: 'Pocket PT', kind: 'tts', clone: true, reference_text: false, fixed_precision: true, available: false, download_gib: 0.63, gated: true },
+      { id: 'drama3', name: 'Drama 3 CPU Q4', kind: 'tts', clone: true, reference_text: true, fixed_precision: true, experimental: true, available: false, download_gib: 23.88 },
+      { id: 'drama3-original', name: 'Drama 3 original', kind: 'weights', download_only: true, available: false, download_gib: 38.66 },
       { id: 'whisper-large-v3-turbo', name: 'Faster-Whisper large-v3-turbo', kind: 'asr', available: true, source: 'bundled' },
       { id: 'whisper-medium', name: 'Whisper medium', kind: 'asr', available: false },
     ].map(model => ({ license: 'Test fixture', notice: 'Modelo local', ...model }));
@@ -45,7 +48,7 @@ const assert = require('node:assert/strict');
       if (pathname === '/api/models') return json(models);
       if (pathname === '/api/reactions') return json(JSON.parse(fs.readFileSync(path.join(__dirname, '../app/assets/reactions/catalog.json'), 'utf8')).map(x=>({...x,native_models:['risada','suspiro'].includes(x.id)?['omnivoice','voxcpm2']:[]})));
       if (pathname === '/api/models/prepare') return json({ status: 'queued' });
-      if (['/api/models/qwen-0.6b/download','/api/models/chatterbox-pt-br/download','/api/models/omnivoice/download','/api/models/voxcpm2/download'].includes(pathname)) {
+      if (['/api/models/qwen-0.6b/download','/api/models/chatterbox-pt-br/download','/api/models/omnivoice/download','/api/models/voxcpm2/download','/api/models/pocket-pt/download','/api/models/drama3/download','/api/models/drama3-original/download'].includes(pathname)) {
         downloads++;
         models.find(model => model.id === pathname.split('/')[3]).download = { status: 'queued', progress: 0 };
         return json({ status: 'queued' });
@@ -95,6 +98,10 @@ const assert = require('node:assert/strict');
       }
       if (pathname === '/api/diagnostics') return json({ version: '0.4.1', memory_available: 12 * 1024**3, disk_free: 20 * 1024**3, threads: 4 });
       if (pathname === '/api/telegram') return json({});
+      if (pathname === '/api/model-access') {
+        if(method==='PUT')return json({configured:!request.postDataJSON().clear,writable:true,source:'settings'});
+        return json({configured:true,writable:true,source:'settings'});
+      }
       if (pathname === '/api/users') return json([{ username: 'admin', role: 'admin' }]);
       unexpected.push(`${method} ${pathname}`);
       return route.fulfill({ status: 404, contentType: 'application/json', body: '{"detail":"Unexpected fixture request"}' });
@@ -272,6 +279,36 @@ const assert = require('node:assert/strict');
     await page.waitForFunction(()=>document.querySelector('#save-state').textContent==='Projeto salvo no servidor');
     assert.equal(projects.at(-1).engine,'voxcpm2');
     assert.equal(projects.at(-1).voice_style,'happy');
+    assert.equal(await page.locator('#engine option[value="drama3-original"]').count(),0);
+    for(const engine of ['pocket-pt','drama3']){
+      await page.locator('#engine').selectOption(engine);
+      assert.equal(await page.locator('#memory-label').isVisible(),false);
+      await page.locator('#download-selected-model').click();
+      await page.waitForFunction(()=>!document.querySelector('#download-selected-model').disabled);
+      assert.equal(downloads,engine==='pocket-pt'?5:6);
+      await page.locator('#save-project').click();
+      await page.waitForFunction(()=>document.querySelector('#save-state').textContent==='Projeto salvo no servidor');
+      assert.equal(projects.at(-1).engine,engine);
+    }
+    await page.locator('#tab-settings').click();
+    const modelSettings=page.locator('.settings-section').filter({has:page.locator('#model-list')});
+    if(!(await modelSettings.evaluate(x=>x.open)))await modelSettings.locator(':scope > summary').click();
+    await modelSettings.locator('summary').filter({hasText:'Acesso ao Hugging Face'}).click();
+    await page.locator('#model-hf-token').fill('hf_example_ui_read_access_123456');
+    await page.locator('#model-access-form button[type="submit"]').click();
+    await page.waitForFunction(()=>document.querySelector('#model-hf-token').value==='');
+    assert.equal(await page.locator('#model-hf-token').getAttribute('type'),'password');
+    assert.ok((await page.locator('#model-access-status').textContent()).includes('não será exibido'));
+    await page.locator('[data-model-download="drama3-original"]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-model-cancel="drama3-original"]'));
+    assert.equal(downloads,7);
+    for(const width of [390,320]){
+      await page.setViewportSize({width,height:900});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`new models: overflow at ${width}`);
+    }
+    await page.screenshot({path:'/tmp/sal0-models-mobile.png',fullPage:true});
+    await page.setViewportSize({width:1366,height:900});
+    await page.locator('#tab-create').click();
     await page.locator('#script-import').setInputFiles({name:'texto.txt',mimeType:'text/plain',buffer:Buffer.from('Texto importado intacto.')});
     await page.waitForFunction(()=>document.querySelector('#script').value==='Texto importado intacto.');
     assert.equal(await page.locator('[data-mode="tts"]').evaluate(x=>x.classList.contains('selected')),true);

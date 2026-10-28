@@ -7,6 +7,7 @@ import threading
 import time
 from . import storage as s
 from .catalog import CATALOG, installed, DEFAULT_MODELS
+from .model_access import access_token, redact
 DEFAULT_AUTO_MODELS = DEFAULT_MODELS
 
 
@@ -59,6 +60,8 @@ class ModelManager:
             if automatic and current and current.get("status") == "failed":
                 return current  # Backoff is handled by loop; manual retry resets attempts.
             if not accept_license: raise ValueError("Confirme a licença do modelo antes de iniciar o download.")
+            if CATALOG[ident].get("gated") and not access_token():
+                raise ValueError("Este modelo exige acesso no Hugging Face. Aceite os termos na página do Pocket TTS e salve um token de leitura em Ajustes → Modelos → Acesso ao Hugging Face.")
             result=self._record(ident,status="queued",stage="Aguardando download no servidor",progress=0,error=None,automatic=automatic,started=None,finished=None,attempt=0,retry_at=None)
             self.wake.set(); return result
 
@@ -113,7 +116,7 @@ class ModelManager:
             with log_path.open("rb") as stream:
                 stream.seek(max(log_start, log_path.stat().st_size-4000))
                 detail = stream.read().decode("utf-8", errors="replace")
-            raise DownloadFailure(detail or "O processo de download falhou.", transient=code == 75)
+            raise DownloadFailure(redact(detail) if detail else "O processo de download falhou.", transient=code == 75)
     def _progress(self, ident):
         folder = s.DATA / "models" / ident
         try:
@@ -190,7 +193,7 @@ class ModelManager:
                 current=self.status(ident) or {}
                 if current.get("status")!="cancelled":
                     retry = getattr(exc, "transient", False) or (current.get("automatic") and current.get("attempt",1)<3)
-                    self._record(ident,status="failed",stage="Conexão interrompida; uma nova tentativa será feita" if retry else "Não foi possível preparar o modelo. Tente novamente.",error=str(exc)[-4000:],finished=time.time(),retry_at=time.time()+min(300,30*2**min(4,max(0,current.get("attempt",1)-1))) if retry else None)
+                    self._record(ident,status="failed",stage="Conexão interrompida; uma nova tentativa será feita" if retry else "Não foi possível preparar o modelo. Tente novamente.",error=redact(str(exc))[-4000:],finished=time.time(),retry_at=time.time()+min(300,30*2**min(4,max(0,current.get("attempt",1)-1))) if retry else None)
     def snapshot(self):
         result=[]
         for item in installed():

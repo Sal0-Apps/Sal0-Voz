@@ -3,6 +3,8 @@ from .resources import memory_available, cgroup_memory
 from .catalog import CATALOG, is_clone
 
 MEMORY_GIB = {
+    ("pocket-pt", "float32"): 3.5,
+    ("drama3", "q4-bf16"): 8.0,
     ("omnivoice", "float32"): 5.5,
     ("voxcpm2", "float16"): 7.5,
     ("chatterbox-pt-br", "float32"): 6.5,
@@ -48,8 +50,9 @@ def choose_profile(project, available=None, locked=False, memory_limit=None):
         if not locked and project.get("adaptive_memory", True) and memory_limit and required + 0.25 > memory_limit/1024**3 * 0.90:
             continue
         if available_gib >= required + 0.25:
-            name = {"omnivoice": "OmniVoice 0.6B", "voxcpm2": "VoxCPM2 2B", "chatterbox-pt-br": "Chatterbox V3 pt-BR", "qwen-1.7b": "Qwen 1.7B", "qwen-0.6b": "Qwen 0.6B"}[engine]
-            name += " · econômico" if dtype == "bfloat16" else " · F16 GGML" if dtype == "float16" else " · float32"
+            name = {"pocket-pt": "Pocket PT 24 camadas · 5 passos", "drama3": "Drama 3 experimental · Q4/BF16 · especialistas em disco", "omnivoice": "OmniVoice 0.6B", "voxcpm2": "VoxCPM2 2B", "chatterbox-pt-br": "Chatterbox V3 pt-BR", "qwen-1.7b": "Qwen 1.7B", "qwen-0.6b": "Qwen 0.6B"}[engine]
+            if dtype != "q4-bf16":
+                name += " · econômico" if dtype == "bfloat16" else " · F16 GGML" if dtype == "float16" else " · float32"
             return {"engine": engine, "dtype": dtype, "memory_gib": required,
                     "name": name, "adapted": engine != requested or dtype != CATALOG[requested].get("dtype", "float32")}
     raise MemoryUnavailable(MEMORY_GIB[options[-1]] + 0.25, available_gib)

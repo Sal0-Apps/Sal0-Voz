@@ -9,6 +9,17 @@ RUN python /tmp/configure_voxcpm.py /src \
     && mkdir -p /native/bin \
     && cp build/bin/voxcpm2-cli build/bin/*.so* /native/bin/
 
+FROM python:3.11-slim-bookworm AS drama3-build
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake curl ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN curl -fsSL --retry 3 https://codeload.github.com/0xShug0/audio.cpp/tar.gz/a53699007eee6616f4bc33c0ae2b1f069dac49c0 | tar -xz --strip-components=1
+COPY scripts/configure_drama3.py /tmp/configure_drama3.py
+RUN python /tmp/configure_drama3.py /src \
+    && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DAUDIOCPP_MODEL_SET=custom -DAUDIOCPP_MODELS=fish_drama3 -DAUDIOCPP_DEPLOYMENT_BUILD=ON -DENGINE_ENABLE_NATIVE_CPU=OFF -DENGINE_ENABLE_CPU_ALL_VARIANTS=ON -DENGINE_ENABLE_CUDA=OFF -DENGINE_ENABLE_OPENMP=ON \
+    && cmake --build build --target audiocpp_cli --parallel 2 \
+    && mkdir -p /native/bin \
+    && cp build/bin/audiocpp_cli build/bin/*.so* /native/bin/
+
 FROM python:3.11-slim-bookworm AS base
 LABEL org.opencontainers.image.title="Sal0 Voz" org.opencontainers.image.source="https://github.com/Sal0-Apps/Sal0-Voz"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -32,6 +43,9 @@ COPY --from=voxcpm-build /native /opt/engines/voxcpm
 # The shared runner imports memory/process helpers inside the ASR venv too.
 # Keep this small dependency layer after existing runtimes to reuse their cache.
 RUN /opt/engines/whisper/bin/python -m pip install --no-cache-dir psutil==7.0.0
+COPY requirements-pocket.txt ./
+RUN /opt/engines/omnivoice/bin/python -m pip install --no-cache-dir -r requirements-pocket.txt
+COPY --from=drama3-build /native /opt/engines/drama3
 # Model weights are downloaded by the running app into the persistent /data volume.
 # Keep runtime dependencies before app/version changes so updates reuse their layers.
 COPY app ./app
@@ -44,4 +58,4 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health',timeout=5)"
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["python","-m","uvicorn","app.main:app","--host","0.0.0.0","--port","7860","--workers","1"]
-LABEL org.opencontainers.image.version="0.4.4"
+LABEL org.opencontainers.image.version="0.5.0"

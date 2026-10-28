@@ -34,7 +34,11 @@ VOXCPM_TAGS = {
     "surpresa": "[surprise-wa]", "espanto": "[surprise-yo]",
     "resmungo": "[dissatisfaction-hnn]", "shh": "[shh]",
 }
-NATIVE_TAGS = {"omnivoice": OMNIVOICE_TAGS, "voxcpm2": VOXCPM_TAGS}
+DRAMA_TAGS = {
+    "risada": "[laughs]", "risada_curta": "[laughs]", "gargalhada": "[laughs]",
+    "suspiro": "[sighs]", "suspiro_longo": "[sighs]",
+}
+NATIVE_TAGS = {"omnivoice": OMNIVOICE_TAGS, "voxcpm2": VOXCPM_TAGS, "drama3": DRAMA_TAGS}
 
 def native_models(ident):
     return [engine for engine, tags in NATIVE_TAGS.items() if ident in tags]

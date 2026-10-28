@@ -31,6 +31,7 @@ const assert = require('node:assert/strict');
     if(url.pathname==='/health')return json({version:'test',worker:true});
     if(url.pathname==='/api/auth/status')return json({configured:true,authenticated:true,username:'test',role:'admin'});
     if(url.pathname==='/api/models')return json([{id:'qwen-1.7b',kind:'tts',clone:true,available:true},{id:'whisper-large-v3-turbo',kind:'asr',available:true}]);
+    if(url.pathname==='/api/model-access')return json({configured:false,writable:true});
     if(['/api/characters','/api/media','/api/projects','/api/jobs','/api/reactions'].includes(url.pathname))return json([]);
     res.writeHead(404);res.end();
   });

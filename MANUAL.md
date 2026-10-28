@@ -1,4 +1,4 @@
-# Manual — Sal0 Voz 0.4.0
+# Manual — Sal0 Voz 0.5.0
 
 ## Primeira instalação
 
@@ -14,9 +14,19 @@ A imagem não contém pesos dos modelos. Depois que o app inicia, `qwen-1.7b` e 
 
 `qwen-0.6b`, OmniVoice, VoxCPM2, Chatterbox e os Whisper opcionais são baixados quando você os prepara ou envia um trabalho que precisa deles. Arquivos completos são reutilizados e downloads interrompidos preservam os arquivos parciais para retomada. A preparação precisa de internet; a inferência usa arquivos locais mesmo com `HF_HUB_OFFLINE=1` e `TRANSFORMERS_OFFLINE=1` no Compose.
 
+## Pocket PT e Drama 3 opcionais
+
+Em **Ajustes → Modelos**, use os downloads individuais. Nenhum destes pacotes novos é baixado automaticamente ao instalar a imagem. Trabalhos e vozes existentes continuam com seus modelos.
+
+- **Pocket PT · 24 camadas FP32:** cerca de 0,63 GiB de download. Modelo de português, 24 camadas, pesos completos em FP32, cinco passos de amostragem e saída em 24 bits/24 kHz. Clone a voz com uma gravação de 3 a 30 segundos; não exige transcrição. Aceite os termos em [kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts), crie um token de leitura autorizado para esse modelo e salve-o em **Ajustes → Modelos → Acesso ao Hugging Face**. Somente administradores podem salvar/remover esse token. Depois de baixar e verificar os pesos, o motor gera sem internet e sem enviar texto ou gravações para a nuvem. A falta de acesso não aciona uma versão sem clonagem.
+- **Drama 3 CPU · experimental Q4:** cerca de 23,88 GiB. Este pacote convertido mantém especialistas Q4, roteadores FP32, embedding e cabeça de saída BF16, demais matrizes do backbone Q8 e áudio F16. Não é equivalente ao checkpoint original FP8/BF16 nem há comprovação de paridade auditiva. O motor nativo usa CPU, cache de oito especialistas por camada e leitura pelo disco, sem carregar os 35B inteiros na RAM. Mantém cache KV FP32 e saída de 24 bits/44,1 kHz. Usa a referência e sua transcrição; o Whisper termina antes de carregar o motor. A reserva inicial de 8 GiB é uma política de preparação, não uma medição no A10. Pode ser extremamente lento em HD e ainda atingir o limite de 10 GiB em algumas falas; o guardião de memória continua ativo. O texto inteiro é tentado antes de dividir por sobrecarga ou limite nativo. Se o motor atingir o teto antes de concluir, a saída incompleta não vira resultado.
+- **Drama 3 original · pesos para GPU:** cerca de 38,66 GiB. Baixa o checkpoint oficial, codec, tokenizer e licença na pasta `/data/models/drama3-original`, sem a quantização GGUF do perfil de CPU. É um pacote para usar em um servidor GPU compatível com [SGLang-Omni](https://sgl-project.github.io/sglang-omni/cookbook/fishaudio_drama3.html); não aparece no seletor de geração deste app de CPU. Ele é separado do download experimental Q4 e permite comparar com o modelo original em hardware apropriado.
+
+O limite de 10 GiB e quatro CPUs não é aumentado por selecionar Drama 3. Os pesos ficam no volume; trocar a imagem os preserva. O painel mostra os blocos/tempo de áudio produzidos pelos novos motores, sem inventar um percentual de duração final. Perfil e semente ficam fixos por trabalho, e a retomada reutiliza os trechos confirmados. WAV e FLAC são as opções sem perdas de codec. Estes modelos não foram executados neuralmente neste ambiente; teste a identidade, o sotaque e a interpretação com a sua referência no servidor.
+
 ## OmniVoice e VoxCPM2 opcionais
 
-1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.4.0** em Conta. Atualizar somente a página não instala as correções do servidor.
+1. Atualize a imagem e **recrie o container** mantendo a pasta de dados. Confira **0.5.0** no rodapé. Atualizar somente a página não instala as correções do servidor.
 2. Abra **Ajustes → Modelos → Preparar este modelo**, ou escolha o modelo no passo 3 e clique em **Baixar no servidor**.
 3. **Fidelidade e expressão · OmniVoice 0.6B** baixa cerca de 3,1 GiB, incluindo seu codec. Novos trabalhos usam qualidade máxima: float32 em CPU, 64 passos completos, referência sem remoção de pausas e montagem de áudio em 24 bits/24 kHz. Segue a interpretação da referência e mantém as pausas geradas. Prefira 3 a 10 segundos de fala limpa. Uma gravação maior com transcrição vazia é recortada e transcrita automaticamente. Com transcrição manual, use uma gravação de até 10 segundos e o texto exato dela. O texto inteiro é tentado antes de dividir por sobrecarga ou limite nativo. A retomada preserva o perfil e a semente do trabalho; tarefas antigas continuam com sua configuração anterior. Os pesos são os mesmos. O aumento de passos prioriza qualidade e custa mais tempo; o resultado precisa ser comparado no servidor. Para exportar sem perdas de codec, escolha WAV ou FLAC.
 4. **Clonagem e emoções · VoxCPM2 2B** baixa cerca de 4,8 GiB. Usa os dois componentes F16 completos no motor de CPU e 10 passos de difusão. A montagem preserva os 48 kHz. **Como interpretar a fala → Natural** mantém a continuação com áudio e transcrição; os demais tons usam somente a referência de voz, com a orientação no início do contexto próprio de controle. Essa separação corrige a instrução falada como parte do áudio. A intensidade pode variar entre gerações.

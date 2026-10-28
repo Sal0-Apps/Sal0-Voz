@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 
 import psutil
 from fastapi import FastAPI, Request, UploadFile, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -26,6 +28,7 @@ from .media import probe, ffargs, input_args
 from .model_manager import manager as model_manager
 from .script import compile_script, parse_srt, validate_cues, subtitles
 from .telegram import masked as masked_telegram, notify_job, save_config as save_telegram
+from . import model_access
 from .worker import Worker
 from .omnivoice_quality import MAXIMUM_PROFILE
 
@@ -83,6 +86,13 @@ async def guard(request, call_next):
 @app.exception_handler(ValueError)
 async def value_error(request, exc):
     return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request, exc):
+    if request.url.path == "/api/model-access":
+        return JSONResponse({"detail": "Configuração de acesso inválida."}, status_code=422)
+    return await request_validation_exception_handler(request, exc)
 
 @app.exception_handler(KeyError)
 async def not_found(request, exc):
@@ -188,6 +198,24 @@ def models():
 
 class ModelDownload(BaseModel):
     accept_license: bool = True
+
+
+class ModelAccess(BaseModel):
+    token: str | None = Field(default=None, max_length=512)
+    clear: bool = False
+
+
+@app.get("/api/model-access")
+def get_model_access(request: Request):
+    return model_access.status(current_user(request))
+
+
+@app.put("/api/model-access")
+def put_model_access(body: ModelAccess, request: Request):
+    user = current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Somente administradores podem configurar o acesso aos modelos.")
+    return model_access.save(user, token=body.token, clear=body.clear)
 
 
 @app.post("/api/models/{ident}/download")
@@ -536,6 +564,10 @@ def snapshot(project, owner=None):
     value["output_sample_rate"] = CATALOG.get(project.get("engine"), {}).get("sample_rate", 24000)
     if project.get("engine") == "omnivoice" and project["mode"] != "asr":
         value.update(omnivoice_profile=MAXIMUM_PROFILE, omnivoice_seed=secrets.randbits(32), output_sample_width=3)
+    from .quality_profiles import PROFILES
+    if project.get("engine") in PROFILES and project["mode"] != "asr":
+        value.update(quality_profile=PROFILES[project["engine"]], model_seed=secrets.randbits(32),
+                     dtype=CATALOG[project["engine"]].get("dtype", "float32"), output_sample_width=3)
     if project["mode"] in ("asr", "dub"):
         if not project["media_id"]:
             raise ValueError("Selecione a mídia original.")
@@ -582,9 +614,9 @@ def snapshot(project, owner=None):
     if models_needed(value):
         languages = CATALOG.get(project["engine"], {}).get("languages")
         if languages and any(segment.get("pause_ms") is None and segment["language"] not in languages for segment in value["segments"]):
-            raise ValueError("Escolha Português brasileiro para usar o Chatterbox pt-BR.")
+            raise ValueError("Escolha Português brasileiro para usar este modelo de voz.")
         if languages and value.get("automatic_dub") and project["language"] not in languages:
-            raise ValueError("Escolha Português brasileiro para usar o Chatterbox pt-BR.")
+            raise ValueError("Escolha Português brasileiro para usar este modelo de voz.")
         value["model"] = model_for_job(project["engine"], "tts")
     elif project["engine"] not in CATALOG or CATALOG[project["engine"]]["kind"] != "tts":
         raise ValueError("Motor incompatível com esta operação.")

@@ -168,7 +168,13 @@ def run_request(request, serving):
         try:
             report("loading")
             with contextlib.redirect_stdout(sys.stderr):
-                if request["engine"] == "chatterbox-pt-br":
+                if request["engine"] == "pocket-pt":
+                    from .pocket_engine import PocketEngine
+                    engine = PocketEngine(request)
+                elif request["engine"] == "drama3":
+                    from .drama3_engine import Drama3Engine
+                    engine = Drama3Engine(request)
+                elif request["engine"] == "chatterbox-pt-br":
                     from .chatterbox_engine import ChatterboxEngine
                     engine = ChatterboxEngine(request)
                 elif request["engine"] == "omnivoice":

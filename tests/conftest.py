@@ -3,6 +3,7 @@ from app import storage as s
 
 @pytest.fixture
 def data(tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.setattr(s, "DATA", tmp_path / "data")
     s.init()
     return s.DATA

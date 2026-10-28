@@ -11,6 +11,33 @@ DEFAULT_MODELS = (DEFAULT_CLONE_MODEL, DEFAULT_ASR_MODEL)
 
 CATALOG = {
     "diagnostic": {"name": "Voz de diagnóstico", "kind": "tts", "clone": False, "license": "GPL-3.0 (eSpeak NG)", "notice": "Voz sintética simples para testar o app; não representa a qualidade final."},
+    "pocket-pt": {
+        "name": "Qualidade em CPU · Pocket TTS PT 24 camadas", "kind": "tts", "clone": True,
+        "reference_text": False, "reference_seconds": 30, "runtime": "omnivoice",
+        "languages": ["pt-BR"], "sample_rate": 24000, "fixed_precision": True,
+        "repo": "kyutai/pocket-tts", "revision": "2dd944b099d06bb9edbd221fef138685711d9bf0",
+        "files": ["README.md", "languages/portuguese_24l/model.safetensors", "languages/portuguese_24l/tokenizer.json"],
+        "license": "CC-BY-4.0 (pesos); MIT (código)", "memory_gib": 3.5, "download_gib": 0.63,
+        "gated": True, "access_url": "https://huggingface.co/kyutai/pocket-tts",
+        "notice": "Português, 24 camadas, CPU FP32 sem quantização, cinco passos de amostragem e saída de 24 bits. Usa a gravação para clonar a voz, sem exigir transcrição. Tenta a fala inteira e mantém o perfil na retomada. Para baixar os pesos com clonagem, aceite o acesso na página do Pocket TTS no Hugging Face e salve um token de leitura nos ajustes abaixo. Qualidade e velocidade precisam ser avaliadas com sua voz.",
+    },
+    "drama3": {
+        "name": "Fidelidade experimental · Drama 3 CPU Q4", "kind": "tts", "clone": True,
+        "reference_text": True, "reference_seconds": 30, "reference_hz": 44100,
+        "runtime": "omnivoice", "runtime_binary": "drama3/bin/audiocpp_cli", "dtype": "q4-bf16",
+        "sample_rate": 44100, "fixed_precision": True, "experimental": True,
+        "repo": "Jmica/Drama-3-GGUF", "revision": "17a5b40c5dc2c2be986f5371a7e650108b828e29",
+        "files": ["README.md", "LICENSE", "NOTICE", "drama-3-backbone-8bit-F32-routers-BF16-embed-head-experts-Q4_K_S.gguf"],
+        "license": "Fish Audio Community License v1.0 (pesos); Apache-2.0 (motor)", "memory_gib": 8.0, "download_gib": 23.88,
+        "notice": "Experimental para CPU: modelo completo de 35B com especialistas Q4, roteadores FP32, embedding/cabeça BF16 e áudio F16. Não é o checkpoint original sem conversão. O motor lê especialistas pelo disco com cache de oito por camada; exige cerca de 24 GiB em disco e pode ser extremamente lento, especialmente em HD. Saída de 24 bits. Mantém o limite de RAM e aguarda memória se necessário; não há garantia de caber em toda fala nem de igualar a fidelidade do original. Nenhuma troca automática para outro modelo.",
+    },
+    "drama3-original": {
+        "name": "Drama 3 original · pesos para GPU", "kind": "weights", "clone": False,
+        "runtime": "base", "download_only": True,
+        "repo": "fishaudio/drama-3", "revision": "dd64a85cd82e9521f7202610ede97b367fc83946",
+        "license": "Fish Audio Community License v1.0", "download_gib": 38.66,
+        "notice": "Download opcional do checkpoint oficial FP8/BF16, sem a quantização GGUF de CPU, para comparar fidelidade em um servidor com GPU compatível. Cerca de 39 GiB em disco; somente os pesos do motor ocupam aproximadamente 37 GB na GPU. Este pacote não aparece como motor de geração neste servidor de 10 GiB. O Drama 3 CPU experimental acima é um download separado e identificado como Q4.",
+    },
     "omnivoice": {
         "name": "Fidelidade e expressão · OmniVoice 0.6B", "kind": "tts", "clone": True,
         "reference_text": True, "reference_seconds": 10, "runtime": "omnivoice",

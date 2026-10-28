@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from app import storage as s
 from app.catalog import CATALOG
+from app.model_access import access_token, redact
 
 def download_plan(meta, api):
     """Download only the chosen weights, including pinned companion assets."""
@@ -129,7 +130,7 @@ def main():
         print("Todos os hashes SHA-256 conferem."); return
     from huggingface_hub import HfApi, hf_hub_download, constants
     if args.action == "plan":
-        plan = download_plan(meta, HfApi())
+        plan = download_plan(meta, HfApi(token=access_token() or False))
         s.atomic_json(folder / "download-plan.json", plan)
         print(json.dumps(plan, ensure_ascii=False, indent=2))
         print(f"Download estimado: {plan['bytes']/1024**3:.2f} GiB. Execute install com --accept-license após conferir a licença na fonte.")
@@ -159,6 +160,7 @@ def main():
                 progress.update("downloading", relative, force=True)
                 hf_hub_download(repo_id=source["repo"], revision=source["revision"],
                                 filename=relative, local_dir=str(folder),
+                                token=access_token() or False,
                                 headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
                 if not path.is_file() or path.stat().st_size != plan["files"][relative]:
                     raise RuntimeError("Download incompleto: " + relative)
@@ -175,8 +177,11 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
+        response = getattr(exc, "response", None)
+        if response is not None and response.status_code in (401, 403):
+            raise SystemExit("Acesso ao modelo não autorizado. Aceite os termos na página oficial do Hugging Face e salve um token de leitura autorizado em Ajustes → Modelos. O token não será mostrado no aplicativo.") from None
         if transient_error(exc):
-            print("Conexão de download interrompida. Os arquivos parciais foram preservados. " + str(exc), flush=True)
-            raise SystemExit(75) from exc
-        raise
+            print("Conexão de download interrompida. Os arquivos parciais foram preservados. " + redact(str(exc)), flush=True)
+            raise SystemExit(75) from None
+        raise SystemExit("Falha na preparação do modelo: " + redact(str(exc))) from None
 

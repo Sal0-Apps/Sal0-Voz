@@ -23,7 +23,7 @@ def recording(path, seconds=1, rate=24000):
         out.writeframes(b"\0\0" * round(seconds * rate))
 
 
-@pytest.mark.parametrize("engine", ["omnivoice", "voxcpm2"])
+@pytest.mark.parametrize("engine", ["omnivoice", "voxcpm2", "pocket-pt", "drama3"])
 def test_optional_pinned_download_is_complete_and_resumable(data, monkeypatch, engine):
     import scripts.models as module
     meta = CATALOG[engine]
@@ -44,7 +44,11 @@ def test_optional_pinned_download_is_complete_and_resumable(data, monkeypatch, e
     existing = folder / "README.md"
     existing.write_bytes(values["README.md"])
     downloads = []
-    def hf_hub_download(repo_id, revision, local_dir, filename, headers):
+    expected_token = "hf_example_download_access_123456" if engine == "pocket-pt" else False
+    if expected_token:
+        s.setting("huggingface_token", expected_token)
+    def hf_hub_download(repo_id, revision, local_dir, filename, headers, token=False):
+        assert token == expected_token
         downloads.append((repo_id, revision, filename))
         assert existing.read_bytes() == values["README.md"]
         assert headers["Cache-Control"] == "no-cache"

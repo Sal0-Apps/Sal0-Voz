@@ -1,0 +1,2 @@
+pocket-tts @ https://codeload.github.com/kyutai-labs/pocket-tts/tar.gz/a922b912dfa366975294afb568d815b305acde5d
+PyYAML==6.0.2

@@ -276,18 +276,18 @@ def test_whisper_workspace_is_removed_before_clone_even_on_failure(data,monkeypa
 
 
 def test_exited_parent_does_not_leave_a_child_using_resources(data):
-    import os, psutil
+    import os, time
     if os.name != "posix":pytest.skip("Process groups are POSIX")
     job=speech_job(data); worker=Worker(); worker.update(job["id"],status="running")
-    folder=data/"jobs"/job["id"]; folder.mkdir(); marker=folder/"child.pid"
-    code="import subprocess,sys,pathlib; child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); pathlib.Path(sys.argv[1]).write_text(str(child.pid)); sys.exit(1)"
+    folder=data/"jobs"/job["id"]; folder.mkdir(); heartbeat=folder/"child-heartbeat"
+    # Observe actual descendant activity, without relying on host /proc PID aliases.
+    child_code="import pathlib,sys,time\np=pathlib.Path(sys.argv[1])\nfor i in range(1000):\n p.write_text(str(i));time.sleep(.01)"
+    code="import subprocess,sys,pathlib,time; child=subprocess.Popen([sys.executable,'-c',sys.argv[2],sys.argv[1]])\nwhile not pathlib.Path(sys.argv[1]).exists():time.sleep(.005)\nsys.exit(1)"
     with pytest.raises(ValueError):
-        worker.run(job["id"],[sys.executable,"-c",code,str(marker)])
-    try:
-        child=psutil.Process(int(marker.read_text()))
-        assert not child.is_running() or child.status()==psutil.STATUS_ZOMBIE
-    except psutil.NoSuchProcess:
-        pass
+        worker.run(job["id"],[sys.executable,"-c",code,str(heartbeat),child_code])
+    previous=heartbeat.read_text()
+    time.sleep(.2)
+    assert heartbeat.read_text()==previous, "Child kept working after its parent exited"
 
 
 @pytest.mark.parametrize("message", ["raise MemoryError('allocation failed')", "raise RuntimeError('Unable to allocate 512 MiB')"])

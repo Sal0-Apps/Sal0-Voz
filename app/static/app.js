@@ -32,7 +32,8 @@ function jobProgress(job){
     }else if(measured&&detail.unit==="seconds"){
       info='<p class="progress-count">Áudio analisado: '+formatElapsed(detail.completed)+' de '+formatElapsed(detail.total)+'</p>';
     }else if(detail.phase==="generating"){
-      info='<p class="hint">Este motor não informa quantos passos faltam. O trecho será confirmado quando a fala terminar.</p>';
+      if(typeof detail.generated_seconds==="number")info='<p class="progress-count">Áudio gerado: '+formatElapsed(detail.generated_seconds)+'</p>'+(typeof detail.generated_frames==="number"?'<p class="hint">'+detail.generated_frames+' blocos de áudio concluídos.</p>':'');
+      info+='<p class="hint">A duração total está sendo determinada durante a geração. O trecho será confirmado quando a fala terminar.</p>';
     }
     if(detail.started)info+='<p class="hint">Nesta etapa: '+formatElapsed(Math.max(0,Date.now()/1000-detail.started))+'.</p>';
   }
@@ -59,7 +60,7 @@ function view(name){
   document.querySelectorAll(".view").forEach(x=>x.hidden=x.id!=="view-"+primary);
   document.querySelectorAll(".nav").forEach(x=>{const selected=x.dataset.view===primary;x.classList.toggle("active",selected);x.setAttribute("aria-selected",String(selected));x.tabIndex=selected?0:-1;});
   if(primary==="library")libraryPane(["characters","projects"].includes(name)?name:state.libraryPane);
-  if(name==="settings") safe(async()=>{await loadDiagnostics();await loadTelegram();await loadUsers();})();
+  if(name==="settings") safe(async()=>{await loadDiagnostics();await loadTelegram();await loadModelAccess();await loadUsers();})();
   if(primary==="library")renderResults();
   document.querySelectorAll(".view[hidden] audio,.view[hidden] video").forEach(player=>player.pause());
 }
@@ -170,13 +171,13 @@ function modelNotice(){
   $("expression-settings").hidden=state.mode==="asr"||!model?.expressiveness;
   $("voice-style-settings").hidden=state.mode==="asr"||!model?.style_control;
   renderReactionOptions();
-  const fixedPrecision=["chatterbox-pt-br","omnivoice","voxcpm2"].includes(ident);
+  const fixedPrecision=!!model?.fixed_precision||["chatterbox-pt-br","omnivoice","voxcpm2"].includes(ident);
   $("memory-label").hidden=state.mode==="asr"||fixedPrecision;
   $("memory-hint").textContent=fixedPrecision?"Mantém o modelo e a precisão escolhidos. Se faltar RAM, aguarda memória e retoma dos trechos salvos.":"Mantém o modelo escolhido em todo o áudio. Se faltar RAM, tenta o modo econômico antes de começar. Se ainda não couber, aguarda memória.";
   $("expression-value").textContent=Number($("expressiveness").value).toFixed(2);
   updateOptionsSummary();
 }
-function shortModelName(model){return {"qwen-1.7b":"Qwen 1.7B","qwen-0.6b":"Qwen 0.6B",omnivoice:"OmniVoice 0.6B",voxcpm2:"VoxCPM2 2B","chatterbox-pt-br":"Chatterbox pt-BR",diagnostic:"Voz de teste","whisper-large-v3-turbo":"Whisper large-v3-turbo","whisper-large-v3":"Whisper large-v3","whisper-medium":"Whisper medium"}[model.id]||model.name;}
+function shortModelName(model){return {"pocket-pt":"Pocket PT · 24 camadas FP32",drama3:"Drama 3 CPU · experimental Q4","drama3-original":"Drama 3 original · pesos para GPU","qwen-1.7b":"Qwen 1.7B","qwen-0.6b":"Qwen 0.6B",omnivoice:"OmniVoice 0.6B",voxcpm2:"VoxCPM2 2B","chatterbox-pt-br":"Chatterbox pt-BR",diagnostic:"Voz de teste","whisper-large-v3-turbo":"Whisper large-v3-turbo","whisper-large-v3":"Whisper large-v3","whisper-medium":"Whisper medium"}[model.id]||model.name;}
 function updateOptionsSummary(){const parts=[];if($("engine").value==="voxcpm2"&&$("voice-style").value!=="natural")parts.push($("voice-style").selectedOptions[0].textContent);if(state.mode==="tts")parts.push($("format").value.toUpperCase());if($("rate").value!=="1"&&state.mode!=="asr")parts.push(Number($("rate").value).toFixed(2)+"×");if($("language").value!=="pt-BR")parts.push("English");$("options-summary").textContent=parts.join(" · ")||"Opcional";}
 $("project-form").addEventListener("change",updateOptionsSummary);
 $("expressiveness").addEventListener("input",()=>{$("expression-value").textContent=Number($("expressiveness").value).toFixed(2);});
@@ -361,8 +362,8 @@ function renderModelList(){
   list.innerHTML=state.models.map(m=>{
     const d=m.download||{},busy=["queued","downloading"].includes(d.status)||!!d.retry_at;
     const action=m.available||m.id==="diagnostic"?"":busy?'<button class="quiet" data-model-cancel="'+m.id+'">Pausar download</button>':'<button class="secondary" data-model-download="'+m.id+'">'+(d.status==="failed"||d.status==="cancelled"?'Tentar novamente':'Preparar este modelo')+'</button>';
-    const label=m.available?(m.source==="bundled"?"Incluído no app":"Pronto"):d.retry_at?"Nova tentativa agendada":d.status==="failed"?"Precisa de atenção":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Não instalado";
-    return '<div class="model-row"><div class="model-heading"><h3>'+escapeHTML(shortModelName(m))+'</h3><span class="badge">'+label+'</span></div><p>'+escapeHTML(m.kind==='asr'?'Transcrição':m.clone?'Clonagem de voz':'Voz de diagnóstico')+(m.download_gib?' · cerca de '+m.download_gib+' GiB':'')+'</p><details class="model-details" data-model-details="'+m.id+'"'+(expanded.has(m.id)?' open':'')+'><summary>Sobre o modelo</summary><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Preparação pendente")+'</p></details>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(downloadText(d))+'</p>':'')+(d.error?'<details class="download-error"><summary>Ver o erro da preparação</summary><pre>'+escapeHTML(d.error)+'</pre></details>':'')+'<div class="item-actions">'+action+'</div></div>';
+    const label=m.available?(m.download_only?"Pesos baixados":m.source==="bundled"?"Incluído no app":"Pronto"):d.retry_at?"Nova tentativa agendada":d.status==="failed"?"Precisa de atenção":busy?(d.status==="downloading"?"Baixando":"Na fila"):"Não instalado";
+    return '<div class="model-row"><div class="model-heading"><h3>'+escapeHTML(shortModelName(m))+'</h3><span class="badge">'+label+'</span></div><p>'+escapeHTML(m.download_only?'Somente download dos pesos · requer servidor com GPU':m.kind==='asr'?'Transcrição':m.clone?'Clonagem de voz'+(m.experimental?' · perfil com quantização explícita':''):'Voz de diagnóstico')+(m.download_gib?' · cerca de '+m.download_gib+' GiB':'')+'</p><details class="model-details" data-model-details="'+m.id+'"'+(expanded.has(m.id)?' open':'')+'><summary>Sobre o modelo</summary><p>'+escapeHTML(m.notice)+'</p><p>'+escapeHTML(m.license)+' · '+escapeHTML(m.revision?m.revision.slice(0,12):"Preparação pendente")+'</p>'+(m.access_url?'<a href="'+escapeHTML(m.access_url)+'" target="_blank" rel="noopener noreferrer">Liberar acesso no Hugging Face</a>':'')+'</details>'+(busy?'<progress max="100" value="'+(d.progress||0)+'"></progress><p>'+escapeHTML(downloadText(d))+'</p>':'')+(d.error?'<details class="download-error"><summary>Ver o erro da preparação</summary><pre>'+escapeHTML(d.error)+'</pre></details>':'')+'<div class="item-actions">'+action+'</div></div>';
   }).join("");
   document.querySelectorAll("[data-model-download]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelDownload+"/download",{accept_license:true});toast("O servidor vai preparar o modelo. Os trabalhos aguardando continuam automaticamente.");await loadModels();await loadDiagnostics();}));
   document.querySelectorAll("[data-model-cancel]").forEach(b=>b.onclick=safe(async()=>{await post("/models/"+b.dataset.modelCancel+"/cancel");await loadModels();await loadDiagnostics();}));
@@ -373,6 +374,9 @@ async function loadDiagnostics(){
   renderModelList();
 }
 $("refresh-models").onclick=safe(async()=>{await loadModels();await loadDiagnostics();toast("Modelos atualizados.");});
+async function loadModelAccess(){const cfg=await api("/model-access");$("model-access-form").hidden=!cfg.writable;$("model-access-status").textContent=cfg.configured?(cfg.source==="environment"?"Acesso configurado pelo servidor.":"Token de leitura salvo. Ele não será exibido."):"Nenhum token salvo. Aceite os termos do Pocket TTS e salve um token de leitura para baixar os pesos com clonagem.";}
+$("model-access-form").addEventListener("submit",safe(async e=>{e.preventDefault();await api("/model-access",{method:"PUT",body:JSON.stringify({token:$("model-hf-token").value||null})});$("model-hf-token").value="";await loadModelAccess();toast("Acesso aos modelos salvo.");}));
+$("clear-model-access").onclick=safe(async()=>{await api("/model-access",{method:"PUT",body:JSON.stringify({clear:true})});$("model-hf-token").value="";await loadModelAccess();toast("Token salvo removido.");});
 async function loadTelegram(){const cfg=await api("/telegram");$("telegram-token").value=cfg.telegram_token||"";$("telegram-chat").value=cfg.telegram_chat_id||"";$("telegram-url").value=cfg.telegram_base_url||location.origin;}
 async function loadUsers(){if(state.user.role!=="admin")return;$("users-card").hidden=false;const users=await api("/users");$("users-list").innerHTML=users.map(u=>'<div class="item-actions"><span>'+escapeHTML(u.username)+' · '+escapeHTML(u.role)+'</span>'+(u.username===state.user.username?"":'<button class="quiet" data-delete-user="'+escapeHTML(u.username)+'">Excluir</button>')+'</div>').join("");document.querySelectorAll("[data-delete-user]").forEach(b=>b.onclick=safe(async()=>{await api("/users/"+encodeURIComponent(b.dataset.deleteUser),{method:"DELETE"});await loadUsers();}));}
 $("telegram-form").addEventListener("submit",safe(async e=>{e.preventDefault();const cfg=await api("/telegram",{method:"PUT",body:JSON.stringify({telegram_token:$("telegram-token").value,telegram_chat_id:$("telegram-chat").value,telegram_base_url:$("telegram-url").value})});$("telegram-token").value=cfg.telegram_token||"";$("telegram-status").textContent="Salvo. O Telegram receberá somente links, sem anexos.";toast("Telegram configurado.");}));

@@ -4,7 +4,7 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.4.4 — progresso durante a geração.** O OmniVoice mostra os passos efetivamente concluídos, o passo em cálculo, o tempo desde o último avanço e uma estimativa para os passos restantes após medir os dois primeiros. A transcrição mostra a posição analisada no áudio. O painel e a fila distinguem carregamento, preparação da voz, geração e salvamento; motores sem contagem nativa mostram a etapa em andamento. O percentual geral é uma estimativa ponderada pelos trechos e só chega a 100% depois de salvar os arquivos finais. Durações e estimativas usam horas, minutos e segundos. As notificações do Telegram mantêm o mesmo formato de duração.
+**Versão 0.5.0 — Pocket PT e Drama 3.** Novas opções de download em Ajustes → Modelos: Pocket TTS em português, 24 camadas FP32 e cinco passos, sem quantização; Drama 3 experimental de CPU com especialistas Q4 em disco, roteadores FP32 e embedding/cabeça BF16; e o checkpoint oficial Drama 3 FP8/BF16, somente para uso em servidor GPU compatível. Os downloads são opcionais e verificados. O Pocket com clonagem exige liberar o acesso no Hugging Face e salvar um token de leitura nos ajustes; o token não é devolvido ao navegador. Os novos motores preservam 24 bits e a frequência nativa, perfil e semente na retomada. A fidelidade e o tempo real serão avaliados pelo proprietário.
 
 Mantém a qualidade máxima do OmniVoice: novos trabalhos usam FP32, 64 passos, pausas naturais preservadas e 24 bits desde a preparação até a exportação sem perdas. A fala inteira é tentada antes de qualquer divisão por sobrecarga ou limite de contexto. A retomada mantém perfil, semente e trechos já confirmados; trabalhos antigos conservam sua configuração. O perfil prioriza qualidade e pode levar mais tempo; a avaliação auditiva permanece no servidor do proprietário.
 
@@ -22,7 +22,7 @@ Mantém o texto inteiro primeiro, com divisão apenas por sobrecarga, Telegram s
 6. Clique em **Gerar áudio**. O app prepara a referência automaticamente, usa o modelo escolhido e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Criar → Legendar**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.4.4` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.5.0` e o SHA do commit para rollback.
 
 **Os pesos são baixados pelo próprio aplicativo depois que ele inicia**, em segundo plano. Qwen3-TTS 1.7B Base e Faster-Whisper large-v3-turbo são preparados automaticamente em `/data/models`, com revisões fixas e hashes verificados. A interface e o healthcheck funcionam enquanto o download acontece; trabalhos que precisam desses modelos aguardam na fila. O progresso aparece em **Ajustes → Modelos**. As dependências de CPU continuam na imagem, sem precisar instalar CUDA.
 

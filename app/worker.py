@@ -24,6 +24,7 @@ from .media import ffargs, probe, input_args
 from .script import subtitles, split_text
 from .reactions import caption, synthesis_text, render_policy
 from .omnivoice_quality import LEGACY_PROFILE, maximum_quality
+from .quality_profiles import PROFILES, high_precision
 from .telegram import notify_job
 
 class Interrupted(Exception):
@@ -98,6 +99,12 @@ class Worker:
             same = previous.get("phase") == phase and previous.get("chunk") == event.get("chunk")
             detail = {"phase": phase, "started": previous.get("started", now) if same else now,
                       "updated": now, "chunk": event.get("chunk")}
+            generated = event.get("generated_seconds")
+            if isinstance(generated, (int, float)) and math.isfinite(generated) and generated >= 0:
+                detail["generated_seconds"] = generated
+                frames = event.get("generated_frames")
+                if isinstance(frames, int) and frames >= 0:
+                    detail["generated_frames"] = frames
             message = phases[phase]
             fraction = {"decoding": 0.94, "writing": 0.98}.get(phase)
             completed, total = event.get("completed"), event.get("total")
@@ -331,6 +338,9 @@ class Worker:
             if request["engine"] == "omnivoice":
                 request["omnivoice_profile"] = project.get("omnivoice_profile", LEGACY_PROFILE)
                 request["omnivoice_seed"] = project.get("omnivoice_seed")
+            if request["engine"] in PROFILES:
+                request["quality_profile"] = project.get("quality_profile", PROFILES[request["engine"]])
+                request["model_seed"] = project.get("model_seed", 0)
         path = folder / "request.json"
         model, manifest, _ = model_files(request["engine"])
         request["model_path"] = str(model or (s.DATA / "models" / request["engine"]))
@@ -351,6 +361,13 @@ class Worker:
 
     def execute(self, job):
         self.clone_session = None
+        if job.get("snapshot", {}).get("engine") in PROFILES:
+            folder = s.DATA/"jobs"/job["id"]
+            for stale in folder.glob("*.floating.wav"):
+                stale.unlink(missing_ok=True)
+            for stale in folder.glob("drama3-work-*"):
+                if stale.is_symlink(): stale.unlink()
+                elif stale.is_dir(): shutil.rmtree(stale)
         try:
             self._execute(job)
         finally:
@@ -365,9 +382,14 @@ class Worker:
         if request["engine"] == "omnivoice":
             request["omnivoice_profile"] = project.get("omnivoice_profile", LEGACY_PROFILE)
             request["omnivoice_seed"] = project.get("omnivoice_seed")
+        if request["engine"] in PROFILES:
+            request["quality_profile"] = project.get("quality_profile", PROFILES[request["engine"]])
+            request["model_seed"] = project.get("model_seed", 0)
         context = {key: request.get(key) for key in ("text", "engine", "dtype", "language", "reference_text", "voice_style", "expressiveness", "reaction")}
         if maximum_quality(request):
             context.update(omnivoice_profile=request["omnivoice_profile"], omnivoice_seed=request["omnivoice_seed"])
+        if request["engine"] in PROFILES:
+            context.update(quality_profile=request["quality_profile"], model_seed=request["model_seed"])
         context["reference_sha256"] = s.digest(request["reference"])
         fingerprint = hashlib.sha256(json.dumps(context, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         try:
@@ -424,7 +446,7 @@ class Worker:
         # ASR exits before cloning; Chatterbox does not need a transcript.
         reference_seconds = CATALOG[project["engine"]].get("reference_seconds", 30)
         reference_hz = CATALOG[project["engine"]].get("reference_hz", 24000)
-        sample_width = 3 if maximum_quality(project) else 2
+        sample_width = 3 if high_precision(project) or maximum_quality(project) else 2
         source_hashes = {}
         for segment in project["segments"]:
             if segment.get("pause_ms") is not None:
@@ -640,12 +662,12 @@ class Worker:
                 args += ["-c:v", "copy"]
             else:
                 args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-threads", os.getenv("SAL0_THREADS", "4")]
-            args += ["-c:a", "aac", *(["-b:a", "144k"] if maximum_quality(project) else []), "-t", str(project["media"]["duration"]), "-movflags", "+faststart", str(temporary)]
+            args += ["-c:a", "aac", *(["-b:a", "256k" if sample_rate >= 32000 else "144k"] if high_precision(project) else []), "-t", str(project["media"]["duration"]), "-movflags", "+faststart", str(temporary)]
         else:
             codec = {"wav": "pcm_s24le", "flac": "flac", "mp3": "libmp3lame", "opus": "libopus"}[extension]
             # MPEG-2 MP3 and AAC-LC at native 24 kHz mono top out at 160/144k;
             # larger requests are silently limited by the encoders.
-            encoding = {"mp3": ["-b:a", "160k", "-compression_level", "0"], "opus": ["-b:a", "192k", "-compression_level", "10"]}.get(extension, []) if maximum_quality(project) else []
+            encoding = {"mp3": ["-b:a", "320k" if sample_rate >= 32000 else "160k", "-compression_level", "0"], "opus": ["-b:a", "192k", "-compression_level", "10"]}.get(extension, []) if high_precision(project) else []
             args = ffargs("-i", joined, "-c:a", codec, *encoding, temporary)
         self.update(ident, progress=95, stage="Exportando o arquivo final")
         self.run(ident, args)
