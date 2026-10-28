@@ -17,6 +17,7 @@ class EngineSession:
         self.process = None
         self.responses = queue.Queue()
         self.profile = (request["engine"], request.get("dtype", "float32"))
+        self.native_generation_started = False
         self.oom_before = oom_kills()
         path = folder / "engine-session.json"
         s.atomic_json(path, request)
@@ -57,7 +58,8 @@ class EngineSession:
                 except subprocess.TimeoutExpired as exc:
                     raise ProcessInterrupted("O motor encerrou a comunicação antes de concluir. O trabalho será retomado.") from exc
                 if oom_kills() > self.oom_before or code == -9:
-                    raise MemoryUnavailable(MEMORY_GIB[self.profile], memory_available()/1024**3)
+                    raise MemoryUnavailable(MEMORY_GIB[self.profile], memory_available()/1024**3,
+                                            allow_split=self.profile[0] != "drama3" or self.native_generation_started)
                 with self.log.open("rb") as stream:
                     stream.seek(max(0, self.log.stat().st_size - 2000))
                     detail = stream.read().decode("utf-8", errors="replace").strip()
@@ -71,11 +73,13 @@ class EngineSession:
             if not isinstance(value, dict):
                 continue
             if value.get("event") == "progress":
+                if self.profile[0] == "drama3" and value.get("generated_frames", 0) > 0:
+                    self.native_generation_started = True
                 self.worker.engine_progress(self.ident, value)
                 continue
             if value.get("error"):
                 if value.get("kind") == "memory":
-                    raise MemoryUnavailable(value["required"], value["available"])
+                    raise MemoryUnavailable(value["required"], value["available"], allow_split=value.get("allow_split", True))
                 if value.get("kind") == "interrupted":
                     raise ProcessInterrupted(value["error"])
                 if value.get("kind") == "text_capacity":
@@ -86,6 +90,7 @@ class EngineSession:
 
     def generate(self, request):
         self.worker.check(self.ident)
+        self.native_generation_started = False
         try:
             self.process.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
             self.process.stdin.flush()

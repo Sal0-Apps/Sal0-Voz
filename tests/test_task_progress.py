@@ -85,6 +85,7 @@ def test_backend_chunks_keep_accumulated_fraction_and_individual_step_counts():
 def test_progress_messages_never_acknowledge_a_request_or_end_a_wait():
     events = []
     session = EngineSession.__new__(EngineSession)
+    session.profile = ("omnivoice", "float32")
     session.worker = SimpleNamespace(check=lambda _: None, engine_progress=lambda ident, event: events.append(event))
     session.ident = "test"; session.responses = queue.Queue()
     for value in [{"event": "progress", "phase": "loading"}, [], {"log": "ignored"}, {"ready": True},

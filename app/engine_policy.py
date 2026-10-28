@@ -15,8 +15,9 @@ MEMORY_GIB = {
 }
 
 class MemoryUnavailable(ValueError):
-    def __init__(self, required, available):
+    def __init__(self, required, available, *, allow_split=True):
         self.required, self.available = required, available
+        self.allow_split = allow_split
         super().__init__(f"Aguardando RAM livre: {available:.1f} GiB disponíveis; "
                          f"este perfil precisa de cerca de {required:.2f} GiB. "
                          "Libere memória de outras tarefas. O trabalho continuará automaticamente.")

@@ -33,7 +33,7 @@ class Drama3Engine:
         required = MEMORY_GIB["drama3", "q4-bf16"]
         available = memory_available()/1024**3
         if available < required:
-            raise MemoryUnavailable(required, available)
+            raise MemoryUnavailable(required, available, allow_split=False)
 
     def generate(self, request):
         if request.get("quality_profile", DRAMA_PROFILE) != DRAMA_PROFILE:
@@ -73,6 +73,7 @@ class Drama3Engine:
                 log = output.parent/"drama3-process.log"
                 tail = ""
                 last_report = 0.0
+                generated_frames = 0
                 with log.open("a", encoding="utf-8") as stream:
                     process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                                text=True, encoding="utf-8", errors="replace", env=env)
@@ -85,6 +86,7 @@ class Drama3Engine:
                                     frames = int(line.strip().split("=", 1)[1])
                                 except ValueError:
                                     continue
+                                generated_frames = max(generated_frames, frames)
                                 now = time.monotonic()
                                 if now-last_report >= 0.5:
                                     report("generating", generated_seconds=frames*2048/44100, generated_frames=frames)
@@ -98,7 +100,10 @@ class Drama3Engine:
                         process.stdout.close()
                 if code:
                     if code == -9 or is_memory_error(tail):
-                        raise MemoryUnavailable(MEMORY_GIB["drama3", "q4-bf16"], memory_available()/1024**3)
+                        # The CLI loads weights inside generate(). Before its first
+                        # confirmed frame, splitting text cannot repair a load failure.
+                        raise MemoryUnavailable(MEMORY_GIB["drama3", "q4-bf16"], memory_available()/1024**3,
+                                                allow_split=generated_frames > 0)
                     if any(term in tail.lower() for term in ("capacity", "context_length", "prompt plus max_tokens")):
                         raise TextCapacityExceeded("Drama 3 ultrapassou seu contexto nativo; o trecho será reduzido.")
                     if code == -4:

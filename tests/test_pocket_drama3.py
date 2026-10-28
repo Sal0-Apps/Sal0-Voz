@@ -215,7 +215,7 @@ def test_pocket_uses_full_local_clone_preserves_seed_and_rejects_capped_take(dat
     with pytest.raises(ValueError,match="Português"):engine.generate({**request,"language":"en-US"})
 
 
-@pytest.mark.parametrize("outcome",["ok","limit","context","missing"])
+@pytest.mark.parametrize("outcome",["ok","limit","context","missing","oom-load","oom-generate"])
 def test_drama_native_protocol_disk_cache_reference_and_no_truncated_checkpoint(data,monkeypatch,outcome):
     import app.drama3_engine as module
     binary=data/"audiocpp_cli"
@@ -224,7 +224,9 @@ args=sys.argv[1:]; get=lambda key:args[args.index(key)+1]
 request=json.loads(pathlib.Path(get('--request-sequence')).read_text())[0]
 pathlib.Path(sys.argv[0]+'.seen.json').write_text(json.dumps({'args':args,'request':request}))
 if request['text']=='context':print('Drama 3 prompt plus max_tokens exceeds fish_drama3.context_length');sys.exit(1)
+if request['text']=='oom-load':print('std::bad_alloc');sys.exit(1)
 print('SAL0_DRAMA_FRAME=32',flush=True)
+if request['text']=='oom-generate':print('std::bad_alloc');sys.exit(1)
 sf.write(get('--out'),np.tile(np.asarray([1,257,-129],dtype=np.float32)/8388608,14700),44100,subtype='FLOAT')
 if request['text']!='missing':pathlib.Path(get('--batch-manifest-out')).write_text(json.dumps({'requests':[{'custom_schema_output':{'schema':'drama3_generation_v1','data':{'frames':32,'reached_limit':request['text']=='limit'}}}]}))
 ''')
@@ -243,6 +245,9 @@ if request['text']!='missing':pathlib.Path(get('--batch-manifest-out')).write_te
             with pytest.raises(TextCapacityExceeded):engine.generate(request)
         elif outcome=="missing":
             with pytest.raises(ValueError,match="não confirmou"):engine.generate(request)
+        elif outcome.startswith("oom-"):
+            with pytest.raises(MemoryUnavailable) as failure:engine.generate(request)
+            assert failure.value.allow_split == (outcome=="oom-generate")
         else:engine.generate(request)
     seen=json.loads(Path(str(binary)+".seen.json").read_text());args=seen["args"]
     assert args[args.index("--backend")+1]=="cpu" and args[args.index("--out-format")+1]=="float32"
@@ -255,3 +260,52 @@ if request['text']!='missing':pathlib.Path(get('--batch-manifest-out')).write_te
         with wave.open(request["output"]) as wav: assert wav.getframerate()==44100 and wav.getsampwidth()==3
     else:assert not audio_valid(request["output"])
     assert not [path for path in (data/"jobs").glob("drama3-work-*") if path.is_dir()]
+
+
+@pytest.mark.parametrize("allow_split",[False,True])
+def test_memory_phase_survives_runner_protocol(data,capsys,allow_split):
+    import queue
+    from app.engine_runner import error_reply
+    from app.engine_session import EngineSession
+    error_reply(MemoryUnavailable(8,2,allow_split=allow_split),{"engine":"drama3","dtype":"q4-bf16"})
+    message=capsys.readouterr().out
+    session=EngineSession.__new__(EngineSession)
+    session.worker=SimpleNamespace(check=lambda _:None)
+    session.ident="test";session.responses=queue.Queue();session.responses.put(message)
+    with pytest.raises(MemoryUnavailable) as failure:session.wait()
+    assert failure.value.allow_split is allow_split
+
+
+@pytest.mark.parametrize("started",[False,True])
+def test_killed_native_adapter_keeps_memory_phase(data,monkeypatch,started):
+    import queue
+    import app.engine_session as module
+    session=module.EngineSession.__new__(module.EngineSession)
+    session.worker=SimpleNamespace(check=lambda _:None)
+    session.ident="test";session.profile=("drama3","q4-bf16")
+    session.native_generation_started=started;session.oom_before=0
+    session.process=SimpleNamespace(wait=lambda **_: -9)
+    session.responses=queue.Queue();session.responses.put(None)
+    monkeypatch.setattr(module,"oom_kills",lambda:0)
+    with pytest.raises(MemoryUnavailable) as failure:session.wait()
+    assert failure.value.allow_split is started
+
+
+@pytest.mark.parametrize("allow_split",[False,True])
+def test_native_load_memory_does_not_split_text_after_adapter_ready(data,monkeypatch,allow_split):
+    from app.worker import Worker
+    job=s.put("job",{"status":"running","snapshot":{"engine":"drama3","dtype":"q4-bf16"}})
+    folder=data/"jobs"/job["id"];folder.mkdir()
+    reference=data/"media/ref.wav";recording(reference)
+    request={"engine":"drama3","text":"Uma frase inteira com espaços e pontuação. "*20,
+             "language":"pt-BR","reference_text":"Minha referência.","reference":str(reference),"output":str(folder/"raw.wav")}
+    worker=Worker();worker.clone_session=object()
+    monkeypatch.setattr(worker,"check",lambda _:None)
+    def fail(*_):raise MemoryUnavailable(8,2,allow_split=allow_split)
+    monkeypatch.setattr(worker,"engine",fail)
+    with pytest.raises(MemoryUnavailable):worker.synthesize(job["id"],request,folder)
+    plan=folder/"raw.parts.json"
+    assert plan.exists() is allow_split
+    if allow_split:
+        parts=json.loads(plan.read_text())["parts"]
+        assert len(parts)>1 and "".join(part["text"] for part in parts)==request["text"]

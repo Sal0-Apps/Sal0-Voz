@@ -419,7 +419,7 @@ class Worker:
                     # A failure while loading the model is not caused by text.
                     # A confirmed WAV is already complete even if its reply failed.
                     divided = False
-                    if (self.clone_session is not None or isinstance(exc, TextCapacityExceeded)) and not audio_valid(target) and not request.get("reaction") and len(part["text"]) > 64:
+                    if (self.clone_session is not None or isinstance(exc, TextCapacityExceeded)) and getattr(exc, "allow_split", True) and not audio_valid(target) and not request.get("reaction") and len(part["text"]) > 64:
                         smaller = list(split_text(part["text"], maximum=max(32, len(part["text"])//2)))
                         if len(smaller) > 1:
                             plan["parts"][index:index+1] = [{"key":part["key"]+"-"+str(i), "text":text} for i, text in enumerate(smaller)]

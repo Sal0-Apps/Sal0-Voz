@@ -131,6 +131,8 @@ def error_reply(exc, request, retryable=False):
         from .catalog import CATALOG
         dtype = request.get("dtype", CATALOG[request["engine"]].get("dtype", "float32"))
         value.update(kind="memory", required=getattr(exc, "required", MEMORY_GIB[(request["engine"], dtype)]), available=getattr(exc, "available", memory_available()/1024**3))
+        if not getattr(exc, "allow_split", True):
+            value["allow_split"] = False
     elif isinstance(exc, TextCapacityExceeded):
         value["kind"] = "text_capacity"
     elif retryable and isinstance(exc, (RuntimeError, InterruptedError, TimeoutError)):
