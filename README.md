@@ -4,11 +4,13 @@
 
 Estúdio pessoal de voz para **Docker no ZimaOS**, com interface em português, personagens versionados, roteiros, fila persistente e processamento local em CPU.
 
-**Versão 0.5.0 — Pocket PT e Drama 3.** Novas opções de download em Ajustes → Modelos: Pocket TTS em português, 24 camadas FP32 e cinco passos, sem quantização; Drama 3 experimental de CPU com especialistas Q4 em disco, roteadores FP32 e embedding/cabeça BF16; e o checkpoint oficial Drama 3 FP8/BF16, somente para uso em servidor GPU compatível. Os downloads são opcionais e verificados. O Pocket com clonagem exige liberar o acesso no Hugging Face e salvar um token de leitura nos ajustes; o token não é devolvido ao navegador. Os novos motores preservam 24 bits e a frequência nativa, perfil e semente na retomada. A fidelidade e o tempo real serão avaliados pelo proprietário.
+**Versão 0.5.1 — Temas Sal0.** Cristal, Aurora, Wall e **Tema antigo**, com modos claro/escuro, transparência ajustável e fundo contínuo durante a rolagem. O APK atualizado desativa Force Dark e escurecimento algorítmico no WebView.
+
+Mantém as opções de download em Ajustes → Modelos: Pocket TTS em português, 24 camadas FP32 e cinco passos, sem quantização; Drama 3 experimental de CPU com especialistas Q4 em disco, roteadores FP32 e embedding/cabeça BF16; e o checkpoint oficial Drama 3 FP8/BF16, somente para uso em servidor GPU compatível. Os downloads são opcionais e verificados. O Pocket com clonagem exige liberar o acesso no Hugging Face e salvar um token de leitura nos ajustes; o token não é devolvido ao navegador. Os novos motores preservam 24 bits e a frequência nativa, perfil e semente na retomada. A fidelidade e o tempo real serão avaliados pelo proprietário.
 
 Mantém a qualidade máxima do OmniVoice: novos trabalhos usam FP32, 64 passos, pausas naturais preservadas e 24 bits desde a preparação até a exportação sem perdas. A fala inteira é tentada antes de qualquer divisão por sobrecarga ou limite de contexto. A retomada mantém perfil, semente e trechos já confirmados; trabalhos antigos conservam sua configuração. O perfil prioriza qualidade e pode levar mais tempo; a avaliação auditiva permanece no servidor do proprietário.
 
-A interface segue o fluxo Criar → voz → texto/arquivo → modelo → gerar. A página, o JavaScript e o CSS usam uma revisão conjunta para evitar a mistura de versões no cache do APK. O [APK Android 0.4.1](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1) continua compatível e recebe a interface ao atualizar o servidor.
+A interface segue o fluxo Criar → voz → texto/arquivo → modelo → gerar. A página, o JavaScript e o CSS usam uma revisão conjunta para evitar a mistura de versões no cache do APK. Atualize o [APK Android 0.5.1](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.5.1) para receber também o bloqueio de escurecimento do WebView.
 
 Mantém o texto inteiro primeiro, com divisão apenas por sobrecarga, Telegram somente com links e preservação da fila, das vozes e dos modelos na pasta de dados. A avaliação neural permanece com o proprietário, em CPU de quatro núcleos/16 GB físicos e limite de 10 GiB do container.
 
@@ -22,7 +24,7 @@ Mantém o texto inteiro primeiro, com divisão apenas por sobrecarga, Telegram s
 6. Clique em **Gerar áudio**. O app prepara a referência automaticamente, usa o modelo escolhido e mostra o resultado na mesma tela.
 7. Clique em **Adicionar outro** para reutilizar a voz salva. Para legendas, envie o áudio diretamente em **Criar → Legendar**.
 
-A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.5.0` e o SHA do commit para rollback.
+A imagem usada pelo Compose é `ghcr.io/sal0-apps/sal0-voz:latest`. O workflow **CI e imagem Docker** verifica o código, a interface e a inicialização da imagem antes de publicar `latest`, a versão fixa `0.5.1` e o SHA do commit para rollback.
 
 **Os pesos são baixados pelo próprio aplicativo depois que ele inicia**, em segundo plano. Qwen3-TTS 1.7B Base e Faster-Whisper large-v3-turbo são preparados automaticamente em `/data/models`, com revisões fixas e hashes verificados. A interface e o healthcheck funcionam enquanto o download acontece; trabalhos que precisam desses modelos aguardam na fila. O progresso aparece em **Ajustes → Modelos**. As dependências de CPU continuam na imagem, sem precisar instalar CUDA.
 
@@ -71,7 +73,7 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - Dublagem direta do vídeo, com transcrição Turbo automática e ajuste de ritmo para manter os tempos. SRT revisado continua opcional; nesse modo, excesso de duração acima de 10% exige revisão.
 - 33 reações em Personalizar → Roteiro: geradas com a voz e o modelo escolhidos. Controles nativos em OmniVoice/VoxCPM2 quando disponíveis; demais opções são vocalizações aproximadas, identificadas na interface.
 - Nome do áudio opcional; vazio gera nome da voz e número crescente.
-- Cliente Android com configuração de rede, upload de áudio/vídeo e downloads: [APK](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1).
+- Cliente Android com configuração de rede, upload de áudio/vídeo e downloads: [APK](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.5.1).
 - Downloads dos modelos após iniciar o app, salvos no volume para reutilização; revisão fixa, licença, estimativa de tamanho e hashes. O navegador recebe apenas o status.
 - Backup/restauração portável por CLI, inventário de hardware e healthcheck.
 

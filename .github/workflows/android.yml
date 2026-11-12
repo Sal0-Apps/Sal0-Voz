@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       SAL0_DATA: /tmp/sal0-android-ui-${{ github.run_id }}
@@ -52,12 +52,16 @@ jobs:
           curl --fail http://127.0.0.1:17870/health
           sudo chmod 666 /dev/kvm
       - name: Validar toques no APK e WebView
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           target: google_apis
           profile: pixel_2
+          cores: 2
+          ram-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           script: bash scripts/android_ui_smoke.sh
       - name: Guardar diagnóstico da interface Android

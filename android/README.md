@@ -2,9 +2,17 @@
 
 Cliente Android nativo baseado no cliente do Sal0 Karaokê (`c20a6a71039235805fa729bcc336e7e43fa0478c`). O processamento continua no servidor CPU; o APK abre o estúdio em WebView e mantém a sessão.
 
-Baixe o APK em [Releases](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.4.1). Requer Android 8 ou posterior. Na primeira abertura, informe o endereço local do Sal0 Voz, por exemplo `http://192.168.1.50:7886` ou `http://voz.server`. Endereço externo e nome da rede Wi-Fi são opcionais. O app testa os endereços e reconecta ao voltar para primeiro plano.
+Baixe o APK em [Releases](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.5.1). Requer Android 8 ou posterior. Na primeira abertura, informe o endereço local do Sal0 Voz, por exemplo `http://192.168.1.50:7886` ou `http://voz.server`. Endereço externo e nome da rede Wi-Fi são opcionais. O app testa os endereços e reconecta ao voltar para primeiro plano.
 
-Na versão 0.4.1, o cache antigo da interface é renovado na atualização do APK sem remover cookies, sessão ou endereços. O servidor usa a mesma revisão no HTML, JavaScript e CSS. O rodapé oferece **Recarregar** e **Conexão**, com controles do mesmo tamanho. Atualize também o servidor para 0.4.1 ou posterior.
+Na versão 0.5.1, Force Dark e escurecimento algorítmico ficam desativados no
+WebView para preservar os temas nativos e seus ícones. O cache da interface é
+renovado sem remover cookies, sessão ou endereços. O rodapé mantém **Recarregar**
+e **Conexão**. Atualize também o servidor para 0.5.1 ou posterior para usar Cristal,
+Aurora, Wall e **Tema antigo**, com modos claro/escuro.
+
+Ao abrir pelo Samsung Internet, o filtro próprio do navegador pode continuar
+alterando cores: desative **Forçar modo escuro para conteúdo da web** no menu de
+modo escuro do navegador e escolha a aparência no Sal0.
 
 O seletor de arquivos usa o Android Files para enviar áudio ou vídeo, inclusive arquivos que o provedor não identifica com MIME específico. A conversão acontece no servidor. Downloads preservam a sessão e usam o nome definido no estúdio. A geração continua se o app for fechado.
 
