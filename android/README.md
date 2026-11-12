@@ -10,6 +10,11 @@ renovado sem remover cookies, sessão ou endereços. O rodapé mantém **Recarre
 e **Conexão**. Atualize também o servidor para 0.5.1 ou posterior para usar Cristal,
 Aurora, Wall e **Tema antigo**, com modos claro/escuro.
 
+**Migração do APK público 0.4.1 para 0.5.1:** os certificados dos dois arquivos
+publicados são diferentes. Anote os endereços local/externo e o SSID em
+**Conexão** antes de reinstalar o cliente. A reinstalação remove as preferências
+e a sessão locais; as vozes, os modelos e os trabalhos permanecem no servidor.
+
 Ao abrir pelo Samsung Internet, o filtro próprio do navegador pode continuar
 alterando cores: desative **Forçar modo escuro para conteúdo da web** no menu de
 modo escuro do navegador e escolha a aparência no Sal0.
