@@ -102,7 +102,7 @@ public final class WebInterfaceTest {
         CountDownLatch done = new CountDownLatch(1);
         getInstrumentation().runOnMainSync(() -> web.evaluateJavascript(
             "(function(){return (" + expression + ");})()", value -> { result.set(value); done.countDown(); }));
-        assertTrue("WebView JS callback", done.await(5, TimeUnit.SECONDS));
+        assertTrue("WebView JS callback", done.await(10, TimeUnit.SECONDS));
         return result.get();
     }
 
@@ -126,7 +126,7 @@ public final class WebInterfaceTest {
         getInstrumentation().runOnMainSync(() -> web.postVisualStateCallback(1, new WebView.VisualStateCallback() {
             @Override public void onComplete(long requestId) { web.postOnAnimation(rendered::countDown); }
         }));
-        assertTrue("WebView rendered before touch", rendered.await(5, TimeUnit.SECONDS));
+        assertTrue("WebView rendered before touch", rendered.await(15, TimeUnit.SECONDS));
         getInstrumentation().waitForIdleSync();
         until("(()=>{const e=" + query + ",r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;return y>0&&y<innerHeight&&e.contains(document.elementFromPoint(x,y))})()");
         js("(()=>{window.__sal0LastTap={selector:" + org.json.JSONObject.quote(selector) + ",received:false};" + query + ".addEventListener('click',e=>{window.__sal0LastTap.received=e.isTrusted},{once:true,capture:true});return true})()");

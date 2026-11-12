@@ -62,6 +62,8 @@ jobs:
           # Match the emulator used by the successful Android 0.4.1 validation.
           # Keep the validation engine stable across application releases.
           emulator-build: 16428233
+          pre-emulator-launch-script: |
+            sed -i 's/^hw.lcd.width=.*/hw.lcd.width=720/; s/^hw.lcd.height=.*/hw.lcd.height=1280/; s/^hw.lcd.density=.*/hw.lcd.density=320/' "$ANDROID_AVD_HOME/test.avd/config.ini"
           disable-animations: true
           script: bash scripts/android_ui_smoke.sh
       - name: Guardar diagnóstico da interface Android
