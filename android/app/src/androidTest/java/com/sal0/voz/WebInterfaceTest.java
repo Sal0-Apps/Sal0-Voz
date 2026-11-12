@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.os.SystemClock;
+import android.os.Build;
 import android.app.Instrumentation;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -25,6 +26,7 @@ import java.io.FileOutputStream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** The real APK/WebView against a disposable FastAPI server, with no worker. */
 @RunWith(AndroidJUnit4.class)
@@ -56,8 +58,31 @@ public final class WebInterfaceTest {
         context.getSharedPreferences("sal0_web_runtime", Context.MODE_PRIVATE)
             .edit().putInt("asset_cache_version", 301).commit();
         scenario = ActivityScenario.launch(MainActivity.class);
-        scenario.onActivity(launched -> { activity = launched; web = findWeb(activity.getWindow().getDecorView()); });
+        scenario.onActivity(launched -> {
+            activity = launched;
+            web = findWeb(activity.getWindow().getDecorView());
+            assertNotNull(web);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                assertFalse("WebView must preserve the native theme", web.isForceDarkAllowed());
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                assertFalse("Algorithmic darkening must stay off", web.getSettings().isAlgorithmicDarkeningAllowed());
+            }
+        });
         assertNotNull(web);
+        // Routing is asynchronous. Evaluating JS in the initial blank document
+        // can lose its callback when loadServer() starts the real navigation.
+        long deadline = SystemClock.uptimeMillis() + 30000;
+        AtomicBoolean loaded = new AtomicBoolean();
+        do {
+            scenario.onActivity(launched -> loaded.set(
+                web.getUrl() != null && web.getUrl().startsWith("http://10.0.2.2:17870/")
+                    && web.getProgress() == 100
+            ));
+            if (loaded.get()) return;
+            SystemClock.sleep(100);
+        } while (SystemClock.uptimeMillis() < deadline);
+        fail("Initial server navigation did not finish");
     }
 
     private WebView findWeb(View view) {
