@@ -72,13 +72,13 @@ def test_ui_update_uses_one_content_revision_and_expires_legacy_cache(client):
 
     page = client.get("/")
     expected = hashlib.sha256(b"\0".join(
-        (STATIC / name).read_bytes() for name in ("index.html", "app.js", "style.css")
+        (STATIC / name).read_bytes() for name in ("index.html", "app.js", "style.css", "appearance.js", "appearance.css")
     )).hexdigest()[:20]
-    assets = re.findall(r'(?:href|src)="(/static/(?:app.js|style.css)\?v=[^"]+)"', page.text)
-    assert len(assets) == 2
+    assets = re.findall(r'(?:href|src)="(/static/(?:app.js|style.css|appearance.js|appearance.css)\?v=[^"]+)"', page.text)
+    assert len(assets) == 4
     assert "__UI_REVISION__" not in page.text
     assert all(url.endswith("?v=" + expected) for url in assets)
-    for url in ["/", "/static/app.js", "/static/style.css", *assets]:
+    for url in ["/", "/static/app.js", "/static/style.css", "/static/appearance.js", "/static/appearance.css", *assets]:
         response = client.get(url)
         assert response.status_code == 200
         assert response.headers["Cache-Control"] == "no-store"
