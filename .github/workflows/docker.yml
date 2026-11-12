@@ -38,6 +38,13 @@ jobs:
           NODE_PATH=/tmp/sal0-browser/node_modules node tests/browser_asset_update.cjs
           NODE_PATH=/tmp/sal0-browser/node_modules node tests/browser_library_live.cjs
           NODE_PATH=/tmp/sal0-browser/node_modules node tests/appearance_smoke.cjs
+      - name: Guardar capturas da aparência web
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sal0-web-appearance
+          path: test-artifacts/appearance/
+          if-no-files-found: ignore
   docker:
     timeout-minutes: 45
     needs: test
@@ -56,7 +63,7 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: |
-            ghcr.io/sal0-apps/sal0-voz:0.5.1
+            ghcr.io/sal0-apps/sal0-voz:0.5.2
             ghcr.io/sal0-apps/sal0-voz:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -76,8 +83,8 @@ jobs:
         run: docker logs sal0-smoke || true
       - name: Publicar imagem versionada
         run: |
-          docker push ghcr.io/sal0-apps/sal0-voz:0.5.1
+          docker push ghcr.io/sal0-apps/sal0-voz:0.5.2
           docker push ghcr.io/sal0-apps/sal0-voz:latest
-          docker tag ghcr.io/sal0-apps/sal0-voz:0.5.1 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
+          docker tag ghcr.io/sal0-apps/sal0-voz:0.5.2 ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
           docker push ghcr.io/sal0-apps/sal0-voz:sha-${GITHUB_SHA}
 

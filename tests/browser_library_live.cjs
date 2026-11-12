@@ -70,7 +70,7 @@ const assert=require('node:assert/strict');
     await tap('#collapse-settings');assert.equal(await page.locator('.settings-section[open]').count(),0);
     await telegram.locator('summary').first().tap();assert.equal(await page.locator('#telegram-token').inputValue(),'rascunho preservado');
     await tap('#collapse-settings');await screenshot('settings-mobile');
-    await tap('#theme');assert.ok(await page.locator('body').evaluate(x=>x.classList.contains('light')));await screenshot('settings-light');await tap('#theme');
+    await tap('#theme');await tap('[data-sal0-mode-choice=light]');await tap('[data-sal0-close]');assert.ok(await page.locator('body').evaluate(x=>x.classList.contains('light')));await screenshot('settings-light');await tap('#theme');await tap('[data-sal0-mode-choice=dark]');await tap('[data-sal0-close]');
     await tap('#open-help');assert.equal(await page.locator('#help-dialog').evaluate(x=>x.open),true);await tap('#close-help');
     await tap('#queue-toggle');assert.equal(await page.locator('#queue-panel').evaluate(x=>x.open),true);await screenshot('queue-mobile');await tap('#queue-close');
     // Layout invariants cover all screens, not only the library, at narrow,
