@@ -59,9 +59,9 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
-          cores: 2
-          ram-size: 2048M
-          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim
+          # Match the emulator used by the successful Android 0.4.1 validation.
+          # Keep the validation engine stable across application releases.
+          emulator-build: 16428233
           disable-animations: true
           script: bash scripts/android_ui_smoke.sh
       - name: Guardar diagnóstico da interface Android
