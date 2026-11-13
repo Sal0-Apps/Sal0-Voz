@@ -174,8 +174,8 @@
  const byId=id=>document.getElementById(id);
  function text(el,value){if(el&&el.textContent!==String(value))el.textContent=value;}
  function wave(n=26,mini=false){return '<span class="sal0-wave'+(mini?' sal0-wave-mini':'')+'" aria-hidden="true">'+Array.from({length:n},(_,i)=>'<i class="sal0-wave-bar-'+i+'"></i>').join('')+'</span>';}
- function dial(){return '<span class="sal0-dial" aria-hidden="true"><svg viewBox="0 0 96 96"><circle class="sal0-dial-back" cx="48" cy="48" r="39"/><circle class="sal0-dial-value" cx="48" cy="48" r="39" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 48 48)"/></svg><strong>—</strong></span>';}
- function updateDial(host,percent){if(!host)return;const n=Number.isFinite(percent)?Math.max(0,Math.min(100,percent)):null;const circle=host.querySelector('.sal0-dial-value'),value=(n??0)+' 100';if(circle.getAttribute('stroke-dasharray')!==value)circle.setAttribute('stroke-dasharray',value);text(host.querySelector('strong'),n===null?'…':Math.round(n)+'%');}
+ function dial(){return '<span class="sal0-dial" aria-hidden="true"><svg viewBox="0 0 96 96"><circle class="sal0-dial-back" cx="48" cy="48" r="39"/><circle class="sal0-dial-value" cx="48" cy="48" r="39" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 48 48)"/></svg><span class="sal0-dial-label">—</span></span>';}
+ function updateDial(host,percent){if(!host)return;const n=Number.isFinite(percent)?Math.max(0,Math.min(100,percent)):null;const circle=host.querySelector('.sal0-dial-value'),value=(n??0)+' 100';if(circle.getAttribute('stroke-dasharray')!==value)circle.setAttribute('stroke-dasharray',value);text(host.querySelector('.sal0-dial-label'),n===null?'…':Math.round(n)+'%');}
  function art(host){
   if(host.querySelector(':scope>.sal0-app-art'))return;
   const name={voz:'voice',autostart:'power',block:'shield',tower:'tower'}[app];
