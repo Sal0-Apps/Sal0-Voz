@@ -1,3 +1,8 @@
+## 0.5.6 — Ajuste visual
+
+- O logotipo interno usa o mesmo microfone azul do ícone externo, com o acabamento do tema e sem substituição por ondas genéricas.
+- Atualização web, sem alterações nos APKs.
+
 ## 0.5.5 — Componentes completos da referência visual
 
 - Corrige alinhamento de ícones, textos e ilustrações em telas estreitas.

@@ -167,7 +167,8 @@
   const name={karaoke:'mic',voz:'voice',autostart:'power',block:'shield',tower:'tower'}[app];
   const bars='<span class="sal0-reference-wave">'+Array.from({length:11},()=>'<i></i>').join('')+'</span>';
   const extra=app==='autostart'?'<i class="sal0-power-orbit"></i>':app==='tower'?'<i class="sal0-radar-scan"></i>':app==='block'?'<span class="sal0-skip-track"><i></i></span>':bars;
-  img.insertAdjacentHTML('afterend','<span class="sal0-brand-mark sal0-mark-'+app+'" aria-hidden="true"><i class="sal0-reference-halo"></i>'+icon(name)+extra+'</span>');
+  const glyph=app==='voz'?'<img class="sal0-brand-image" src="/static/icon.svg" width="40" height="40" alt="">':icon(name);
+  img.insertAdjacentHTML('afterend','<span class="sal0-brand-mark sal0-mark-'+app+'" aria-hidden="true"><i class="sal0-reference-halo"></i>'+glyph+(app==='voz'?'':extra)+'</span>');
  }
  // Reference components live in the layout, rather than behind form text.
  let live={};const boundPlayers=new WeakSet();
@@ -181,7 +182,8 @@
   const name={voz:'voice',autostart:'power',block:'shield',tower:'tower'}[app];
   const extra=app==='autostart'?'<i class="sal0-power-orbit"></i>':app==='tower'?'<i class="sal0-radar-scan"></i>':app==='voz'?wave(30):'';
   host.classList.add('sal0-reference-art-host');
-  host.insertAdjacentHTML('beforeend','<div class="sal0-app-art sal0-component" aria-hidden="true"><span class="sal0-brand-mark sal0-mark-'+app+'"><i class="sal0-reference-halo"></i>'+icon(name)+extra+'</span></div>');
+  const glyph=app==='voz'?'<img class="sal0-brand-image" src="/static/icon.svg" width="84" height="84" alt="">':icon(name);
+  host.insertAdjacentHTML('beforeend','<div class="sal0-app-art sal0-component" aria-hidden="true"><span class="sal0-brand-mark sal0-mark-'+app+'"><i class="sal0-reference-halo"></i>'+glyph+extra+'</span></div>');
  }
  function karaokeStage(){
   const host=byId('createTabContent');if(!host||byId('sal0-stage-preview'))return;

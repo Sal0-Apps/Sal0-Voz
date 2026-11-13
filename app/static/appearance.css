@@ -251,3 +251,9 @@ html:not([data-sal0-look=legacy]) .header-actions .sal0-icon-button{padding-inli
 [data-sal0-paused=true] .sal0-component *::after,[data-sal0-paused=true] .sal0-component *::before,[data-local-paused=true] *::after{animation-play-state:paused!important}
 @media(prefers-reduced-motion:reduce){html:not([data-sal0-motion-override=on]) .sal0-theme-dialog[open]{animation:none}html:not([data-sal0-motion-override=on]) .sal0-component *::after,html:not([data-sal0-motion-override=on]) .sal0-component *::before{animation-play-state:paused!important}}
 @keyframes sal0-reference-signal{0%,100%{opacity:.55}50%{opacity:1;box-shadow:0 0 11px currentColor}}@keyframes sal0-reference-shine{0%,40%{transform:translateX(-100%)}80%,100%{transform:translateX(100%)}}@keyframes sal0-reference-enter{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+
+/* The in-app brand uses exactly the same blue microphone asset as the launcher. */
+.sal0-brand-mark>.sal0-brand-image{display:block;position:relative;z-index:1;width:40px;height:40px;object-fit:contain;border-radius:11px;filter:drop-shadow(0 0 7px #2589ef33)}
+.sal0-app-art .sal0-brand-image{width:84px;height:84px;border-radius:19px}
+.sal0-app-art .sal0-mark-voz .sal0-wave{position:absolute;left:6px;right:6px;bottom:4px;width:auto;height:18px;gap:2px;opacity:.5}
+@media(max-width:500px){.sal0-app-art .sal0-brand-image{width:60px;height:60px;border-radius:14px}.sal0-app-art .sal0-mark-voz .sal0-wave{bottom:2px;height:10px;gap:1px}}
