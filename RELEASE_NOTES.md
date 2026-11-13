@@ -1,3 +1,9 @@
+## 0.5.3 — Fundo web visível
+
+- Fundo animado em uma camada visível acima do canvas do WebView e abaixo do conteúdo.
+- Movimento contínuo preservado, com controles e texto em camadas estáveis.
+- Mantidos os APKs existentes; esta publicação altera somente a interface web e sua validação.
+
 ## 0.5.2 — Correções somente na web
 
 - Um único botão **Temas**, com texto visível, tamanho consistente e modos claro/escuro dentro do menu.

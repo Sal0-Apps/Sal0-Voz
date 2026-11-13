@@ -39,12 +39,12 @@ html[data-sal0-look=legacy] .sal0-theme-dialog{--sal0-glass-alpha:.97}
 /* Fixed SVG paths and persistent compositor layers; alternate at each endpoint. */
 .sal0-scene{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none;background:radial-gradient(ellipse at 85% 5%,#113f7c55,transparent 58%),var(--bg);--sal0-fluid-deep:#155bc1;--sal0-fluid-blue:#2589ef;--sal0-fluid-ice:#83caff;--sal0-fluid-haze:#1679e533}
 .sal0-scene::before{content:'';position:absolute;inset:0;background-image:var(--wallpaper);background-position:center;background-size:cover;opacity:.7}
-.sal0-ribbons{position:absolute;inset:-18%;width:136%;height:136%;overflow:visible;opacity:.56;transform-origin:50% 50%;animation:sal0-liquid-drift 67s ease-in-out infinite alternate;will-change:transform}
+.sal0-ribbons{position:absolute;inset:-18%;width:136%;height:136%;overflow:visible;opacity:.56;transform-origin:50% 50%;animation:sal0-liquid-drift 37s ease-in-out infinite alternate;will-change:transform}
 .sal0-fluid-deep{stop-color:var(--sal0-fluid-deep)}.sal0-fluid-blue{stop-color:var(--sal0-fluid-blue)}.sal0-fluid-ice{stop-color:var(--sal0-fluid-ice)}
 .sal0-liquid-ribbon{fill:url(#sal0-fluid-depth);stroke:none}.sal0-liquid-ribbon.lower{fill:url(#sal0-fluid-soft);opacity:.52}
 .sal0-liquid-contour{fill:none;stroke:url(#sal0-fluid-edge);stroke-width:1.3;opacity:.56}.sal0-liquid-contour.lower{stroke-width:.85;opacity:.28}
-.sal0-liquid-haze{position:absolute;width:75vmax;height:70vmax;left:16%;top:-20%;border-radius:50%;background:radial-gradient(ellipse,var(--sal0-fluid-haze),transparent 66%);opacity:.75;animation:sal0-liquid-light 83s ease-in-out infinite alternate;will-change:transform}
-.sal0-liquid-haze.second{left:-32%;top:39%;width:95vmax;height:80vmax;opacity:.48;animation-name:sal0-liquid-light-back;animation-duration:101s}
+.sal0-liquid-haze{position:absolute;width:75vmax;height:70vmax;left:16%;top:-20%;border-radius:50%;background:radial-gradient(ellipse,var(--sal0-fluid-haze),transparent 66%);opacity:.75;animation:sal0-liquid-light 47s ease-in-out infinite alternate;will-change:transform}
+.sal0-liquid-haze.second{left:-32%;top:39%;width:95vmax;height:80vmax;opacity:.48;animation-name:sal0-liquid-light-back;animation-duration:61s}
 .sal0-scene::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,rgba(3,10,23,.68),rgba(3,10,23,.13) 65%,rgba(3,10,23,.5))}
 .scene-grid{position:absolute;inset:0;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:62px 62px;opacity:.08;mask-image:linear-gradient(transparent,#000)}
 [data-sal0-mode=light] .sal0-scene{--sal0-fluid-deep:#6baeea;--sal0-fluid-blue:#8acaff;--sal0-fluid-ice:#fff;--sal0-fluid-haze:#72bcfa44;background:radial-gradient(ellipse at 90% 6%,#b3ddff,transparent 52%),#e8f2fc}
@@ -59,7 +59,7 @@ html[data-sal0-look=legacy] .sal0-theme-dialog{--sal0-glass-alpha:.97}
 @media(max-width:600px){.sal0-liquid-haze.second{display:none}.sal0-ribbons{inset:-12%;width:124%;height:124%}}
 
 /* lvh is stable when mobile address bars collapse. No scroll handler, no vh/vmax. */
-.sal0-scene{position:fixed;inset:auto;top:0;left:0;width:100%;height:100%;height:100lvh;z-index:-1;pointer-events:none;overflow:hidden;contain:strict;transform:translate3d(0,0,0);backface-visibility:hidden}
+.sal0-scene{position:fixed;inset:auto;top:0;left:0;width:100%;height:100%;height:100lvh;z-index:0;pointer-events:none;overflow:hidden;contain:strict;transform:translate3d(0,0,0);backface-visibility:hidden}
 .sal0-scene .sal0-ribbons{max-width:none;max-height:none;pointer-events:none}
 .sal0-scene .sal0-liquid-haze{width:1100px;height:1000px;max-width:none}
 .sal0-scene .sal0-liquid-haze.second{width:1350px;height:1100px}
@@ -72,3 +72,5 @@ html[data-sal0-look=legacy] .sal0-theme-dialog{--sal0-glass-alpha:.97}
 .sal0-ribbons,.sal0-liquid-haze{backface-visibility:hidden}
 .header-actions .sal0-theme-launcher{gap:6px;min-height:44px;justify-content:center;white-space:nowrap}
 .header-actions>button{min-height:44px}
+
+body>.app-container,body>.auth-screen{position:relative;z-index:1}
