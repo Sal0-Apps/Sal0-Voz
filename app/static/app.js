@@ -515,6 +515,7 @@ function renderSelectedVoice(){
   $("selected-voice-name").textContent=c?"Voz escolhida: "+c.name+" · versão "+c.version:"";
   if(c?.reference_id){const src="/api/characters/"+c.id+"/reference-file";if(player.getAttribute("src")!==src)player.setAttribute("src",src);player.hidden=false;}
   else{player.hidden=true;player.removeAttribute("src");}
+  window.Sal0Reference?.state({voiceName:c?.name||null});
 }
 function chooseSavedVoice(){
   if($("character").value){$("reference-upload").value="";$("quick-transcript").value="";$("voice-choice").value="clone";if(!isClone($("engine").value))$("engine").value=state.cloneEngine||defaultClone;$("new-voice-options").open=false;}
@@ -613,9 +614,14 @@ function renderCurrentResult(){
   const progress=jobProgress(job);
   const canReturn=state.projectId!==job.project_id;
   const signature=JSON.stringify([job,elapsed,progress.info,canReturn]);if(box.dataset.rendered===signature)return;const expanded=box.querySelector('#result-details')?.open;box.dataset.rendered=signature;
+  const previousDial=box.querySelector('.result-heading>.sal0-component');
+  const previousPlayer=box.querySelector('audio,video'),previousWave=previousPlayer?.previousElementSibling;
   const index=(job.outputs||[]).findIndex(o=>["audio","video"].includes(o.type)),type=index>=0?job.outputs[index].type:null;
   const stage=job.status==="failed"?"A tarefa foi interrompida. Tente novamente ou abra os detalhes.":job.stage;
   box.innerHTML='<div class="result-heading"><h2>'+escapeHTML(statuses[job.status])+'</h2><strong'+(progress.percent===0?' class="progress-pending"':'')+'>'+escapeHTML(progress.label)+'</strong></div><h3 class="result-name">'+escapeHTML(job.name)+'</h3><p class="result-stage">'+escapeHTML(stage)+'</p>'+progress.info+progress.bar+'<div class="result-meta"><span>'+escapeHTML(progress.summary)+'</span><span>'+elapsed+'</span></div>'+(type?'<'+type+' controls preload="none" src="/api/jobs/'+job.id+'/output/'+index+'"></'+type+'>':'')+'<div class="result-downloads">'+outputHTML(job)+'</div><div class="item-actions result-actions">'+(['queued','running'].includes(job.status)?'<button type="button" class="secondary" id="pause-current">Pausar</button><button type="button" class="danger" id="cancel-current">Cancelar</button>':'')+(['paused','failed','cancelled'].includes(job.status)?'<button type="button" class="primary" id="retry-current">Retomar</button>':'')+'<button type="button" class="primary" id="add-another">Adicionar outro</button>'+(canReturn?'<button type="button" class="quiet" id="back-to-draft">Voltar à criação</button>':'')+'</div><details id="result-details" class="compact-details"><summary>Detalhes</summary>'+(job.profile?'<p class="hint">'+escapeHTML(job.profile.name)+'</p>':'')+(job.status==='failed'?'<p class="job-error">'+escapeHTML(job.stage)+'</p>':'')+'<button type="button" id="diagnose-current" class="text-button">Ver diagnóstico</button></details>';
+  if(previousDial){const heading=box.querySelector('.result-heading');heading.classList.add('sal0-process-heading');heading.prepend(previousDial);}
+  const nextPlayer=box.querySelector('audio,video');if(previousPlayer&&nextPlayer&&previousPlayer.tagName===nextPlayer.tagName&&previousPlayer.getAttribute('src')===nextPlayer.getAttribute('src')){nextPlayer.replaceWith(previousPlayer);if(previousWave?.classList.contains('sal0-audio-wave'))previousPlayer.before(previousWave);}
+  window.Sal0Reference?.state({jobPercent:progress.percent>0||job.status==="completed"?progress.percent:null});
   if(expanded)$("result-details").open=true;
   $("diagnose-current").onclick=safe(async()=>showDetails("Diagnóstico",(await api("/jobs/"+job.id+"/log")).text));
   $("add-another").onclick=()=>$("new-project").click();
