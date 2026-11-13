@@ -26,7 +26,14 @@ const files={'/':[html,'text/html'],'/appearance.js':[js,'text/javascript'],'/ap
    assert.equal(await page.locator('.sal0-theme-launcher').count(),1);
    assert.equal(await page.locator('.header-actions button').count(),config.source==='body'?4:3);
    const theme=await page.locator('#'+config.button).boundingBox(),manual=await page.locator('#manual').boundingBox();
-   assert.equal(await page.locator('#'+config.button+' span').innerText(),'Temas');assert(theme.height>=44);assert(Math.abs(theme.height-manual.height)<=1);assert(Math.abs(theme.y-manual.y)<=1);
+   assert.equal(await page.locator('#'+config.button+' span').innerText(),'Temas');assert(theme.height>=44);assert(Math.abs(theme.height-manual.height)<=1);
+   if(config.source==='body'&&width<=380){
+    // The compact voice header deliberately uses two aligned rows.
+    const queue=await page.locator('#queue-toggle').boundingBox(),logout=await page.locator('#logout').boundingBox();
+    assert(Math.abs(theme.y-queue.y)<=1);assert(Math.abs(manual.y-logout.y)<=1);
+    assert(manual.y>=theme.y+theme.height);assert(Math.abs(theme.x-logout.x)<=1);
+    assert(queue.height>=44&&logout.height>=44);
+   }else assert(Math.abs(theme.y-manual.y)<=1);
    assert(!(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)));
   }
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(screenshots,'mobile-dark.png')});
