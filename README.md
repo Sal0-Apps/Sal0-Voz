@@ -10,7 +10,7 @@ Mantém as opções de download em Ajustes → Modelos: Pocket TTS em português
 
 Mantém a qualidade máxima do OmniVoice: novos trabalhos usam FP32, 64 passos, pausas naturais preservadas e 24 bits desde a preparação até a exportação sem perdas. A fala inteira é tentada antes de qualquer divisão por sobrecarga ou limite de contexto. A retomada mantém perfil, semente e trechos já confirmados; trabalhos antigos conservam sua configuração. O perfil prioriza qualidade e pode levar mais tempo; a avaliação auditiva permanece no servidor do proprietário.
 
-A interface segue o fluxo Criar → voz → texto/arquivo → modelo → gerar. A página, o JavaScript e o CSS usam uma revisão conjunta para evitar a mistura de versões no cache do APK. Atualize o [APK Android 0.5.1](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.5.1) para receber também o bloqueio de escurecimento do WebView.
+A interface segue o fluxo Criar → voz → texto/arquivo → modelo → gerar. A página, o JavaScript e o CSS usam uma revisão conjunta para evitar a mistura de versões no cache do APK. Atualize o [APK Android 0.5.3](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.5.3) para receber também o bloqueio de escurecimento do WebView.
 
 Mantém o texto inteiro primeiro, com divisão apenas por sobrecarga, Telegram somente com links e preservação da fila, das vozes e dos modelos na pasta de dados. A avaliação neural permanece com o proprietário, em CPU de quatro núcleos/16 GB físicos e limite de 10 GiB do container.
 
@@ -73,7 +73,7 @@ O Compose personalizado do servidor usa quatro CPUs e limite de 10 GiB, preserva
 - Dublagem direta do vídeo, com transcrição Turbo automática e ajuste de ritmo para manter os tempos. SRT revisado continua opcional; nesse modo, excesso de duração acima de 10% exige revisão.
 - 33 reações em Personalizar → Roteiro: geradas com a voz e o modelo escolhidos. Controles nativos em OmniVoice/VoxCPM2 quando disponíveis; demais opções são vocalizações aproximadas, identificadas na interface.
 - Nome do áudio opcional; vazio gera nome da voz e número crescente.
-- Cliente Android com configuração de rede, upload de áudio/vídeo e downloads: [APK](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.5.1).
+- Cliente Android com configuração de rede, upload de áudio/vídeo e downloads: [APK](https://github.com/Sal0-Apps/Sal0-Voz/releases/tag/android-v0.5.3).
 - Downloads dos modelos após iniciar o app, salvos no volume para reutilização; revisão fixa, licença, estimativa de tamanho e hashes. O navegador recebe apenas o status.
 - Backup/restauração portável por CLI, inventário de hardware e healthcheck.
 

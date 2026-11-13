@@ -88,15 +88,15 @@ jobs:
       - name: Publicar APK para instalação direta
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-v0.5.1
+          tag_name: android-v0.5.3
           target_commitish: ${{ github.sha }}
-          name: Sal0 Voz Android 0.5.1
+          name: Sal0 Voz Android 0.5.3
           body: |
             App Android para acessar o seu servidor Sal0 Voz. Configure o endereço local (ex.: http://192.168.1.50:7886) e, opcionalmente, o endereço externo e o nome da rede Wi-Fi.
 
             Temas Cristal, Aurora, Wall e Tema antigo no servidor. O WebView preserva os modos nativos claro/escuro, com Force Dark e escurecimento algorítmico desativados. Fundo fluido estável durante a rolagem, mantendo a sessão, Recarregar e Conexão no rodapé.
 
-            Atualize também o servidor Sal0 Voz para 0.5.1 ou posterior. A geração continua no servidor quando o app é fechado. Android 8 ou posterior.
+            Atualize também o servidor Sal0 Voz para 0.5.3 ou posterior. A geração continua no servidor quando o app é fechado. Android 8 ou posterior.
 
             APK para instalação direta, com assinatura de desenvolvimento, como o cliente Karaokê. Confira o checksum SHA-256 publicado junto do arquivo.
           files: dist/*

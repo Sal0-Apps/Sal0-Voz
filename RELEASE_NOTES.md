@@ -1,8 +1,9 @@
-## 0.5.3 — Fundo web visível
+## 0.5.3 — Conexão discreta e fundo estável
 
-- Fundo animado em uma camada visível acima do canvas do WebView e abaixo do conteúdo.
-- Movimento contínuo preservado, com controles e texto em camadas estáveis.
-- Mantidos os APKs existentes; esta publicação altera somente a interface web e sua validação.
+- Verificações de rede em segundo plano, sem mostrar a barra de progresso nem redimensionar uma página já aberta.
+- Mantém o servidor atual enquanto responde; troca de rota somente quando necessária. Recarregar manualmente continua disponível.
+- Falhas de navegação usam nova verificação com intervalo, sem forçar recargas sucessivas de uma página saudável.
+- Camada de fundo visível e separada do conteúdo, com animação do Voz preservada.
 
 ## 0.5.2 — Correções somente na web
 
