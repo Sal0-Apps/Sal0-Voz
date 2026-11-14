@@ -139,7 +139,7 @@ def test_worker_skips_waiting_model_and_runs_ready_job(data, monkeypatch):
     ready = s.put("job", {"status": "queued", "snapshot": {"mode": "tts", "engine": "diagnostic"}})
     monkeypatch.setattr(worker, "execute", lambda job: None)
     monkeypatch.setattr(worker, "check", lambda ident: None)
-    monkeypatch.setattr(module, "notify_job", lambda job: worker.stop_event.set())
+    monkeypatch.setattr(module, "enqueue_job_notification", lambda job,event=None: worker.stop_event.set() if (event or job.get("status")) in {"completed","failed"} else None)
     worker.loop()
     assert s.get("job", ready["id"])["status"] == "completed"
     assert s.get("job", waiting["id"])["status"] == "queued"
@@ -209,7 +209,7 @@ def test_corrupt_job_does_not_stop_the_queue(data, monkeypatch):
     monkeypatch.setattr(module, "require", lambda *args: {"id": "diagnostic"})
     monkeypatch.setattr(worker, "execute", lambda job: None)
     monkeypatch.setattr(worker, "check", lambda ident: None)
-    monkeypatch.setattr(module, "notify_job", lambda job: worker.stop_event.set())
+    monkeypatch.setattr(module, "enqueue_job_notification", lambda job,event=None: worker.stop_event.set() if (event or job.get("status")) in {"completed","failed"} else None)
     worker.loop()
     assert s.get("job", invalid["id"])["status"] == "failed"
     assert s.get("job", ready["id"])["status"] == "completed"

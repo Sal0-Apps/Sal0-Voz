@@ -225,7 +225,7 @@ def test_queue_recovers_from_memory_failure_with_same_model_economically(data,mo
         if len(attempts)==1:raise MemoryUnavailable(9.5,8)
     monkeypatch.setattr(worker,'execute',execute)
     monkeypatch.setattr(worker,'check',lambda _:None)
-    monkeypatch.setattr(module,'notify_job',lambda _:worker.stop_event.set())
+    monkeypatch.setattr(module,"enqueue_job_notification",lambda job,event=None:worker.stop_event.set() if (event or job.get("status")) in {"completed","failed"} else None)
     monkeypatch.setattr(worker.stop_event,'wait',lambda _:None)
     worker.loop()
     result=s.get('job',job['id'])

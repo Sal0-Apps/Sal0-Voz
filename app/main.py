@@ -27,7 +27,7 @@ from .resources import memory_available, cgroup_memory
 from .media import probe, ffargs, input_args
 from .model_manager import manager as model_manager
 from .script import compile_script, parse_srt, validate_cues, subtitles
-from .telegram import masked as masked_telegram, notify_job, save_config as save_telegram
+from .telegram import masked as masked_telegram, enqueue_job_notification, save_config as save_telegram
 from . import model_access
 from .worker import Worker
 from .omnivoice_quality import MAXIMUM_PROFILE
@@ -242,6 +242,7 @@ class TelegramConfig(BaseModel):
     telegram_token: str = Field(default="", max_length=256)
     telegram_chat_id: str = Field(default="", max_length=128)
     telegram_base_url: str = Field(default="", max_length=2048)
+    notification_policy: dict | None = None
 
 
 @app.get("/api/telegram")
@@ -252,7 +253,7 @@ def get_telegram(request: Request):
 @app.put("/api/telegram")
 def put_telegram(body: TelegramConfig, request: Request):
     save_telegram(current_user(request), body.telegram_token, body.telegram_chat_id,
-                  body.telegram_base_url or str(request.base_url))
+                  body.telegram_base_url or str(request.base_url), body.notification_policy)
     return masked_telegram(current_user(request))
 
 
@@ -639,7 +640,7 @@ def generate(ident: str, request: Request):
             waiting = True
             model_manager.request(engine, accept_license=True, automatic=True)
     job = s.put("job", {"project_id": ident, "owner_username": owner["username"], "app_url": str(request.base_url).rstrip("/"), "name": project["output_name"], "snapshot": project, "status": "queued", "stage": "Aguardando modelo — o trabalho começará automaticamente" if waiting else "Aguardando executor", "progress": 0, "outputs": [], "created": time.time()})
-    threading.Thread(target=notify_job, args=(job,), daemon=True).start()
+    enqueue_job_notification(job)
     (s.DATA / "jobs" / job["id"]).mkdir(parents=True, exist_ok=True)
     worker.wake.set()
     return {"id": job["id"], "status": job["status"]}

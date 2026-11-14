@@ -1,3 +1,9 @@
+## 0.5.7 — Telegram por modo e textos editáveis
+
+- Escolha os avisos para texto em voz, dublagem e transcrição separadamente.
+- Textos personalizados com variáveis, em menus de edição recolhidos.
+- Andamento com intervalo e envio em segundo plano; links autenticados preservados.
+
 ## 0.5.6 — Ajuste visual
 
 - O logotipo interno usa o mesmo microfone azul do ícone externo, com o acabamento do tema e sem substituição por ondas genéricas.

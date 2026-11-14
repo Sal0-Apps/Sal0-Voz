@@ -162,7 +162,7 @@ def test_automatic_resume_reloads_model_and_keeps_saved_audio(data, monkeypatch,
         def close(self):
             self.closed=True
     monkeypatch.setattr(module,"EngineSession",Session)
-    monkeypatch.setattr(module,"notify_job",lambda _:worker.stop_event.set())
+    monkeypatch.setattr(module,"enqueue_job_notification",lambda job,event=None:worker.stop_event.set() if (event or job.get("status")) in {"completed","failed"} else None)
     worker.loop()
     result=s.get("job",job["id"]); folder=data/"jobs"/job["id"]
     assert result["status"]=="completed" and result["automatic_retries"]==1

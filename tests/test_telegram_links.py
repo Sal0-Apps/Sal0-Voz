@@ -48,3 +48,34 @@ def test_telegram_settings_and_job_links_keep_login_and_ownership(owner):
     assert owner.get("/api/jobs/"+other["id"]).status_code==403
     owner.post("/api/auth/logout")
     assert owner.get("/api/jobs/"+own["id"]).status_code==401
+
+
+def test_mode_choices_and_custom_text_are_saved_and_enforced(data, monkeypatch):
+    user = {'username':'alice'}
+    choices = telegram.policy({})
+    choices['modes']['asr']['completed'] = False
+    choices['templates']['tts']['completed'] = 'Minha voz: {titulo}\n{modo}\n{tempo}\n{link}'
+    telegram.save_config(user, 'fake-token-12345', 'fake-chat', 'https://voz.example', choices)
+    messages = []
+    monkeypatch.setattr(telegram, 'send_message', lambda cfg,text: messages.append(text))
+    job = {'id':'job', 'owner_username':'alice','status':'completed','name':'Teste <seguro>',
+           'stage':'Concluído','elapsed_seconds':61,'snapshot':{'mode':'asr'}}
+    telegram.notify_job(job)
+    assert not messages
+    job['snapshot']['mode'] = 'tts'
+    telegram.notify_job(job)
+    assert len(messages) == 1 and 'Minha voz: Teste &lt;seguro&gt;' in messages[0]
+    assert 'Texto em voz' in messages[0] and '0 h 1 min 1 s' in messages[0]
+    masked = telegram.masked(user)
+    telegram.save_config(user, masked['telegram_token'], 'fake-chat', 'https://voz.example')
+    assert telegram.masked(user)['notification_policy'] == choices
+    telegram.save_config({'username':'bob'}, 'fake-token-12345', 'other-chat')
+    assert telegram.masked({'username':'bob'})['notification_policy'] != choices
+
+
+def test_invalid_choices_are_rejected_and_template_is_literal(data):
+    choices = telegram.policy({})
+    choices['modes']['tts']['completed'] = 'false'
+    with pytest.raises(ValueError): telegram.save_config({'username':'admin'},'token','chat',notification_policy=choices)
+    rendered = telegram.preferences.render('<b>{titulo}</b> {mensagem}', {'titulo':'<unsafe>'}, '<b>Padrão seguro</b>')
+    assert rendered == '&lt;b&gt;&lt;unsafe&gt;&lt;/b&gt; <b>Padrão seguro</b>'

@@ -78,7 +78,7 @@ def test_failed_download_keeps_job_and_recovers_automatically(data,monkeypatch):
     ready=True;worker.stop_event.clear()
     monkeypatch.setattr(worker,"execute",lambda _:None)
     monkeypatch.setattr(worker,"check",lambda _:None)
-    monkeypatch.setattr(module,"notify_job",lambda _:worker.stop_event.set())
+    monkeypatch.setattr(module,"enqueue_job_notification",lambda job,event=None:worker.stop_event.set() if (event or job.get("status")) in {"completed","failed"} else None)
     worker.loop()
     assert s.get("job",job["id"])["status"]=="completed"
 

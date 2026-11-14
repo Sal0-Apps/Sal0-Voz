@@ -25,7 +25,7 @@ from .script import subtitles, split_text
 from .reactions import caption, synthesis_text, render_policy
 from .omnivoice_quality import LEGACY_PROFILE, maximum_quality
 from .quality_profiles import PROFILES, high_precision
-from .telegram import notify_job
+from .telegram import enqueue_job_notification
 
 class Interrupted(Exception):
     pass
@@ -40,6 +40,7 @@ class Worker:
         self.active_job_id = None
         self.processing_engine = None
         self.progress_scope = (0, 0, "Preparando")
+        self.telegram_progress = {}
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -73,8 +74,21 @@ class Worker:
             if "stage" in fields:
                 fields.setdefault("progress_detail", None)
             job = s.get("job", ident)
+            previous_status = job.get('status')
             job.update(fields)
-            return s.put("job", job)
+            saved = s.put("job", job)
+        event = None
+        if saved.get('status') != previous_status:
+            event = {'running':'started', 'queued':'paused'}.get(saved['status'], saved['status'])
+        elif saved.get('status') == 'running' and 'progress' in fields:
+            now, bucket = time.monotonic(), int(float(saved.get('progress') or 0)//10)
+            last_bucket, last_time = self.telegram_progress.get(ident, (-1, 0))
+            if bucket > last_bucket and now-last_time >= 60:
+                self.telegram_progress[ident] = (bucket, now)
+                event = 'progress'
+        if event:
+            enqueue_job_notification(saved, event)
+        return saved
 
     def begin_progress(self, ident, start, span, label):
         self.progress_scope = (start, span, label)
@@ -291,7 +305,6 @@ class Worker:
                 with self.lock:
                     self.check(ident)
                     finished = self.update(ident, status="completed", stage="Concluído — revise o resultado", progress=100, consecutive_retries=0, retry_at=None, waiting_memory=None, elapsed_seconds=round(time.monotonic()-started, 2))
-                notify_job(finished)
             except Interrupted:
                 if self.stop_event.is_set() and s.get("job", ident)["status"] == "running":
                     self.update(ident, status="queued", stage="Interrompido com segurança; aguardando reinício")
@@ -311,7 +324,6 @@ class Worker:
                 self.retry(ident, exc)
             except Exception as exc:
                 failed = self.update(ident, status="failed", stage=str(exc), error=str(exc))
-                notify_job(failed)
             finally:
                 with self.lock:
                     self.active_job_id = None

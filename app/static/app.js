@@ -377,9 +377,32 @@ $("refresh-models").onclick=safe(async()=>{await loadModels();await loadDiagnost
 async function loadModelAccess(){const cfg=await api("/model-access");$("model-access-form").hidden=!cfg.writable;$("model-access-status").textContent=cfg.configured?(cfg.source==="environment"?"Acesso configurado pelo servidor.":"Token de leitura salvo. Ele não será exibido."):"Nenhum token salvo. Aceite os termos do Pocket TTS e salve um token de leitura para baixar os pesos com clonagem.";}
 $("model-access-form").addEventListener("submit",safe(async e=>{e.preventDefault();await api("/model-access",{method:"PUT",body:JSON.stringify({token:$("model-hf-token").value||null})});$("model-hf-token").value="";await loadModelAccess();toast("Acesso aos modelos salvo.");}));
 $("clear-model-access").onclick=safe(async()=>{await api("/model-access",{method:"PUT",body:JSON.stringify({clear:true})});$("model-hf-token").value="";await loadModelAccess();toast("Token salvo removido.");});
-async function loadTelegram(){const cfg=await api("/telegram");$("telegram-token").value=cfg.telegram_token||"";$("telegram-chat").value=cfg.telegram_chat_id||"";$("telegram-url").value=cfg.telegram_base_url||location.origin;}
+function renderTelegramPreferences(cfg){
+  const wrap=$("telegram-preferences");if(!wrap)return;wrap.replaceChildren();
+  const policy=cfg.notification_policy;if(!policy)return;
+  const master=document.createElement('label');master.className='check';
+  const enabled=document.createElement('input');enabled.type='checkbox';enabled.id='telegram-messages-enabled';enabled.checked=policy.enabled;
+  master.append(enabled,document.createTextNode('Ativar as mensagens selecionadas'));wrap.append(master);
+  const variables=document.createElement('p');variables.className='hint';variables.textContent='Texto simples. Variáveis: '+(cfg.notification_variables||[]).map(key=>'{'+key+'}').join(', ')+'. O campo vazio usa a mensagem padrão.';wrap.append(variables);
+  for(const [mode,title] of cfg.notification_modes||[]){
+    const section=document.createElement('details');section.className='compact-details';const summary=document.createElement('summary');summary.textContent=title;section.append(summary);
+    for(const [event,label] of cfg.notification_events||[]){
+      const row=document.createElement('div');row.className='option-group';
+      const check=document.createElement('label');check.className='check';const input=document.createElement('input');input.type='checkbox';input.dataset.telegramMode=mode;input.dataset.telegramEvent=event;input.checked=!!policy.modes[mode]?.[event];check.append(input,document.createTextNode(label));row.append(check);
+      const edit=document.createElement('details');edit.className='compact-details';const heading=document.createElement('summary');heading.textContent='Editar texto padrão';const textarea=document.createElement('textarea');textarea.rows=4;textarea.maxLength=3500;textarea.dataset.telegramTextMode=mode;textarea.dataset.telegramTextEvent=event;textarea.dataset.default=cfg.notification_defaults?.[event]||'{mensagem}';textarea.value=policy.templates?.[mode]?.[event]||textarea.dataset.default;textarea.setAttribute('aria-label','Mensagem de '+label+' em '+title);edit.append(heading,textarea);row.append(edit);section.append(row);
+    }wrap.append(section);
+  }
+}
+function telegramPreferences(){
+  const enabled=$("telegram-messages-enabled");if(!enabled)return undefined;
+  const policy={enabled:enabled.checked,modes:{},templates:{}};
+  document.querySelectorAll('[data-telegram-mode]').forEach(input=>{(policy.modes[input.dataset.telegramMode]??={})[input.dataset.telegramEvent]=input.checked;});
+  document.querySelectorAll('[data-telegram-text-mode]').forEach(input=>{(policy.templates[input.dataset.telegramTextMode]??={})[input.dataset.telegramTextEvent]=input.value.trim()===input.dataset.default?'':input.value;});
+  return policy;
+}
+async function loadTelegram(){const cfg=await api("/telegram");$("telegram-token").value=cfg.telegram_token||"";$("telegram-chat").value=cfg.telegram_chat_id||"";$("telegram-url").value=cfg.telegram_base_url||location.origin;renderTelegramPreferences(cfg);}
 async function loadUsers(){if(state.user.role!=="admin")return;$("users-card").hidden=false;const users=await api("/users");$("users-list").innerHTML=users.map(u=>'<div class="item-actions"><span>'+escapeHTML(u.username)+' · '+escapeHTML(u.role)+'</span>'+(u.username===state.user.username?"":'<button class="quiet" data-delete-user="'+escapeHTML(u.username)+'">Excluir</button>')+'</div>').join("");document.querySelectorAll("[data-delete-user]").forEach(b=>b.onclick=safe(async()=>{await api("/users/"+encodeURIComponent(b.dataset.deleteUser),{method:"DELETE"});await loadUsers();}));}
-$("telegram-form").addEventListener("submit",safe(async e=>{e.preventDefault();const cfg=await api("/telegram",{method:"PUT",body:JSON.stringify({telegram_token:$("telegram-token").value,telegram_chat_id:$("telegram-chat").value,telegram_base_url:$("telegram-url").value})});$("telegram-token").value=cfg.telegram_token||"";$("telegram-status").textContent="Salvo. O Telegram receberá somente links, sem anexos.";toast("Telegram configurado.");}));
+$("telegram-form").addEventListener("submit",safe(async e=>{e.preventDefault();const cfg=await api("/telegram",{method:"PUT",body:JSON.stringify({telegram_token:$("telegram-token").value,telegram_chat_id:$("telegram-chat").value,telegram_base_url:$("telegram-url").value,notification_policy:telegramPreferences()})});$("telegram-token").value=cfg.telegram_token||"";$("telegram-status").textContent="Salvo. Serão enviadas somente as mensagens selecionadas, sem anexos.";toast("Telegram configurado.");}));
 $("user-form").addEventListener("submit",safe(async e=>{e.preventDefault();await api("/users",{method:"POST",body:JSON.stringify({username:$("new-username").value,password:$("new-password").value,role:$("new-role").value})});e.target.reset();await loadUsers();toast("Usuário criado.");}));
 function closeQueue(){$("queue-panel").close();$("queue-panel").hidden=true;}
 $("queue-toggle").onclick=()=>{$("queue-panel").hidden=false;$("queue-panel").showModal();};
